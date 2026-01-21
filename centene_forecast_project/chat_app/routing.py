@@ -9,9 +9,6 @@ websocket_urlpatterns = [
     # Main chat WebSocket endpoint
     path('ws/chat/', consumers.ChatConsumer.as_asgi()),
 
-    # Upload progress WebSocket (for file uploads in future phases)
-    re_path(r'ws/upload/(?P<upload_id>[^/]+)/$', consumers.UploadProgressConsumer.as_asgi()),
-
     # Test WebSocket endpoint for debugging
     re_path(r'ws/test/$', consumers.TestConsumer.as_asgi()),
 ]
