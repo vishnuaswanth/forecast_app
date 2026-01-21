@@ -115,6 +115,9 @@
         {% block content2 %}{% endblock %}
 </main>
 
+<!-- Chat Widget -->
+{% include 'components/chat_widget.html' %}
+
 </body>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -127,5 +130,9 @@
     <script src="{% static 'js/select2-4.0.6-rc.0.min.js' %}"></script>
 
     {% block script %}{% endblock %}
-    
+
+    <!-- Chat Widget Styles and Scripts -->
+    <link rel="stylesheet" href="{% static 'css/chat_widget.css' %}">
+    <script src="{% static 'js/chat_widget.js' %}"></script>
+
 </html>

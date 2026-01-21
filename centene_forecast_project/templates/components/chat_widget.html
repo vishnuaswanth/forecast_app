@@ -1,0 +1,98 @@
+<!-- Chat Widget Component -->
+<!-- Floating chat interface for AI-powered assistance -->
+{% load static %}
+
+<div id="chat-widget-container">
+    <!-- Chat Toggle Button (Bottom-right) -->
+    <button id="chat-toggle-btn" class="chat-toggle-btn" aria-label="Toggle Chat">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        <span id="chat-unread-badge" class="chat-unread-badge" style="display: none;">0</span>
+    </button>
+
+    <!-- Chat Container (Hidden by default) -->
+    <div id="chat-container" class="chat-container" style="display: none;">
+        <!-- Chat Header -->
+        <div class="chat-header">
+            <div class="chat-header-title">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>AI Assistant</span>
+                <span id="chat-connection-status" class="chat-connection-status">
+                    <span class="status-indicator status-connecting"></span>
+                    <span class="status-text">Connecting...</span>
+                </span>
+            </div>
+            <button id="chat-minimize-btn" class="chat-minimize-btn" aria-label="Minimize Chat">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Chat Messages Area -->
+        <div id="chat-messages" class="chat-messages">
+            <!-- Messages will be dynamically added here -->
+            <div class="chat-message chat-message-system">
+                <div class="message-content">
+                    <small class="text-muted">Connecting to chat...</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Typing Indicator -->
+        <div id="chat-typing-indicator" class="chat-typing-indicator" style="display: none;">
+            <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <span class="typing-text">AI is thinking...</span>
+        </div>
+
+        <!-- Chat Input Area -->
+        <div class="chat-input-area">
+            <textarea id="chat-input" class="chat-input" placeholder="Type your message here..." rows="1"></textarea>
+            <button id="chat-send-btn" class="chat-send-btn" aria-label="Send Message">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Connection Status Bar (shown when disconnected) -->
+        <div id="chat-status-bar" class="chat-status-bar" style="display: none;">
+            <span id="chat-status-message">Disconnected. Attempting to reconnect...</span>
+        </div>
+    </div>
+
+    <!-- Modal Container for Full Data Views -->
+    <div id="chat-modal-overlay" class="chat-modal-overlay" style="display: none;">
+        <div id="chat-modal-container" class="chat-modal-container">
+            <!-- Modal Header -->
+            <div class="chat-modal-header">
+                <h5 id="chat-modal-title" class="chat-modal-title">Data View</h5>
+                <button id="chat-modal-close-btn" class="chat-modal-close-btn" aria-label="Close Modal">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div id="chat-modal-body" class="chat-modal-body">
+                <!-- Content will be dynamically loaded -->
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="chat-modal-footer">
+                <span id="chat-modal-info" class="text-muted"></span>
+                <button id="chat-modal-close-footer-btn" class="btn btn-secondary">Close</button>
+            </div>
+        </div>
+    </div>
+</div>

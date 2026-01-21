@@ -32,6 +32,7 @@ ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',  # Must be FIRST for WebSocket support
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -41,7 +42,9 @@ INSTALLED_APPS = [
     # my django apps
     'core', # for models and backends
     'centene_forecast_app',
+    'chat_app',  # Chat interface with WebSocket
     # external apps
+    'channels',  # WebSocket support
     'django_q',
     'django_extensions',
 ]
@@ -89,6 +92,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'centene_forecast_project.wsgi.application'
+ASGI_APPLICATION = 'centene_forecast_project.asgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
@@ -211,6 +215,39 @@ PBIRS_CLAIMS_CAPACITY_URL = (
     "http://10.111.36.98/reports/powerbi/COMMERCIAL/Centene/"
     "Claims%20Capacity%20Planning%20Dashboard?rs:Embed=true"
 )
+
+# =============================================================================
+# CHANNEL LAYERS CONFIGURATION (WebSocket Support)
+# =============================================================================
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+        "CONFIG": {
+            "capacity": 100,
+            "expiry": 60,
+        }
+    },
+}
+
+# =============================================================================
+# CHAT CONFIGURATION
+# =============================================================================
+CHAT_CONFIG = {
+    'enabled': True,
+    'mock_mode': True,  # Phase 1: Use mock responses (no real LLM)
+    'max_conversation_history': 50,
+    'rate_limit_messages_per_minute': 10,
+}
+
+# LLM Configuration (for Phase 2+ when integrating real LLM)
+LLM_CONFIG = {
+    'provider': 'openai',
+    'model': 'gpt-4-turbo-preview',
+    'api_key': os.environ.get('OPENAI_API_KEY', ''),
+    'max_tokens': 4096,
+    'temperature': 0.1,
+    'use_langchain': True,
+}
 
 
 from datetime import datetime
