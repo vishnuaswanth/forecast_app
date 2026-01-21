@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% load static %}
+{% block title %}Upload File{% endblock %}
+
+{% block content %}
+<div>
+    <div class="container mt-5">
+        <h1>Upload CSV/Excel File</h1>
+        
+        <form id="upload-form" method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="mb-3">
+                <input type="file" name="file" accept=".csv, .xlsx" class="form-control" required>
+            </div>
+            <button type="submit" id="upload-btn" class="btn btn-primary">
+                <i class="fas fa-upload"></i> Upload
+            </button>
+        </form>
+        <div id="progress-container" class="mt-3" style="display: none;">
+            <div class="progress">
+                <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%;">0%</div>
+            </div>
+        </div>
+        <div id="error-message" class="alert alert-danger" style="display: none;"></div>
+
+    </div> 
+</div>
+
+<script>
+
+    // Pass the URL for the upload endpoint to the JS file as a global variable.
+    var fileUploadUrl = "{% url 'forecast_app:file_upload' %}";
+    var checkProgressUrl = "{% url 'forecast_app:upload_progress' %}";
+</script>
+<script src="{% static 'centene_forecast_app/js/upload.js' %}"></script> 
+
+{% endblock %}

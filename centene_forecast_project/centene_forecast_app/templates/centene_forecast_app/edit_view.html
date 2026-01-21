@@ -1,0 +1,305 @@
+{% extends 'index.html' %}
+{% load static %}
+
+{# Note: user_name, timezone, utcoffset, tz_fullname, tz_abbreviation #}
+{# are automatically available via context processor - no need to pass them #}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_css %}
+    
+{% endblock %}
+
+{% block content2 %}
+<!-- Config passed to JavaScript -->
+<!-- Select2 CSS for searchable dropdowns -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+    <!-- SweetAlert2 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet" />
+
+    <!-- Edit View Custom CSS -->
+    <link rel="stylesheet" href="{% static 'centene_forecast_app/css/edit_view.css' %}">
+{{ config|json_script:"edit-view-config" }}
+
+<div class="edit-view-container">
+    <!-- Header -->
+    <div class="edit-view-header mb-4">
+        <h2 class="mb-0">
+            <i class="fas fa-edit me-2"></i>Edit View - Allocation Management
+        </h2>
+    </div>
+
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs edit-view-tabs" id="edit-view-tabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="bench-allocation-tab-btn" data-bs-toggle="tab"
+                    data-bs-target="#bench-allocation-tab" type="button" role="tab"
+                    aria-controls="bench-allocation-tab" aria-selected="true">
+                <i class="fas fa-users me-2"></i>Bench Allocation
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="history-log-tab-btn" data-bs-toggle="tab"
+                    data-bs-target="#history-log-tab" type="button" role="tab"
+                    aria-controls="history-log-tab" aria-selected="false">
+                <i class="fas fa-history me-2"></i>History Log
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content edit-view-tab-content mt-3" id="edit-view-tab-content">
+
+        <!-- ========================================== -->
+        <!-- BENCH ALLOCATION TAB -->
+        <!-- ========================================== -->
+        <div class="tab-pane fade show active" id="bench-allocation-tab" role="tabpanel"
+             aria-labelledby="bench-allocation-tab-btn">
+
+            <!-- Filter Section -->
+            <div class="card edit-view-filter-card">
+                <div class="card-body">
+                    <h5 class="mb-3">
+                        <i class="fas fa-filter me-2"></i>Allocation Report Selection
+                    </h5>
+                    <div class="row align-items-end">
+                        <div class="col-md-6">
+                            <label class="form-label" for="allocation-report-select">
+                                Select Allocation Report:
+                            </label>
+                            <select class="form-select edit-view-select2" id="allocation-report-select"
+                                    data-placeholder="-- Select Report Month --">
+                                <option value="">-- Select Report Month --</option>
+                                <!-- Options will be populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-primary" id="run-allocation-btn">
+                                <i class="fas fa-play me-1"></i>Run Allocation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Alert -->
+            <div class="alert alert-info edit-view-info-alert mt-3">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>How it works:</strong> Click "Run Allocation" to automatically identify and allocate
+                excess bench resources. The system will display only the rows that will be modified.
+            </div>
+
+            <!-- Loading Spinner for Preview -->
+            <div class="edit-view-loading text-center" id="preview-loading" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Calculating bench allocation preview...</p>
+            </div>
+
+            <!-- Error Alert for Preview -->
+            <div class="alert alert-danger edit-view-error-alert" id="preview-error" style="display: none;">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                <span id="preview-error-message">An error occurred</span>
+            </div>
+
+            <!-- Preview Section -->
+            <div class="card edit-view-preview-container mt-3" id="preview-container" style="display: none;">
+                <div class="card-header edit-view-preview-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-eye me-2"></i>Preview of Changes
+                        </h5>
+                        <span class="badge bg-info" id="modified-count-badge">0 records modified</span>
+                    </div>
+                    <p class="text-muted mb-0 mt-2">
+                        The following rows will be modified based on automatically allocated excess bench resources.
+                    </p>
+                </div>
+                <div class="card-body">
+                    <!-- Preview Table -->
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm table-bordered edit-view-preview-table"
+                               id="preview-table">
+                            <thead id="preview-table-head">
+                                <!-- Headers will be populated by JavaScript -->
+                            </thead>
+                            <tbody id="preview-table-body">
+                                <!-- Rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <nav id="preview-pagination" style="display: none;">
+                        <ul class="pagination pagination-sm justify-content-end">
+                            <!-- Pagination items will be populated by JavaScript -->
+                        </ul>
+                    </nav>
+
+                    <!-- Summary Alert -->
+                    <div class="alert alert-success mt-3" id="preview-summary">
+                        <strong>Summary:</strong> <span id="summary-text">0 records modified</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Section (Accept/Reject) -->
+            <div class="card edit-view-actions-container mt-3" id="actions-container" style="display: none;">
+                <div class="card-body">
+                    <h5 class="mb-3">
+                        <i class="fas fa-check-circle me-2"></i>Review and Submit
+                    </h5>
+
+                    <!-- User Notes Textarea -->
+                    <div class="mb-3">
+                        <label class="form-label" for="user-notes-input">
+                            Change Description (Optional):
+                        </label>
+                        <textarea class="form-control" id="user-notes-input" rows="3"
+                                  maxlength="500" placeholder="Add notes about this allocation (max 500 characters)..."></textarea>
+                        <small class="form-text text-muted">
+                            <span id="notes-char-count">0</span> / 500 characters
+                        </small>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>Total Modified Records:</strong> <span id="action-summary-count">0</span>
+                        </div>
+                        <div>
+                            <button class="btn btn-outline-secondary me-2" id="reject-btn">
+                                <i class="fas fa-times me-1"></i>Reject
+                            </button>
+                            <button class="btn btn-success" id="accept-btn">
+                                <i class="fas fa-check me-1"></i>Accept & Update
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ========================================== -->
+        <!-- HISTORY LOG TAB -->
+        <!-- ========================================== -->
+        <div class="tab-pane fade" id="history-log-tab" role="tabpanel"
+             aria-labelledby="history-log-tab-btn">
+
+            <!-- Filter Section -->
+            <div class="card edit-view-filter-card">
+                <div class="card-body">
+                    <h5 class="mb-3">
+                        <i class="fas fa-filter me-2"></i>Filter History
+                    </h5>
+                    <div class="row align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label" for="history-report-select">
+                                Filter by Report:
+                            </label>
+                            <select class="form-select edit-view-select2" id="history-report-select"
+                                    data-placeholder="-- All Reports --">
+                                <option value="">-- All Reports --</option>
+                                <!-- Options will be populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label" for="history-change-type-select">
+                                Filter by Change Type:
+                            </label>
+                            <select class="form-select edit-view-select2-multi" id="history-change-type-select"
+                                    multiple data-placeholder="Select change types...">
+                                <option value="Bench Allocation">Bench Allocation</option>
+                                <option value="CPH Update">CPH Update</option>
+                                <option value="Manual Update">Manual Update</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-primary w-100" id="apply-history-filters-btn">
+                                <i class="fas fa-sync-alt me-1"></i>Apply
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner for History -->
+            <div class="edit-view-loading text-center mt-3" id="history-loading" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading history...</p>
+            </div>
+
+            <!-- Error Alert for History -->
+            <div class="alert alert-danger edit-view-error-alert mt-3" id="history-error" style="display: none;">
+                <i class="fas fa-exclamation-circle me-2"></i>
+                <span id="history-error-message">An error occurred</span>
+            </div>
+
+            <!-- History Cards Container -->
+            <div id="history-cards-container" class="mt-3">
+                <!-- Cards will be dynamically inserted here by JavaScript -->
+            </div>
+
+            <!-- No Results Message -->
+            <div class="alert alert-info text-center mt-3" id="history-no-results" style="display: none;">
+                <i class="fas fa-info-circle me-2"></i>
+                No history entries found for the selected filters.
+            </div>
+
+            <!-- Pagination for History -->
+            <nav id="history-pagination" class="mt-3" style="display: none;">
+                <ul class="pagination justify-content-center">
+                    <!-- Pagination items will be populated by JavaScript -->
+                </ul>
+            </nav>
+
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+    <!-- jQuery (required for Select2) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Select2 JS for searchable dropdowns -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+    <!-- SweetAlert2 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Edit View Configuration from Django -->
+    <script>
+        // Pass Django context to JavaScript
+        const CONFIG = JSON.parse(document.getElementById('edit-view-config').textContent);
+
+        window.EDIT_VIEW_CONFIG = {
+            urls: {
+                allocationReports: '{% url "forecast_app:allocation_reports" %}',
+                benchAllocationPreview: '{% url "forecast_app:bench_allocation_preview" %}',
+                benchAllocationUpdate: '{% url "forecast_app:bench_allocation_update" %}',
+                historyLog: '{% url "forecast_app:history_log" %}',
+                downloadHistoryExcel: '{% url "forecast_app:download_history_excel" history_log_id="PLACEHOLDER" %}'.replace('PLACEHOLDER', '{id}')
+            },
+            settings: {
+                previewPageSize: CONFIG.preview_page_size || 25,
+                historyPageSize: CONFIG.history_page_size || 5,
+                historyInitialLoad: CONFIG.history_initial_load || 20,
+                historyLazyLoadSize: CONFIG.history_lazy_load_size || 10,
+                historyShowMoreThreshold: CONFIG.history_show_more_threshold || 3,
+                maxUserNotesLength: CONFIG.max_user_notes_length || 500,
+                enableUserNotes: CONFIG.enable_user_notes !== undefined ? CONFIG.enable_user_notes : true
+            }
+        };
+    </script>
+
+    <!-- Edit View JavaScript -->
+    <script src="{% static 'centene_forecast_app/js/edit_view.js' %}"></script>
+{% endblock %}

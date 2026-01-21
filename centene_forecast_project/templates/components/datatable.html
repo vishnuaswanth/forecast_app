@@ -1,0 +1,12 @@
+<!-- templates/datatable.html -->
+
+<div class="datatable-container">
+    <table id="{{ table_id }}" class="table table-bordered"></table>
+</div>
+
+<script>
+    function renderDataTable(tableId, tableData){
+        const table = $(`#${tableId}`).DataTable(tableData);
+        return table;
+    };
+</script>

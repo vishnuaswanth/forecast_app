@@ -1,0 +1,15 @@
+<!-- templates/datatable.html -->
+
+<div class="datatable-container">
+    <table id="{{ objects.table_id}}" class="table table-bordered"></table>
+    {{ objects.columns|json_script:"columns-data"}}
+    {{ objects.table_props|json_script:"table-props"}}
+    {{ objects.summations|json_script:"summations-data"}}
+</div>
+
+<script> 
+    function renderDataTable(tableId, tableData){
+        const table = $(`#${tableId}`).DataTable(tableData);
+        return table;
+    };
+</script>

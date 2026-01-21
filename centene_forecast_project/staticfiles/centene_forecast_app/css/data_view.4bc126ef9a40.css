@@ -1,0 +1,161 @@
+/* ============================================================================
+   DATAFRAME TABLE STYLES
+   ============================================================================ */
+table.dataframe {
+    text-indent: initial;
+    line-height: normal;
+    font-weight: normal;
+    font-size: medium;
+    font-style: normal;
+    text-align: start;
+    border-spacing: inherit;
+    white-space: normal;
+    font-variant: normal;
+    border-collapse: collapse;
+    background-color: #fff;
+}
+
+.dataframe table, th, tr, tbody, td {
+    border: 2px solid;
+}
+
+.dataframe th {
+    display: table-cell;
+    vertical-align: inherit;
+    font-weight: bold;
+    unicode-bidi: isolate;
+    text-align: center;
+}
+
+.dataframe td {
+    display: table-cell;
+    vertical-align: inherit;
+    unicode-bidi: isolate;
+}
+
+/* ============================================================================
+   CASCADING DROPDOWN LOADING STATES
+   ============================================================================ */
+
+/* Filter dropdown wrapper for positioning loading elements */
+.filter-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+/* Skeleton loader - shown during AJAX fetch */
+.skeleton-select {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #f3f4f6;
+    border-radius: 0.25rem;
+    overflow: hidden;
+    display: none;
+    border: 1px solid #e5e7eb;
+    z-index: 10;
+    pointer-events: none;
+}
+
+.filter-dropdown-wrapper.loading .skeleton-select {
+    display: block;
+}
+
+/* Dim the actual select when loading */
+.filter-dropdown-wrapper.loading select {
+    opacity: 0.3;
+}
+
+/* Shimmer animation for skeleton */
+.skeleton-select::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.8) 50%,
+        transparent 100%
+    );
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* Skeleton content placeholder */
+.skeleton-content {
+    padding: 6px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    justify-content: center;
+    height: 100%;
+}
+
+.skeleton-line {
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 3px;
+    width: 60%;
+}
+
+/* Loading badge - appears next to label */
+.loading-badge {
+    display: none;
+    margin-left: 8px;
+    background: #fef3c7;
+    color: #92400e;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    vertical-align: middle;
+    text-transform: uppercase;
+}
+
+.filter-dropdown-wrapper.loading .loading-badge {
+    display: inline-block;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+/* Disabled overlay - prevents interaction during loading */
+.disabled-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(1px);
+    border-radius: 0.25rem;
+    display: none;
+    cursor: not-allowed;
+    z-index: 15;
+}
+
+.filter-dropdown-wrapper.loading .disabled-overlay {
+    display: block;
+}

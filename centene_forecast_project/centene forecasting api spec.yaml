@@ -1,0 +1,241 @@
+openapi: 3.0.0
+info:
+  title: Centene_forecasting
+  version: 1.0.0
+  description: ""
+servers:
+  - url: 127.0.0.1
+paths:
+  /upload/roster:
+    parameters: []
+    post:
+      summary: Upload roster file
+      parameters:
+        - name: user
+          in: query
+          required: false
+          example: Makzoom Shah
+          schema:
+            type: string
+        - name: accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses: {}
+  /upload/forecast:
+    parameters: []
+    post:
+      summary: Upload forecast file
+      parameters:
+        - name: user
+          in: query
+          required: false
+          example: Makzoom Shah
+          schema:
+            type: string
+        - name: accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses: {}
+  /records/roster:
+    parameters: []
+    get:
+      summary: get roster data
+      parameters:
+        - name: skip
+          in: query
+          required: false
+          example: "181"
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          example: "2"
+          schema:
+            type: integer
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: searchable_field
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: global_filter
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: month
+          in: query
+          required: false
+          example: July
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: false
+          example: "2025"
+          schema:
+            type: integer
+        - name: accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses: {}
+  /records/forecast:
+    parameters: []
+    get:
+      summary: get forecast data
+      parameters:
+        - name: skip
+          in: query
+          required: false
+          example: "0"
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          example: "100"
+          schema:
+            type: integer
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: searchable_field
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: global_filter
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: month
+          in: query
+          required: false
+          example: July
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: false
+          example: "2025"
+          schema:
+            type: integer
+        - name: main_lob
+          in: query
+          required: false
+          example: Amisys Medicaid DOMESTIC
+          schema:
+            type: string
+        - name: case_type
+          in: query
+          required: false
+          example: FTC-Basic/Non MMP
+          schema:
+            type: string
+        - name: forecast_month
+          in: query
+          required: false
+          example: August
+          schema:
+            type: string
+        - name: accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses: {}
+  /record_history/all:
+    parameters: []
+    get:
+      summary: upload history
+      parameters:
+        - name: skip
+          in: query
+          required: false
+          example: "0"
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          example: "10"
+          schema:
+            type: integer
+        - name: accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses: {}
+  /model_schema/forecast:
+    parameters: []
+    get:
+      summary: schema for forecast
+      parameters:
+        - name: month
+          in: query
+          required: false
+          example: July
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: false
+          example: "2025"
+          schema:
+            type: integer
+        - name: main_lob
+          in: query
+          required: false
+          example: Amisys Medicaid DOMESTIC
+          schema:
+            type: string
+        - name: case_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: accept
+          in: header
+          required: false
+          example: application/json
+          schema:
+            type: string
+      responses: {}
+  /download_file/forecast:
+    parameters: []
+    get:
+      summary: download forecast data
+      parameters:
+        - name: month
+          in: query
+          required: false
+          example: July
+          schema:
+            type: string
+        - name: year
+          in: query
+          required: false
+          example: "2025"
+          schema:
+            type: integer
+      responses: {}

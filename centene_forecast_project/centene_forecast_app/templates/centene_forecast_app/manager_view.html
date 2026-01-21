@@ -1,0 +1,202 @@
+{% extends 'index.html' %}
+{% load static %}
+
+{# Note: user_name, timezone, utcoffset, tz_fullname, tz_abbreviation #}
+{# are automatically available via context processor - no need to pass them #}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block extra_css %}
+    
+{% endblock %}
+
+
+{% block content2 %}
+
+{{ config|json_script:"manager-view-config" }}
+<!-- Select2 CSS for searchable dropdowns -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+<!-- Manager View Custom CSS -->
+<link rel="stylesheet" href="{% static 'centene_forecast_app/css/manager_view.css' %}">
+<div class="manager-view-container">
+    <!-- Filter Section -->
+    <div class="manager-view-filter-card card">
+        <div class="card-body">
+            <h5 class="mb-3">
+                <i class="fas fa-filter me-2"></i>Filter Selection
+            </h5>
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="manager-view-filter-step">
+                        <label class="form-label" for="report-month">Report Month</label>
+                        <select class="form-select manager-view-select2" id="report-month" name="report_month" data-placeholder="-- Select Report Month --">
+                            <option value="">-- Select Report Month --</option>
+                            {% for month in report_months %}
+                                <option value="{{ month.value }}">{{ month.display }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="manager-view-filter-step">
+                        <label class="form-label" for="category">Category (Optional)</label>
+                        <select class="form-select manager-view-select2" id="category" name="category" data-placeholder="-- All Categories --">
+                            {% for cat in categories %}
+                                <option value="{{ cat.value }}">{{ cat.display }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" id="apply-filters" style="height: 38px;">
+                        <i class="fas fa-sync-alt me-1"></i>Apply & Load Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards (Hidden Initially) -->
+    <div class="row mb-3 manager-view-summary-cards" id="summary-cards" style="display: none;">
+        <div class="col-md-3">
+            <div class="manager-view-summary-card card">
+                <div class="card-body">
+                    <p class="manager-view-card-label">
+                        <i class="fas fa-clipboard-list text-primary me-2"></i>Client Forecast
+                    </p>
+                    <h3 class="manager-view-card-value" id="kpi-cf">-</h3>
+                    <small class="text-muted manager-view-card-month" id="kpi-cf-report">-</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="manager-view-summary-card card">
+                <div class="card-body">
+                    <p class="manager-view-card-label">
+                        <i class="fas fa-users text-info me-2"></i>Head Count
+                    </p>
+                    <h3 class="manager-view-card-value" id="kpi-hc">-</h3>
+                    <small class="text-muted manager-view-card-month" id="kpi-hc-report">-</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="manager-view-summary-card card">
+                <div class="card-body">
+                    <p class="manager-view-card-label">
+                        <i class="fas fa-tachometer-alt text-success me-2"></i>Capacity
+                    </p>
+                    <h3 class="manager-view-card-value" id="kpi-cap">-</h3>
+                    <small class="text-muted manager-view-card-month" id="kpi-cap-report">-</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="manager-view-summary-card card manager-view-gap-card">
+                <div class="card-body">
+                    <p class="manager-view-card-label">
+                        <i class="fas fa-exclamation-triangle text-danger me-2"></i>Capacity Gap
+                    </p>
+                    <h3 class="manager-view-card-value" id="kpi-gap">-</h3>
+                    <small class="text-muted manager-view-card-month" id="kpi-gap-report">-</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Table (Hidden Initially) -->
+    <div class="manager-view-table-container card" id="data-table" style="display: none;">
+        <div class="card-body">
+            <div class="manager-view-table-header">
+                <div>
+                    <h5 class="mb-0 manager-view-table-title">
+                        <i class="fas fa-table me-2"></i>
+                        <span id="selected-category">All Categories</span> - 
+                        <span id="selected-report">-</span>
+                    </h5>
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-2 manager-view-expand-btn" id="expand-all">
+                        <i class="fas fa-plus-square me-1"></i>Expand All
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary manager-view-collapse-btn" id="collapse-all">
+                        <i class="fas fa-minus-square me-1"></i>Collapse All
+                    </button>
+                </div>
+            </div>
+            
+            <div class="manager-view-table-scroll">
+                <table class="table table-hover table-sm table-bordered manager-view-table" id="capacity-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" class="manager-view-category-header" style="min-width: 280px; vertical-align: middle;">Category</th>
+                            <!-- Month headers will be populated by JavaScript -->
+                        </tr>
+                        <tr>
+                            <!-- Sub-headers (CF, HC, Cap, Gap) will be populated by JavaScript -->
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Data rows will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="manager-view-last-updated">
+                <i class="fas fa-clock me-1"></i>Last Updated: <span id="last-updated-time">-</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Initial State Message -->
+    <div class="alert alert-info text-center manager-view-initial-message" id="initial-message">
+        <i class="fas fa-info-circle me-2"></i>
+        Please select Report Month and optionally a Category to view data.
+    </div>
+
+    <!-- Loading Spinner (Hidden Initially) -->
+    <div class="manager-view-loading" id="loading-spinner" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Loading data...</p>
+    </div>
+
+    <!-- Error Alert (Hidden Initially) -->
+    <div class="alert alert-danger manager-view-error-alert" id="error-alert" style="display: none;">
+        <i class="fas fa-exclamation-circle me-2"></i>
+        <span id="error-message">An error occurred</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+    <!-- jQuery (required for Select2) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Select2 JS for searchable dropdowns -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    
+    <!-- Manager View Configuration from Django -->
+    <script>
+        // Pass Django context to JavaScript
+        const CONFIG = JSON.parse(document.getElementById('manager-view-config').textContent);
+        window.MANAGER_VIEW_CONFIG = {
+            urls: {
+                data: '{% url "forecast_app:manager_view_data" %}',
+                kpi: '{% url "forecast_app:manager_view_kpi" %}',
+            },
+            settings: {
+                monthsToDisplay: Number(CONFIG.months_to_display) || 6,
+                kpiMonthIndex: Number(CONFIG.kpi_month_index) || 1,
+                defaultCollapsed: !!CONFIG.default_table_collapsed,
+                enableExpandAll: !!CONFIG.enable_expand_all,
+            }
+        };
+    </script>
+    
+    <!-- Manager View JavaScript -->
+    <script src="{% static 'centene_forecast_app/js/manager_view.js' %}"></script>
+{% endblock %}

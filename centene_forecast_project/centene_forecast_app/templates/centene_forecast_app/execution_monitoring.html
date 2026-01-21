@@ -1,0 +1,375 @@
+{% extends 'index.html' %}
+{% load static %}
+
+{# Note: user_name, timezone, utcoffset, tz_fullname, tz_abbreviation #}
+{# are automatically available via context processor - no need to pass them #}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+
+{% block content2 %}
+    <link rel="stylesheet" href="{% static 'centene_forecast_app/css/execution_monitoring.css' %}">
+
+{{ config|json_script:"execution-monitoring-config" }}
+
+<!-- Toast Container (Bootstrap 5) -->
+<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;">
+    <div id="notification-toast" class="toast align-items-center text-white border-0" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+            <div class="toast-body" id="toast-message">
+                Notification message
+            </div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+    </div>
+</div>
+
+<!-- Loading Spinner -->
+<div id="loading-spinner" class="loading-spinner-overlay" style="display: none;">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+
+<div class="container-fluid">
+    <!-- Latest Execution - Hero Card -->
+    <div id="layout-hero" class="hero-card status-in-progress">
+        <div class="hero-content">
+            <div class="hero-icon">
+                <i class="fas fa-spinner status-in-progress" id="hero-icon"></i>
+            </div>
+            <div class="hero-details">
+                <h2>Latest Execution</h2>
+                <div class="hero-execution-id">
+                    <span id="hero-exec-id">Loading...</span>
+                    <button class="copy-btn" onclick="copyExecutionId('hero-exec-id')">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                </div>
+                <div class="hero-status" id="hero-status">LOADING</div>
+                <div id="hero-info">
+                    <p style="margin: 5px 0;"><strong>Started:</strong> <span id="hero-start">-</span></p>
+                    <p style="margin: 5px 0;"><strong>Duration:</strong> <span id="hero-duration">-</span></p>
+                    <p style="margin: 5px 0;" id="hero-error" class="hidden"><strong>Error:</strong> <span id="hero-error-type"></span></p>
+                </div>
+                <div class="hero-metrics" id="hero-metrics">
+                    <div class="hero-metric">
+                        <span class="hero-metric-value" id="hero-records">0</span>
+                        <span class="hero-metric-label">Records</span>
+                    </div>
+                    <div class="hero-metric">
+                        <span class="hero-metric-value" id="hero-success-rate">0%</span>
+                        <span class="hero-metric-label">Success Rate</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-card">
+        <h5><i class="fas fa-filter me-2"></i>Filter Executions</h5>
+        <div class="d-flex flex-wrap align-items-end gap-3">
+            <div class="filter-group flex-grow-1">
+                <label>Month</label>
+                <select id="month-filter" class="form-select">
+                    <option value="">All Months</option>
+                    {% for month in valid_months %}
+                    <option value="{{ month }}">{{ month }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group flex-grow-1">
+                <label>Year</label>
+                <select id="year-filter" class="form-select">
+                    <option value="">All Years</option>
+                    {% for year in valid_years %}
+                    <option value="{{ year }}">{{ year }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group flex-grow-2">
+                <label>Status</label>
+                <div class="status-checkboxes">
+                    {% for status in valid_statuses %}
+                    <label class="status-checkbox">
+                        <input type="checkbox" value="{{ status.value }}" checked>
+                        <span class="checkbox-label">{{ status.display }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="filter-group flex-grow-1">
+                <label>Uploaded By</label>
+                <input type="text" id="user-filter" placeholder="Username" class="form-control">
+            </div>
+            <div class="filter-group">
+                <button class="btn btn-primary w-100" onclick="applyFilters()">
+                    <i class="fas fa-sync-alt"></i> Apply
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-cards">
+        <div class="kpi-card">
+            <div class="kpi-icon" style="color: var(--primary-color);">
+                <i class="fas fa-list-check"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-value" id="kpi-total">-</div>
+                <div class="kpi-label">Total Executions</div>
+            </div>
+        </div>
+        <div class="kpi-card success">
+            <div class="kpi-icon" style="color: var(--success-color);">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-value" id="kpi-success-rate">-</div>
+                <div class="kpi-label">Success Rate</div>
+            </div>
+        </div>
+        <div class="kpi-card warning">
+            <div class="kpi-icon" style="color: var(--warning-color);">
+                <i class="fas fa-clock"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-value" id="kpi-avg-duration">-</div>
+                <div class="kpi-label">Avg Duration</div>
+            </div>
+        </div>
+        <div class="kpi-card danger">
+            <div class="kpi-icon" style="color: var(--danger-color);">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div class="kpi-content">
+                <div class="kpi-value" id="kpi-failed">-</div>
+                <div class="kpi-label">Failed Executions</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Execution History Table -->
+    <div class="table-container">
+        <div class="table-header">
+            <h5><i class="fas fa-history me-2"></i>Execution History</h5>
+        </div>
+        <div class="table-wrapper">
+            <table class="execution-table">
+                <thead>
+                    <tr>
+                        <th>Execution ID</th>
+                        <th>Month</th>
+                        <th>Year</th>
+                        <th>Status</th>
+                        <th>Uploaded By</th>
+                        <th>Start Time</th>
+                        <th>Duration</th>
+                        <th>Success Rate</th>
+                    </tr>
+                </thead>
+                <tbody id="execution-table-body">
+                    <tr>
+                        <td colspan="8" class="text-center py-4">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="pagination-controls">
+            <div class="pagination-info" id="pagination-info">
+                Loading...
+            </div>
+            <div class="pagination-buttons">
+                <button id="prev-btn" disabled onclick="previousPage()">
+                    <i class="fas fa-chevron-left"></i> Previous
+                </button>
+                <button id="next-btn" disabled onclick="nextPage()">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Side Drawer -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+<div class="side-drawer" id="side-drawer">
+    <div class="drawer-header">
+        <h3>Execution Details</h3>
+        <div class="execution-id" id="drawer-exec-id">Loading...</div>
+        <button class="drawer-close" onclick="closeDrawer()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="drawer-content">
+        <!-- Overview Section -->
+        <div class="drawer-section">
+            <div class="section-header" onclick="toggleSection('overview')">
+                <h6><i class="fas fa-info-circle me-2"></i>Overview</h6>
+                <i class="fas fa-chevron-down section-toggle expanded" id="toggle-overview"></i>
+            </div>
+            <div class="section-body expanded" id="section-overview">
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Status</span>
+                        <span class="info-value" id="detail-status">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Month / Year</span>
+                        <span class="info-value" id="detail-month-year">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Start Time</span>
+                        <span class="info-value" id="detail-start">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">End Time</span>
+                        <span class="info-value" id="detail-end">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Duration</span>
+                        <span class="info-value" id="detail-duration">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Uploaded By</span>
+                        <span class="info-value" id="detail-user">-</span>
+                    </div>
+                </div>
+                <div id="detail-error-section" class="hidden">
+                    <!-- Error box populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Files Processed Section -->
+        <div class="drawer-section">
+            <div class="section-header" onclick="toggleSection('files')">
+                <h6><i class="fas fa-file-excel me-2"></i>Files Processed</h6>
+                <i class="fas fa-chevron-down section-toggle" id="toggle-files"></i>
+            </div>
+            <div class="section-body" id="section-files">
+                <div id="files-content">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Configuration Data Section -->
+        <div class="drawer-section">
+            <div class="section-header" onclick="toggleSection('config')">
+                <h6><i class="fas fa-cog me-2"></i>Configuration Snapshot</h6>
+                <i class="fas fa-chevron-down section-toggle" id="toggle-config"></i>
+            </div>
+            <div class="section-body" id="section-config">
+                <div id="config-content">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Processing Stats Section -->
+        <div class="drawer-section">
+            <div class="section-header" onclick="toggleSection('stats')">
+                <h6><i class="fas fa-chart-bar me-2"></i>Processing Statistics</h6>
+                <i class="fas fa-chevron-down section-toggle" id="toggle-stats"></i>
+            </div>
+            <div class="section-body" id="section-stats">
+                <div id="stats-content">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Files Section -->
+        <div class="drawer-section" id="drawer-section-downloads">
+            <div class="section-header" onclick="toggleSection('downloads')">
+                <h6><i class="fas fa-download me-2"></i>Available Reports</h6>
+                <i class="fas fa-chevron-down section-toggle" id="toggle-downloads"></i>
+            </div>
+            <div class="section-body" id="section-downloads">
+                <div class="download-list">
+                    <!-- Bucket Summary -->
+                    <div class="download-item" id="download-bucket-summary">
+                        <div class="download-item-header" onclick="toggleDownloadItem('bucket-summary')">
+                            <i class="fas fa-file-excel download-icon"></i>
+                            <div class="download-item-info">
+                                <h6 class="download-item-title">Bucket Summary Report</h6>
+                                <p class="download-item-subtitle">Summary of bucket allocations before processing</p>
+                            </div>
+                            <i class="fas fa-chevron-down download-chevron"></i>
+                        </div>
+                        <div class="download-item-body">
+                            <button class="download-action" onclick="downloadReport('bucket_summary', event)">
+                                Download File (XLSX) <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Bucket After Allocation -->
+                    <div class="download-item" id="download-bucket-after">
+                        <div class="download-item-header" onclick="toggleDownloadItem('bucket-after')">
+                            <i class="fas fa-file-excel download-icon"></i>
+                            <div class="download-item-info">
+                                <h6 class="download-item-title">Bucket After Allocation</h6>
+                                <p class="download-item-subtitle">Bucket status after allocation processing</p>
+                            </div>
+                            <i class="fas fa-chevron-down download-chevron"></i>
+                        </div>
+                        <div class="download-item-body">
+                            <button class="download-action" onclick="downloadReport('bucket_after_allocation', event)">
+                                Download File (XLSX) <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Roster Allotment -->
+                    <div class="download-item" id="download-roster">
+                        <div class="download-item-header" onclick="toggleDownloadItem('roster')">
+                            <i class="fas fa-file-excel download-icon"></i>
+                            <div class="download-item-info">
+                                <h6 class="download-item-title">Roster Allotment</h6>
+                                <p class="download-item-subtitle">Complete roster allocation details</p>
+                            </div>
+                            <i class="fas fa-chevron-down download-chevron"></i>
+                        </div>
+                        <div class="download-item-body">
+                            <button class="download-action" onclick="downloadReport('roster_allotment', event)">
+                                Download File (XLSX) <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+    <!-- jQuery (if not already loaded) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Execution Monitoring Configuration from Django -->
+    <script>
+        // Pass Django context to JavaScript
+        window.EXECUTION_MONITORING_CONFIG = {
+            urls: {
+                list: '{% url "forecast_app:execution_list" %}',
+                details: '{% url "forecast_app:execution_details" execution_id="EXECUTION_ID" %}'.replace('EXECUTION_ID', '{execution_id}'),
+                kpis: '{% url "forecast_app:execution_kpis" %}',
+                download: '{% url "forecast_app:download_execution_report" execution_id="EXEC_ID" report_type="REPORT_TYPE" %}'.replace('EXEC_ID', '{execution_id}').replace('REPORT_TYPE', '{report_type}')
+            },
+            settings: JSON.parse(document.getElementById('execution-monitoring-config').textContent)
+        };
+    </script>
+
+    <!-- Execution Monitoring JavaScript -->
+    <script src="{% static 'centene_forecast_app/js/execution_monitoring.js' %}"></script>
+{% endblock %}

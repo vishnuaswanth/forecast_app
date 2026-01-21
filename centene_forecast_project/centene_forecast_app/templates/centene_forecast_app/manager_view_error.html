@@ -1,0 +1,385 @@
+{% extends 'index.html' %}
+{% load static %}
+
+{# Manager View Error Template #}
+{# Displays user-friendly error pages for Manager View dashboard #}
+{# Extends the base index.html template #}
+
+{% block title %}Error - {{ page_title|default:"Manager View" }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Error Page Specific Styles */
+    .manager-view-error-container {
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+    }
+
+    .manager-view-error-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        padding: 40px;
+        text-align: center;
+    }
+
+    .manager-view-error-icon {
+        font-size: 80px;
+        margin-bottom: 20px;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+    }
+
+    .manager-view-error-icon.error {
+        color: #dc3545;
+    }
+
+    .manager-view-error-icon.warning {
+        color: #ffc107;
+    }
+
+    .manager-view-error-icon.info {
+        color: #17a2b8;
+    }
+
+    .manager-view-error-title {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #012970;
+        margin-bottom: 15px;
+    }
+
+    .manager-view-error-message {
+        font-size: 1.1rem;
+        color: #6c757d;
+        margin-bottom: 25px;
+        line-height: 1.6;
+    }
+
+    .manager-view-error-details {
+        background-color: #f8f9fa;
+        border-left: 4px solid #dc3545;
+        padding: 15px 20px;
+        text-align: left;
+        margin: 25px 0;
+        border-radius: 4px;
+    }
+
+    .manager-view-error-details-title {
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 10px;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .manager-view-error-details-content {
+        color: #6c757d;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .manager-view-error-actions {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 30px;
+    }
+
+    .manager-view-error-btn {
+        padding: 12px 30px;
+        font-size: 1rem;
+        border-radius: 6px;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .manager-view-error-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .manager-view-error-btn-primary {
+        background-color: #667eea;
+        color: white;
+        border: none;
+    }
+
+    .manager-view-error-btn-primary:hover {
+        background-color: #5568d3;
+        color: white;
+    }
+
+    .manager-view-error-btn-secondary {
+        background-color: #6c757d;
+        color: white;
+        border: none;
+    }
+
+    .manager-view-error-btn-secondary:hover {
+        background-color: #5a6268;
+        color: white;
+    }
+
+    .manager-view-error-btn-outline {
+        background-color: transparent;
+        color: #667eea;
+        border: 2px solid #667eea;
+    }
+
+    .manager-view-error-btn-outline:hover {
+        background-color: #667eea;
+        color: white;
+    }
+
+    .manager-view-error-help {
+        margin-top: 40px;
+        padding-top: 30px;
+        border-top: 1px solid #dee2e6;
+    }
+
+    .manager-view-error-help-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 15px;
+    }
+
+    .manager-view-error-help-list {
+        text-align: left;
+        margin: 0 auto;
+        max-width: 500px;
+        color: #6c757d;
+        line-height: 1.8;
+    }
+
+    .manager-view-error-help-list li {
+        margin-bottom: 10px;
+    }
+
+    .manager-view-error-help-list i {
+        color: #667eea;
+        margin-right: 8px;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .manager-view-error-card {
+            padding: 30px 20px;
+        }
+
+        .manager-view-error-title {
+            font-size: 1.5rem;
+        }
+
+        .manager-view-error-message {
+            font-size: 1rem;
+        }
+
+        .manager-view-error-icon {
+            font-size: 60px;
+        }
+
+        .manager-view-error-actions {
+            flex-direction: column;
+        }
+
+        .manager-view-error-btn {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content2 %}
+<div class="manager-view-error-container">
+    <div class="manager-view-error-card">
+        
+        {# Error Icon based on error type #}
+        {% if error_type == 'validation' %}
+            <div class="manager-view-error-icon warning">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+        {% elif error_type == '404' or error_type == 'not_found' %}
+            <div class="manager-view-error-icon info">
+                <i class="fas fa-question-circle"></i>
+            </div>
+        {% elif error_type == 'permission' or error_type == 'forbidden' %}
+            <div class="manager-view-error-icon error">
+                <i class="fas fa-ban"></i>
+            </div>
+        {% else %}
+            <div class="manager-view-error-icon error">
+                <i class="fas fa-times-circle"></i>
+            </div>
+        {% endif %}
+
+        {# Error Title #}
+        <h1 class="manager-view-error-title">
+            {% if error_title %}
+                {{ error_title }}
+            {% elif error_type == 'validation' %}
+                Invalid Request
+            {% elif error_type == '404' or error_type == 'not_found' %}
+                Page Not Found
+            {% elif error_type == 'permission' or error_type == 'forbidden' %}
+                Access Denied
+            {% elif error_type == 'server' %}
+                Server Error
+            {% else %}
+                Something Went Wrong
+            {% endif %}
+        </h1>
+
+        {# Error Message #}
+        <p class="manager-view-error-message">
+            {% if error_message %}
+                {{ error_message }}
+            {% elif error_type == 'validation' %}
+                The request parameters are invalid or missing. Please check your input and try again.
+            {% elif error_type == '404' or error_type == 'not_found' %}
+                The page you're looking for doesn't exist or has been moved.
+            {% elif error_type == 'permission' or error_type == 'forbidden' %}
+                You don't have permission to access this resource. Please contact your administrator.
+            {% elif error_type == 'server' %}
+                An unexpected error occurred on the server. Our team has been notified and is working on it.
+            {% else %}
+                We encountered an unexpected error while processing your request. Please try again.
+            {% endif %}
+        </p>
+
+        {# Error Details (only show if provided and in debug mode) #}
+        {% if error_details and debug_mode %}
+        <div class="manager-view-error-details">
+            <div class="manager-view-error-details-title">
+                <i class="fas fa-info-circle"></i> Error Details
+            </div>
+            <div class="manager-view-error-details-content">{{ error_details }}</div>
+        </div>
+        {% endif %}
+
+        {# Action Buttons #}
+        <div class="manager-view-error-actions">
+            {% if error_type == 'validation' %}
+                {# For validation errors, go back to fix input #}
+                <a href="javascript:history.back()" class="btn manager-view-error-btn manager-view-error-btn-primary">
+                    <i class="fas fa-arrow-left"></i>
+                    Go Back
+                </a>
+                <a href="{% url 'forecast_app:manager_view_page' %}" class="btn manager-view-error-btn manager-view-error-btn-outline">
+                    <i class="fas fa-home"></i>
+                    Start Over
+                </a>
+            {% elif error_type == '404' or error_type == 'not_found' %}
+                {# For 404 errors, redirect to main page #}
+                <a href="{% url 'forecast_app:manager_view_page' %}" class="btn manager-view-error-btn manager-view-error-btn-primary">
+                    <i class="fas fa-home"></i>
+                    Go to Manager View
+                </a>
+                <a href="/" class="btn manager-view-error-btn manager-view-error-btn-outline">
+                    <i class="fas fa-tachometer-alt"></i>
+                    Dashboard Home
+                </a>
+            {% elif error_type == 'permission' or error_type == 'forbidden' %}
+                {# For permission errors, go back or contact support #}
+                <a href="javascript:history.back()" class="btn manager-view-error-btn manager-view-error-btn-secondary">
+                    <i class="fas fa-arrow-left"></i>
+                    Go Back
+                </a>
+                <a href="mailto:ATI_Globalanalytics@nttdata.com" class="btn manager-view-error-btn manager-view-error-btn-outline">
+                    <i class="fas fa-envelope"></i>
+                    Contact Support
+                </a>
+            {% else %}
+                {# For generic/server errors, try again or go home #}
+                <button onclick="location.reload()" class="btn manager-view-error-btn manager-view-error-btn-primary">
+                    <i class="fas fa-sync-alt"></i>
+                    Try Again
+                </button>
+                <a href="{% url 'forecast_app:manager_view_page' %}" class="btn manager-view-error-btn manager-view-error-btn-outline">
+                    <i class="fas fa-home"></i>
+                    Manager View Home
+                </a>
+            {% endif %}
+        </div>
+
+        {# Help Section #}
+        <div class="manager-view-error-help">
+            <h3 class="manager-view-error-help-title">Need Help?</h3>
+            <ul class="manager-view-error-help-list">
+                {% if error_type == 'validation' %}
+                    <li><i class="fas fa-check-circle"></i> Ensure all required fields are filled</li>
+                    <li><i class="fas fa-check-circle"></i> Check date format (YYYY-MM)</li>
+                    <li><i class="fas fa-check-circle"></i> Verify category selection is valid</li>
+                {% elif error_type == '404' or error_type == 'not_found' %}
+                    <li><i class="fas fa-check-circle"></i> Check the URL for typos</li>
+                    <li><i class="fas fa-check-circle"></i> Use the navigation menu to find pages</li>
+                    <li><i class="fas fa-check-circle"></i> Contact support if this link was provided</li>
+                {% elif error_type == 'permission' or error_type == 'forbidden' %}
+                    <li><i class="fas fa-check-circle"></i> Verify you're logged in</li>
+                    <li><i class="fas fa-check-circle"></i> Check your account permissions</li>
+                    <li><i class="fas fa-check-circle"></i> Contact your administrator for access</li>
+                {% else %}
+                    <li><i class="fas fa-check-circle"></i> Try refreshing the page</li>
+                    <li><i class="fas fa-check-circle"></i> Clear your browser cache</li>
+                    <li><i class="fas fa-check-circle"></i> Contact support if the issue persists</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        {# Support Contact #}
+        <div style="margin-top: 30px; font-size: 0.9rem; color: #6c757d;">
+            <p>If you continue to experience issues, please contact support:</p>
+            <p>
+                <i class="fas fa-envelope"></i> 
+                <a href="mailto:ATI_Globalanalytics@nttdata.com" style="color: #667eea;">ATI_Globalanalytics@nttdata.com</a>
+                {% if request_id %}
+                    <br><small style="color: #adb5bd;">Reference ID: {{ request_id }}</small>
+                {% endif %}
+            </p>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+    // Log error to console for debugging (only in development)
+    const debug_mode = '{{ debug_mode|default:"" }}';
+    const error_details ='{{ error_details|default:"" }}';
+
+    if (debug_mode != "" && error_details != ""){
+        console.error('Manager View Error:', {
+            type: '{{ error_type|default:"unknown" }}',
+            message: '{{ error_message|escapejs }}',
+            details: '{{ error_details|escapejs }}',
+            timestamp: new Date().toISOString()
+        });
+    } else {
+        console.log("error")
+        // Optional: Send error to analytics/monitoring service
+        // Example: Send to monitoring service
+        // if (window.analytics) {
+        //     window.analytics.track('Manager View Error', {
+        //         error_type: '{{ error_type|default:"unknown" }}',
+        //         error_message: '{{ error_message|escapejs }}',
+        //         page: window.location.href
+        //     });
+        // }
+    }
+    
+</script>
+{% endblock %}

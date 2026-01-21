@@ -1,0 +1,30 @@
+
+<div class="fresh-table full-screen-table toolbar-color-azure">
+    <!--
+      Available colors for the full background: full-color-blue, full-color-azure, full-color-green, full-color-red, full-color-orange
+      Available colors only for the toolbar: toolbar-color-blue, toolbar-color-azure, toolbar-color-green, toolbar-color-red, toolbar-color-orange
+    -->
+      <table id="fresh-table" class="table">
+        <thead>
+        {% for col in column_names %}
+            <th data-field={{ col }}>{{ col }}</th>
+          {% endfor %}
+        </thead>
+        <tbody>
+            {% for row in  page_obj %}
+            <tr>
+                {% for cell in row %}
+                <td>
+                  {% if cell is none %}
+                    -
+                  {% else%}
+                    {{ cell|floatformat:"0"|default:cell }}
+                  {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+      </table>
+    </div>
+ 
+  

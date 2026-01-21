@@ -1,0 +1,201 @@
+{% extends 'index.html' %}
+
+{% load static %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content2 %}
+
+<link rel="stylesheet" href="{% static 'centene_forecast_app/css/data_view.css' %}">
+
+
+<div class="pagetitle">
+    <h1 style="font-size:17px;">Data Hub</h1>
+</div>
+<section class="section" style="font-family: Poppins;">
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <!-- Header Links -->
+                    <div class="row mb-3">
+                        <div class="col-sm-10"></div>
+                        <div class="col-sm-2">
+                            <a id="download-link" href="#" class="text-dark"  style="font-size:12px;">Download Data</a>
+                        </div>
+                        <!-- <div class="col-sm-2">
+                            <a onclick="sampletemplatefortask()" style="font-size:12px;">Sample Template</a>
+                        </div> -->
+                    </div>
+                    <!-- Bootstrap Alert for Validation -->
+                    <div id="validationAlert" class="alert alert-danger mb-3" style="display: none;"></div>
+
+                    <!-- Filter Form -->
+                    <form id="filterForm" action="{% url 'forecast_app:dataview' %}" method="get">
+                        <div class="row">
+                            <!-- Data Type Dropdown -->
+                            <div class="col-sm-2">
+                                <select class="form-select form-select-sm mb-3" name="data_type">
+                                    {% for option in data_type_options %}
+                                        <option value="{{ option.value }}" {% if selected_values.data_type == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Year Dropdown (reordered before month) -->
+                            <div class="col-sm-2" id="year-container">
+                                <div class="filter-dropdown-wrapper" id="year-wrapper">
+                                    <select class="form-select form-select-sm mb-3" name="year">
+                                        {% for option in year_options %}
+                                            <option value="{{ option.value }}" {% if selected_values.year == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="skeleton-select">
+                                        <div class="skeleton-content">
+                                            <div class="skeleton-line"></div>
+                                        </div>
+                                    </div>
+                                    <div class="disabled-overlay"></div>
+                                </div>
+                            </div>
+
+                            <!-- Month Dropdown (after year) -->
+                            <div class="col-sm-2" id="month-container">
+                                <div class="filter-dropdown-wrapper" id="month-wrapper">
+                                    <select class="form-select form-select-sm mb-3" name="month">
+                                        {% for option in month_options %}
+                                            <option value="{{ option.value }}" {% if selected_values.month == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="skeleton-select">
+                                        <div class="skeleton-content">
+                                            <div class="skeleton-line"></div>
+                                        </div>
+                                    </div>
+                                    <div class="disabled-overlay"></div>
+                                </div>
+                            </div>
+
+                            <!-- Summary Types Dropdown -->
+                            <div class="col-sm-2" id="summary-type-container">
+                                <select class="form-select form-select-sm mb-3" name="summary_type">
+                                    {% for option in summary_types %}
+                                        <option value="{{ option.value }}" {% if selected_values.summary_type == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Platform Dropdown (renamed from BOC) -->
+                            <div class="col-sm-2" id="platform-container">
+                                <div class="filter-dropdown-wrapper" id="platform-wrapper">
+                                    <select class="form-select form-select-sm mb-3" name="platform">
+                                        {% for option in platform_options %}
+                                            <option value="{{ option.value }}" {% if selected_values.platform == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="skeleton-select">
+                                        <div class="skeleton-content">
+                                            <div class="skeleton-line"></div>
+                                        </div>
+                                    </div>
+                                    <div class="disabled-overlay"></div>
+                                </div>
+                            </div>
+
+                            <!-- Market Dropdown (renamed from Insurance Type) -->
+                            <div class="col-sm-2" id="market-container">
+                                <div class="filter-dropdown-wrapper" id="market-wrapper">
+                                    <select class="form-select form-select-sm mb-3" name="market">
+                                        {% for option in insurance_options %}
+                                            <option value="{{ option.value }}" {% if selected_values.market == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="skeleton-select">
+                                        <div class="skeleton-content">
+                                            <div class="skeleton-line"></div>
+                                        </div>
+                                    </div>
+                                    <div class="disabled-overlay"></div>
+                                </div>
+                            </div>
+
+                            <!-- Locality Dropdown (optional) -->
+                            <div class="col-sm-2" id="locality-container">
+                                <div class="filter-dropdown-wrapper" id="locality-wrapper">
+                                    <select class="form-select form-select-sm mb-3" name="locality">
+                                        {% for option in locality_options %}
+                                            <option value="{{ option.value }}" {% if selected_values.locality == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="skeleton-select">
+                                        <div class="skeleton-content">
+                                            <div class="skeleton-line"></div>
+                                        </div>
+                                    </div>
+                                    <div class="disabled-overlay"></div>
+                                </div>
+                            </div>
+
+                            <!-- Worktype Dropdown (renamed from Process) -->
+                            <div class="col-sm-2" id="worktype-container">
+                                <div class="filter-dropdown-wrapper" id="worktype-wrapper">
+                                    <select class="form-select form-select-sm mb-3" name="worktype">
+                                        {% for option in process_options %}
+                                            <option value="{{ option.value }}" {% if selected_values.worktype == option.value %}selected{% endif %}>{{ option.display }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="skeleton-select">
+                                        <div class="skeleton-content">
+                                            <div class="skeleton-line"></div>
+                                        </div>
+                                    </div>
+                                    <div class="disabled-overlay"></div>
+                                </div>
+                            </div>
+
+                            <!-- Submit Button -->
+                            <div class="col-sm-2">
+                                <input type="submit" class="btn btn-info text-white" value="Submit"/>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+<div id="error-message" class="alert alert-danger mt-3" style="display: none;"></div>
+
+<div class="row">
+    <div class="col-lg-12">
+        {% if data_type == 'forecast' %}
+            {% include  'components/tabbed_datatable.html' with tabs=tabs %}
+        {% elif data_type == 'roster' or data_type == 'prod_team_roster' %}
+            {% include  'components/roster_table_view.html' with objects=objects %}
+        {% endif %}
+        {% if html_summary_table %}
+            <div style="overflow-x: scroll;">
+                {{ html_summary_table | safe}}
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block script %}
+
+<script>
+    // Define all URLs from Django URL system to avoid hardcoded relative paths
+    window.DATA_VIEW_URLS = {
+        fileDownload: "{% url 'forecast_app:data_download' %}",
+        forecastMonths: "{% url 'forecast_app:forecast_months' %}",
+        forecastPlatforms: "{% url 'forecast_app:forecast_platforms' %}",
+        forecastMarkets: "{% url 'forecast_app:forecast_markets' %}",
+        forecastLocalities: "{% url 'forecast_app:forecast_localities' %}",
+        forecastWorktypes: "{% url 'forecast_app:forecast_worktypes' %}"
+    };
+</script>
+
+<script src="{% static 'centene_forecast_app/js/dataview.js' %}"></script>
+
+{% endblock %}

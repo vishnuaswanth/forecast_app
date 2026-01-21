@@ -1,0 +1,305 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+<style>
+    .bulk-upload-container {
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 0 20px;
+    }
+
+    .upload-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        padding: 40px;
+        margin-top: 20px;
+    }
+
+    .page-title {
+        font-size: 28px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 10px;
+    }
+
+    .page-subtitle {
+        color: #666;
+        margin-bottom: 30px;
+        font-size: 14px;
+    }
+
+    .upload-section {
+        margin-bottom: 30px;
+    }
+
+    .section-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #444;
+        margin-bottom: 15px;
+        display: flex;
+        align-items: center;
+    }
+
+    .section-title::before {
+        content: "";
+        display: inline-block;
+        width: 4px;
+        height: 20px;
+        background: #417690;
+        margin-right: 10px;
+        border-radius: 2px;
+    }
+
+    .file-input-wrapper {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        margin-bottom: 20px;
+    }
+
+    .file-input-wrapper input[type="file"] {
+        position: absolute;
+        left: -9999px;
+    }
+
+    .file-input-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+        border: 2px dashed #ccc;
+        border-radius: 6px;
+        background: #fafafa;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+    }
+
+    .file-input-label:hover {
+        border-color: #417690;
+        background: #f0f7fa;
+    }
+
+    .file-input-label.has-file {
+        border-color: #417690;
+        background: #f0f7fa;
+    }
+
+    .file-icon {
+        font-size: 48px;
+        color: #999;
+        margin-bottom: 10px;
+    }
+
+    .file-input-text {
+        color: #666;
+        font-size: 14px;
+    }
+
+    .file-name {
+        color: #417690;
+        font-weight: 600;
+        margin-top: 10px;
+        font-size: 14px;
+    }
+
+    .button-group {
+        display: flex;
+        gap: 15px;
+        margin-top: 20px;
+    }
+
+    .btn {
+        padding: 12px 24px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .btn-primary {
+        background: #417690;
+        color: white;
+        flex: 1;
+    }
+
+    .btn-primary:hover {
+        background: #356075;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(65, 118, 144, 0.3);
+    }
+
+    .btn-primary:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .btn-secondary {
+        background: white;
+        color: #417690;
+        border: 2px solid #417690;
+        flex: 1;
+    }
+
+    .btn-secondary:hover {
+        background: #f0f7fa;
+        transform: translateY(-1px);
+    }
+
+    .info-box {
+        background: #e8f4f8;
+        border-left: 4px solid #417690;
+        padding: 15px 20px;
+        border-radius: 4px;
+        margin-bottom: 30px;
+    }
+
+    .info-box-title {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+
+    .info-box-content {
+        color: #555;
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    .info-box ul {
+        margin: 10px 0 0 0;
+        padding-left: 20px;
+    }
+
+    .info-box li {
+        margin: 5px 0;
+    }
+
+    @media (max-width: 600px) {
+        .upload-card {
+            padding: 25px;
+        }
+
+        .button-group {
+            flex-direction: column;
+        }
+
+        .btn {
+            width: 100%;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bulk-upload-container">
+    <h2 class="page-title">Bulk User Upload</h2>
+    <p class="page-subtitle">Upload an Excel file to create multiple users at once</p>
+
+    <div class="upload-card">
+        <!-- Info Box -->
+        <div class="info-box">
+            <div class="info-box-title">📋 Before you start:</div>
+            <div class="info-box-content">
+                <ul>
+                    <li>Download the template below to ensure proper formatting</li>
+                    <li>Fill in all required fields for each user</li>
+                    <li>Save your file in .xlsx format</li>
+                    <li>Upload the completed file using the form below</li>
+                </ul>
+            </div>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data" id="uploadForm">
+            {% csrf_token %}
+            
+            <!-- File Upload Section -->
+            <div class="upload-section">
+                <div class="section-title">Upload File</div>
+                <div class="file-input-wrapper">
+                    <input type="file" name="file" id="fileInput" accept=".xlsx" required>
+                    <label for="fileInput" class="file-input-label" id="fileLabel">
+                        <div>
+                            <div class="file-icon">📄</div>
+                            <div class="file-input-text">
+                                <strong>Click to choose a file</strong> or drag and drop<br>
+                                <small>Excel files only (.xlsx)</small>
+                            </div>
+                            <div class="file-name" id="fileName"></div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="button-group">
+                <a href="{% static 'files/RBAC_template.xlsx' %}" class="btn btn-secondary" download>
+                    <span>⬇️</span> Download Template
+                </a>
+                <button type="submit" class="btn btn-primary" id="uploadBtn" disabled>
+                    <span>⬆️</span> Upload File
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // File input handling
+    const fileInput = document.getElementById('fileInput');
+    const fileLabel = document.getElementById('fileLabel');
+    const fileName = document.getElementById('fileName');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    fileInput.addEventListener('change', function(e) {
+        if (this.files && this.files[0]) {
+            const file = this.files[0];
+            fileName.textContent = '📎 ' + file.name;
+            fileLabel.classList.add('has-file');
+            uploadBtn.disabled = false;
+        } else {
+            fileName.textContent = '';
+            fileLabel.classList.remove('has-file');
+            uploadBtn.disabled = true;
+        }
+    });
+
+    // Drag and drop functionality
+    fileLabel.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.style.borderColor = '#417690';
+        this.style.background = '#f0f7fa';
+    });
+
+    fileLabel.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        if (!fileInput.files || fileInput.files.length === 0) {
+            this.style.borderColor = '#ccc';
+            this.style.background = '#fafafa';
+        }
+    });
+
+    fileLabel.addEventListener('drop', function(e) {
+        e.preventDefault();
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            // Trigger change event
+            const event = new Event('change', { bubbles: true });
+            fileInput.dispatchEvent(event);
+        }
+    });
+</script>
+{% endblock %}

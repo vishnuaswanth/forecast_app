@@ -1,0 +1,69 @@
+<!-- templates/list_table.html -->
+
+<div class="container mt-4">
+  <h2>{{ title }}</h2>
+
+  <form method="GET" class="mb-3">
+      <div class="input-group">
+          <input type="text" class="form-control" placeholder="Search" name="q" value="{{ query }}">
+          <button class="btn btn-primary" type="submit">Search</button>
+      </div>
+  </form>
+
+  <table class="table table-bordered">
+      <thead>
+          <tr>
+              {% for header in headers %}
+                  <th>{{ header }}</th>
+              {% endfor %}
+              <!-- <th>Actions</th> -->
+          </tr>
+      </thead>
+      <tbody>
+          {% for item in data %}
+              <tr>
+                  {% for field in item %}
+                      <td>{{ field }}</td>
+                  {% endfor %}
+                  <!-- <td>
+                      {% for action in actions %}
+                          <a href="{% url action.url item.0 %}" class="btn btn-sm {{ action.class }}">
+                              <i class="{{ action.icon }}"></i> {{ action.label }}
+                          </a>
+                      {% endfor %}
+                  </td> -->
+              </tr>
+          {% empty %}
+              <tr>
+                  <td colspan="{{ headers|length }} + 1" class="text-center">No items found.</td>
+              </tr>
+          {% endfor %}
+      </tbody>
+  </table>
+
+  <!-- <nav aria-label="Page navigation">
+      <ul class="pagination">
+          {% if page_obj.has_previous %}
+              <li class="page-item">
+                  <a class="page-link" href="?page=1&q={{ query }}">First</a>
+              </li>
+              <li class="page-item">
+                  <a class="page-link" href="?page={{ page_obj.previous_page_number }}&q={{ query }}">Previous</a>
+              </li>
+          {% endif %}
+
+          <li class="page-item disabled">
+              <span class="page-link">{{ page_obj.number }}</span>
+          </li>
+
+          {% if page_obj.has_next %}
+              <li class="page-item">
+                  <a class="page-link" href="?page={{ page_obj.next_page_number }}&q={{ query }}">Next</a>
+              </li>
+              <li class="page-item">
+                  <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&q={{ query }}">Last</a>
+              </li>
+          {% endif %}
+      </ul>
+  </nav> -->
+</div>

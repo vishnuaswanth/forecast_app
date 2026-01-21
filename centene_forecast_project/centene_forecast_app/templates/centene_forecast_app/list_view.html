@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+
+{% block title %}{{title}}{% endblock %}
+
+{% block content %}
+<div>
+    {% include  'list.html' with title=title headers=headers data=data %}
+</div>
+{% endblock %}

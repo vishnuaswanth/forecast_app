@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% load static %}
+{% block title %} {{ title }} {% endblock %}
+
+{% block content %}
+<form id="form1" class="form1" method="post">
+    {% csrf_token %}
+    <div id="mcmain-container" class="centerclass">
+      <div id="mclogin-cont">
+        <div class="login-container">
+          <div class="left-column">
+            <img src="{% static 'img/5.jpg' %}" alt="Welcome Image" />
+          </div>
+          <div class="right-column">
+            <h2>Welcome!</h2>
+            <img src="{% static 'img/epicenter_zero.png' %}"  alt="Logo" class="logo" />
+            <br />
+            <div class="myh5">
+            <h5 style="color:black;">Choose TimeZone, if it is different :</h5>
+            </div>
+            <div id="login_div">
+              <div class="input-group">
+                <select id="timezone" name="timezone" required>
+                  {% for tz_value, tz_label in timezones %}
+                  <option value="{{ tz_value }}">{{ tz_label }}</option>
+                {% endfor %}
+                </select>
+              </div>
+              <div style="align-items:center">
+                <button type="submit" id="btnLogin" class="submit" style="width:150px;margin-left:22px;">Continue</button>
+                <br />
+              </div>
+            </div>
+            <div class="connect-icons">
+              <a href="https://nttdatagroup.sharepoint.com/teams/SRVS-ID-DW-DA/SitePages/Delivery%20Analytics.aspx?env=WebView#home">
+                <img src="{% static 'img/website.png' %}" alt="Globe Icon" />
+              </a>
+              <a href="deepa.marimuthu@nttdata.com">
+                <img src="{% static 'img/Mail.png' %}" alt="Envelope Icon" />
+              </a>
+            </div>
+            <p class="Footer-description">NTT DATA, Inc.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+{% endblock %}
+
+{% block script %}
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+<script src="{% static 'js/login.js' %}"></script>
+
+{% endblock %}

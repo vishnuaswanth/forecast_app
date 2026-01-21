@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% load static %} 
+{% block title %}Login File{% endblock %}
+
+{% block content %}
+<form id="form1" class="form1" method="post">
+    {% csrf_token %}
+    <div id="mcmain-container" class="centerclass">
+      <div id="mclogin-cont">
+        <div class="login-container">
+          <div class="left-column">
+            <img src="{% static 'img/5.jpg' %}" alt="Welcome Image" />
+          </div>
+          <div class="right-column">
+            <h2>Welcome!</h2>
+            <img src="{% static 'img/epicenter_zero.png' %}" alt="Logo" class="logo" />
+            <br />
+            <div id="login_div">
+              <div class="input-group" style="padding:0px; margin-bottom:0px !important;">
+                <input type="text" id="email" class="un" name="username" autofocus placeholder="6 digit NTT Portal Id" required />
+                <i class="fa fa-user"></i>
+              </div>
+              <div class="input-group" style="margin-top: 20px;">
+                <input type="password" id="pass" class="pass" name="password" placeholder="Password" required />
+                <i class="fa fa-lock"></i>
+              </div>
+              <div style="padding-left: 30%; align-items:center">
+                <button type="submit" id="btnLogin" class="submit" style="width:90px;">Log In</button>
+                <br />
+              </div>
+            </div>
+            <div class="connect-icons">
+              <a href="https://nttdatagroup.sharepoint.com/teams/SRVS-ID-DW-DA/SitePages/Delivery%20Analytics.aspx?env=WebView#home">
+                <img src="{% static 'img/website.png' %}" alt="Globe Icon" />
+              </a>
+              <a href="DA_Ezero_Support@nttdata.com">
+                <img src="{% static 'img/Mail.png' %}" alt="Envelope Icon" />
+              </a>
+            </div>
+            <p class="Footer-description">NTT DATA, Inc.</p>
+            <label id="errorMsg" style="color:red"></label>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% for message in messages %}
+        {% if message.tags == 'success' %}
+        <script>
+            var m = "{{ message }}"
+            Swal.fire("Done!", m, "success");
+        </script>
+        {% elif message.tags == 'error' %}
+        <script>
+            var m = "{{ message }}"
+            Swal.fire("Oops!", m, "error");
+        </script>
+        {% endif %}
+    {% endfor %}
+  </form>
+{% endblock %}
+
+{% block script %}
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+<script src="{% static 'js/login.js' %}"></script>
+
+
+{% endblock %}
+

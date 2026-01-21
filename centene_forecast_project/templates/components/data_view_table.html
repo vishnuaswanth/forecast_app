@@ -1,0 +1,104 @@
+<!-- templates/datatable.html -->
+
+<style>
+    div.dt-button-collection {
+        width:400px;
+    }
+</style>
+
+{% include 'components/datatable.html' with table_id=table_id %}
+
+<script>
+    function renderDataViewTable(tableId, dataUrl, columns, filters, dataSrc, tableProps){
+        // var editor = new DataTable.Editor({
+        //     ajax: '',
+        //     fields: [
+        //         {
+        //             label: 'Client Forecast:',
+        //             name: 'client forecast'
+        //         },{
+        //             label: 'FTE Required:',
+        //             name: 'fte required'
+        //         },{
+        //             label: 'FTE Avail:',
+        //             name: 'fte avail'
+        //         },{
+        //             label: 'Capacity:',
+        //             name: 'avail'
+        //         } 
+        //     ],
+        //     table: '#'+tableId
+        // });
+        
+        
+        const parsedcolumns = columns.map(col => {
+            if (col.render && typeof col.render === 'string'){
+                col.render = new Function('return '+ col.render)();
+            } else{
+                if (col.editable){
+                    col.render = (data, type, row, meta) => {
+                        return '<input type="text" id="'+col.data+'" name="'+col.data+'" value="'+data+'">'
+                    }
+                }
+            }
+            return col
+        });
+
+        const ajaxData = {
+            url: dataUrl,
+            data: (d) => {            
+                if (typeof filters !== 'object' || filters === null) {
+                    filters = {};
+                }
+                d = {...d,...filters}
+            },
+        };
+
+
+        if (dataSrc && dataSrc != ""){
+            ajaxData.dataSrc = dataSrc
+        }
+
+        
+        tableData = {
+            layout: {
+                topStart: {
+                    buttons:[
+                        {
+                            extend: 'colvis',
+                            collecionLayout: 'fixed columns',
+                            popoverTitle: 'Column visibility control',
+                            postfixButtons: ['colvisRestore']
+                        } 
+                    ]
+                }
+            },
+            destroy:true,
+            ordering: true,
+            processing: true,
+            serverSide: false,
+            ajax: ajaxData,
+            columns: parsedcolumns,            
+            ...tableProps,
+        };
+
+        const table = renderDataTable(tableId, tableData);
+        const submitData = () => {
+            const updatedData = [];
+            table.rows().every(function () {
+                const rowNode = this.node();
+                const rowData = this.data();
+                // Loop through all input fields in the row
+                $(rowNode).find('input[name]').each(function () {
+                    const key = $(this).attr('name');
+                    const value = $(this).val();
+                    rowData[key] = value;
+                });
+                updatedData.push(rowData);
+            });
+            console.log(updatedData[0]);
+            console.log(updatedData.length);
+        }
+        return table;
+    };
+</script>

@@ -1,0 +1,620 @@
+/**
+ * Manager View - Namespaced CSS
+ * 
+ * All classes prefixed with .manager-view-* to avoid conflicts
+ * with existing global styles from style.css
+ * 
+ * Desktop/Laptop optimization (1400px+ focus)
+ * Now with Select2 searchable dropdown support
+ */
+
+/* Container */
+.manager-view-container {
+    background-color: transparent;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.manager-view-card-body{
+    padding: 15px;
+}
+
+/* Filter Card */
+.manager-view-filter-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.manager-view-filter-step {
+    background-color: #f8f9fa;
+    padding: 10px 15px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+}
+
+.manager-view-filter-step label {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 5px;
+}
+
+/* ============================
+   Select2 Searchable Dropdown Customization
+   ============================ */
+
+/* Base Select2 container */
+.manager-view-select2 {
+    width: 100% !important;
+}
+
+.select2-container .select2-selection--single .select2-selection__clear {
+    position: absolute !important;
+}
+
+.select2-container--bootstrap-5 .select2-selection {
+    min-height: 38px;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    font-size: 0.95rem;
+    background-color: #fff;
+    position: relative;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single {
+    padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    background-image: none !important; /* Remove Bootstrap's default arrow */
+}
+
+/* Select2 dropdown panel */
+.select2-container--bootstrap-5 .select2-dropdown {
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    z-index: 1056; /* Above Bootstrap modals */
+}
+
+/* Select2 search input */
+.select2-container--bootstrap-5 .select2-search--dropdown {
+    padding: 0.5rem;
+}
+
+.select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.9rem;
+    width: 100%;
+}
+
+.select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field:focus {
+    border-color: #667eea;
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(102, 126, 234, 0.25);
+}
+
+/* Select2 results list */
+.select2-container--bootstrap-5 .select2-results__options {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.select2-container--bootstrap-5 .select2-results__option {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+/* Select2 highlighted option (on hover) */
+.select2-container--bootstrap-5 .select2-results__option--highlighted {
+    background-color: #667eea;
+    color: white;
+}
+
+/* Select2 selected option */
+.select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+.select2-container--bootstrap-5 .select2-results__option[aria-selected="true"] {
+    background-color: #e9ecef;
+}
+
+/* Select2 "No results found" message */
+.select2-container--bootstrap-5 .select2-results__message {
+    padding: 0.5rem 0.75rem;
+    color: #6c757d;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+/* Select2 placeholder text */
+.select2-container--bootstrap-5 .select2-selection__placeholder {
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Select2 rendered selection */
+.select2-container--bootstrap-5 .select2-selection__rendered {
+    color: #212529;
+    padding: 0;
+    line-height: 1.5;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Select2 arrow icon */
+.select2-container--bootstrap-5 .select2-selection__arrow {
+    height: 36px;
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.select2-container--bootstrap-5 .select2-selection__arrow b {
+    border-color: #495057 transparent transparent transparent;
+    border-style: solid;
+    border-width: 5px 4px 0 4px;
+    height: 0;
+    width: 0;
+}
+
+.select2-container--bootstrap-5.select2-container--open .select2-selection__arrow b {
+    border-color: transparent transparent #495057 transparent;
+    border-width: 0 4px 5px 4px;
+}
+
+/* Select2 focus state */
+.select2-container--bootstrap-5.select2-container--focus .select2-selection,
+.select2-container--bootstrap-5.select2-container--open .select2-selection {
+    border-color: #667eea;
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(102, 126, 234, 0.25);
+}
+
+/* Select2 disabled state */
+.select2-container--bootstrap-5.select2-container--disabled .select2-selection {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Select2 clear button (for allowClear option) */
+.select2-container--bootstrap-5 .select2-selection__clear {
+    position: absolute;
+    right: 2.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6c757d;
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 1;
+}
+
+.select2-container--bootstrap-5 .select2-selection__clear:hover {
+    color: #dc3545;
+}
+
+/* Select2 responsive width */
+.select2-container {
+    display: block;
+    width: 100% !important;
+}
+
+/* Select2 loading indicator */
+.select2-container--bootstrap-5 .select2-results__option--loading {
+    padding: 0.5rem 0.75rem;
+    color: #6c757d;
+}
+
+/* Select2 group headers */
+.select2-container--bootstrap-5 .select2-results__group {
+    padding: 0.5rem 0.75rem;
+    font-weight: 600;
+    color: #495057;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* ============================
+   End Select2 Customization
+   ============================ */
+
+/* Summary Cards */
+.manager-view-summary-cards {
+    margin-bottom: 20px;
+}
+
+.manager-view-summary-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    border-left: 4px solid #667eea;
+}
+
+.manager-view-summary-card.manager-view-gap-card {
+    border-left-color: #dc3545;
+}
+
+.manager-view-card-label {
+    color: #6c757d;
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.manager-view-card-value {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 10px 0;
+    color: #012970;
+}
+
+.manager-view-card-month {
+    color: #6c757d;
+    font-size: 0.85rem;
+}
+
+/* Table Container */
+.manager-view-table-container {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.manager-view-table-header {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.manager-view-table-title {
+    color: #667eea;
+    margin-bottom: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.manager-view-expand-btn,
+.manager-view-collapse-btn {
+    white-space: nowrap;
+}
+
+/* Table Scroll Wrapper */
+.manager-view-table-scroll {
+    overflow-x: auto;
+    position: relative;
+    margin-bottom: 15px;
+}
+
+/* Table Styles */
+.manager-view-table {
+    font-size: 0.85rem;
+    margin-bottom: 0;
+    width: max-content;
+    min-width: 100%;
+}
+
+.manager-view-table thead th {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 12px 8px;
+    text-align: center;
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+.manager-view-category-header {
+    position: sticky;
+    left: 0;
+    z-index: 11 !important;
+    background-color: #f8f9fa !important;
+    min-width: 250px;
+    text-align: center !important;
+}
+
+.manager-view-table tbody td {
+    padding: 10px 8px;
+    vertical-align: middle;
+    font-size: 0.85rem;
+}
+
+/* Category Name Column */
+.manager-view-category-name {
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    min-width: 250px;
+    position: sticky;
+    left: 0;
+    background: white;
+    z-index: 5;
+    padding: 10px 8px !important;
+}
+
+.manager-view-category-name:hover {
+    background-color: #f8f9fa !important;
+}
+
+/* Hierarchy Levels */
+.manager-view-level-1 {
+    font-weight: 600;
+    background-color: #f8f9fa;
+}
+
+.manager-view-level-1 .manager-view-category-name {
+    background-color: #f8f9fa;
+}
+
+.manager-view-level-2 .manager-view-category-content {
+    padding-left: 30px;
+}
+
+.manager-view-level-3 {
+    font-size: 0.9rem;
+}
+
+.manager-view-level-3 .manager-view-category-content {
+    padding-left: 60px;
+}
+
+.manager-view-level-4, .manager-view-level-5, .manager-view-level-6{
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.manager-view-level-4 .manager-view-category-content {
+    padding-left: 90px;
+}
+
+.manager-view-level-5 .manager-view-category-content {
+    padding-left: 120px;
+}
+
+.manager-view-level-6 .manager-view-category-content {
+    padding-left: 150px;
+}
+
+/* Expand Icon */
+.manager-view-expand-icon,
+.expand-icon {
+    cursor: pointer;
+    width: 20px;
+    display: inline-block;
+    text-align: center;
+    color: #667eea;
+    margin-right: 5px;
+}
+
+.manager-view-category-content {
+    display: inline-block;
+}
+
+/* Total Row */
+.manager-view-total-row {
+    font-weight: 700;
+    background-color: #e7f3ff;
+    border-top: 2px solid #667eea;
+    border-bottom: 2px solid #667eea;
+}
+
+.manager-view-total-row .manager-view-category-name {
+    background-color: #e7f3ff !important;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+}
+
+/* Number Cells */
+.manager-view-number-cell {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    white-space: nowrap;
+    font-size: 0.85rem;
+}
+
+/* Gap Color Coding */
+.manager-view-gap-positive {
+    background-color: #d4edda !important;
+    color: #155724 !important;
+    font-weight: 600;
+}
+
+.manager-view-gap-warning {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+    font-weight: 600;
+}
+
+.manager-view-gap-danger {
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+    font-weight: 600;
+}
+
+/* Hidden Row */
+.manager-view-hidden-row {
+    display: none;
+}
+
+/* Month Group Border */
+.manager-view-month-group {
+    border-left: 2px solid #dee2e6;
+}
+
+/* Last Updated */
+.manager-view-last-updated {
+    color: #6c757d;
+    font-size: 0.85rem;
+    text-align: right;
+    margin-top: 20px;
+}
+
+/* Initial Message */
+.manager-view-initial-message {
+    margin-top: 20px;
+}
+
+/* Loading Spinner */
+.manager-view-loading {
+    text-align: center;
+    padding: 60px 20px;
+    display: none;
+}
+
+.manager-view-loading .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+.manager-view-loading p {
+    color: #6c757d;
+    font-size: 1rem;
+    margin-top: 15px;
+}
+
+/* Error Alert */
+.manager-view-error-alert {
+    margin-top: 20px;
+    display: none;
+}
+
+/* Responsive Adjustments for Smaller Desktops (1200px - 1400px) */
+@media (max-width: 1400px) {
+    .manager-view-table {
+        font-size: 0.75rem;
+    }
+    
+    .manager-view-table thead th {
+        font-size: 0.75rem;
+        padding: 10px 6px;
+    }
+    
+    .manager-view-table tbody td {
+        font-size: 0.75rem;
+        padding: 8px 6px;
+    }
+    
+    .manager-view-category-name {
+        min-width: 220px;
+    }
+    
+    .manager-view-card-value {
+        font-size: 1.75rem;
+    }
+    
+    .manager-view-table-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .manager-view-table-header > div:last-child {
+        margin-top: 10px;
+    }
+}
+
+/* Minimum Desktop Width (1200px) */
+@media (max-width: 1199px) {
+    .manager-view-container {
+        padding: 10px;
+    }
+    
+    .manager-view-table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .manager-view-summary-cards {
+        margin-bottom: 15px;
+    }
+    
+    .manager-view-summary-card {
+        margin-bottom: 15px;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .manager-view-filter-card,
+    .manager-view-expand-btn,
+    .manager-view-collapse-btn,
+    .manager-view-initial-message,
+    .manager-view-loading,
+    .manager-view-error-alert,
+    .select2-container {
+        display: none !important;
+    }
+    
+    .manager-view-table-container {
+        box-shadow: none;
+        border: 1px solid #dee2e6;
+    }
+    
+    .manager-view-table {
+        font-size: 0.7rem;
+    }
+    
+    .manager-view-hidden-row {
+        display: table-row !important;
+    }
+}
+
+/* Accessibility Improvements */
+.manager-view-table tbody tr:focus-within {
+    outline: 2px solid #4154f1;
+    outline-offset: -2px;
+}
+
+.manager-view-expand-icon:focus {
+    outline: 2px solid #4154f1;
+    outline-offset: 2px;
+}
+
+/* Smooth Transitions */
+.manager-view-category-name,
+.manager-view-expand-btn,
+.manager-view-collapse-btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.manager-view-expand-icon {
+    transition: transform 0.2s ease-in-out;
+}
+
+/* Button Hover States */
+.manager-view-expand-btn:hover,
+.manager-view-collapse-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Card Hover Effects */
+.manager-view-summary-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    transition: all 0.3s ease;
+}

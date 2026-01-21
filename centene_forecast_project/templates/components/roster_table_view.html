@@ -1,0 +1,60 @@
+
+{% include 'components/R_datatable.html' with objects=objects %}
+
+<script>
+
+function renderDataViewTable(tableId, dataUrl, columns, table_props) { 
+
+    const parsedcolumns = columns.map(col => {
+        if (col.render && typeof col.render === 'string'){
+            col.render = new Function('return '+ col.render)();
+        } else{
+            if (col.editable){
+                col.render = (data, type, row, meta) => {
+                    return '<input type="text" id="'+col.data+'" name="'+col.data+'" value="'+data+'">'
+                }
+            }
+        }
+        return col
+    });
+
+    
+    const ajaxData = {
+        url: dataUrl,
+        data: (d) => {            
+            if (typeof filters !== 'object' || filters === null) {
+                filters = {};
+            }
+            d = {...d,...filters}
+        },
+    };
+
+  // assemble DataTable options
+  const tableData = {
+    ...table_props,
+    ajax:       ajaxData,
+    columns:    parsedcolumns,
+  };
+  const table = renderDataTable(tableId, tableData);
+  return table;
+}
+
+
+$(document).ready(function() {
+    // Parse column configuration from Django template
+    const columns = JSON.parse(
+        document.getElementById('columns-data').textContent
+    );
+    const props = JSON.parse(
+        document.getElementById('table-props').textContent
+    );
+   
+    const table_props = props
+   
+    const tableId ="{{ objects.table_id}}";
+    const dataUrl ="{{ objects.table_url}}";
+    
+    renderDataViewTable(tableId, dataUrl, columns, table_props);
+  
+}); 
+</script>

@@ -1,0 +1,124 @@
+<div>
+    <ul class="nav nav-tabs" role=""tablist>
+        {% for tab in tabs%}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if forloop.first %}active{% endif %}"
+                    data-bs-toggle="tab"
+                    data-bs-target="#{{tab.key}}"
+                    type="button"
+                    aria-controls="{{tab.key}}"
+                    aria-selected="{% if forloop.first %}true{% else %}false{% endif %}"
+                    role="tab"
+                    data-table-data-src="{{ tab.data_src }}"
+                    data-tab-key="{{ tab.key }}"
+                    data-table-url="{{ tab.table_url }}"
+                    data-columns="{{ tab.columns|safe }}"
+                    data-table-props="{'scrollX': true}"
+                    data-totals="{{ tab.totals|safe }}"
+                >
+                    {{ tab.label }}
+                </button>
+            </li>
+        {% endfor %}
+        </li>
+    </ul>
+
+    <div class="tab-content pt-3">
+        {% for tab in tabs %}
+        <div class="tab-pane fade {% if forloop.first %}show active{% endif %} " 
+            id="{{ tab.key }}" 
+            role="tabpanel" 
+            aria-labelledby="{{ tab.key }}-tab">
+                {% include 'components/data_view_table.html' with table_id='table_'|add:tab.key %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+
+
+<script>
+    const table_filters = "{{ filters|safe }}";
+    
+    // Helper: make sure the table has a <tfoot> with the right number of cells
+    function ensureTfoot(tableApi, colCount) {
+        const $table = $(tableApi.table().node());
+        let $tfoot = $table.find('tfoot');
+
+        if ($tfoot.length === 0) {
+            $tfoot = $('<tfoot/>').appendTo($table);
+            $('<tr/>').appendTo($tfoot);
+        }
+        const $row = $tfoot.find('tr').first();
+        const current = $row.children().length;
+
+        // Grow or shrink cells to match column count
+        if (current < colCount) {
+            for (let i = current; i < colCount; i++) $row.append('<th></th>');
+        } else if (current > colCount) {
+            $row.children().slice(colCount).remove();
+    }
+    }
+
+    // Apply all footer texts from a columns config (safe textContent by default)
+    function applyFootersFromConfig(tableApi, columnsConfig, { allowHtml = false } = {}) {
+        ensureTfoot(tableApi, columnsConfig.length);
+        columnsConfig.forEach((col, i) => {
+            const cell = tableApi.column(i).footer();
+            if (cell) {
+            if (allowHtml) cell.innerHTML = col?.footer ?? '';
+            else cell.textContent = col?.footer ?? '';
+            }
+        });
+    }
+
+    // Update a single column’s footer on the fly
+    function setFooter(tableApi, colIdx, value, { allowHtml = false } = {}) {
+        const cell = tableApi.column(colIdx).footer();
+        if (cell) {
+            if (allowHtml) cell.innerHTML = value ?? '';
+            else cell.textContent = value ?? '';
+        }
+    }
+
+    function loadTable(tabKey,...props){
+        const tableId = `table_${tabKey}`;
+        table = renderDataViewTable(tableId, ...props);
+        // console.log(table);
+        // console.log(props[1]);
+        // applyFootersFromConfig(table, props[1]);
+        // setFooter(table, 0, 'Total');     // column 0
+        // setFooter(table, 1, '---');  // column 1
+        // setFooter(table, 2, '---');
+        // console.log(props[5]);
+        // let totals = props[5]; // Example totals; replace with actual logic if needed
+        // setFooter(table, 3, totals[0]);
+        // setFooter(table, 4, totals[1]);     
+        // setFooter(table, 5, totals[2]);
+        // setFooter(table, 6, totals[3]);                                                  
+    };
+
+    $(document).ready(function(){
+        const parseData = (data) => {
+            if (data){
+                data = data.replace(/'/g, '"');
+                data = JSON.parse(data);
+                return data;
+            }
+            return null;
+        };
+        $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function(e){
+            const tab = $(e.target);
+            const tabkey = tab.data('tab-key');
+            const dataUrl = tab.data('table-url');
+            const tableDataSrc = tab.data('table-data-src');
+            const columns = parseData(tab.data('columns'));
+            const tableProps = parseData(tab.data('table-props'));
+            const totals = tab.data('totals');
+            loadTable(tabkey, dataUrl, columns, table_filters, tableDataSrc, tableProps, totals);
+        });
+
+        $('button[data-bs-toggle="tab"]').trigger('shown.bs.tab');
+    })
+
+</script>

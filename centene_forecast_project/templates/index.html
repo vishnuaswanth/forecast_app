@@ -1,0 +1,131 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% load static %}
+    <title>{% block title %}Forecast App{% endblock %}</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" />
+
+    
+    <link href="{% static 'img/favicon.png' %}" rel="iscon">
+    <link href="{% static 'img/apple-touch-icon.png' %}" rel="apple-touch-icon">
+
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.gstatic.com" rel="preconnect">
+
+
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,300i,400,400i,600,600i,700,700i|Nunito:300,300i,400,400i,600,600i,700,700i|Poppins:300,300i,400,400i,500,500i,600,600i,700,700i" rel="stylesheet">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css" integrity="sha512-dPXYcDub/aeb08c63jRq/k6GaKccl256JQy/AnOq7CAnEZ9FzSL9wSbcZkMp4R26vBsMLFYH4kQ67/bbV8XaCQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- DataTables style -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/2.2.2/css/dataTables.dataTables.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/buttons/3.2.3/css/buttons.dataTables.css">
+    
+    <link href="{% static 'css/style.css' %}" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.2/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.33/moment-timezone-with-data.min.js"></script>
+    <!-- jQuery CDN -->
+    <script src="https://code.jquery.com/jquery-3.7.1.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.4.1/js/bootstrap.min.js"></script>
+    <!-- dataTables CDN -->
+    <script src="https://cdn.datatables.net/2.2.2/js/dataTables.js"></script>
+    <script src="https://cdn.datatables.net/buttons/3.2.3/js/dataTables.buttons.js"></script>
+    <script src="https://cdn.datatables.net/buttons/3.2.3/js/buttons.dataTables.js"></script>
+    <script src="https://cdn.datatables.net/buttons/3.2.3/js/buttons.colVis.min.js"></script>
+
+</head>
+<body style="font-family: Poppins">
+    <input type="hidden" id="hdntimezone" name="hdntimezone" value="{{ timezone }}" />
+<input type="hidden" id="hdntzutcoffset" name="hdntzutcoffset" value="{{ utcoffset }}" />
+<input type="hidden" id="hdntzisdaylightsaving" name="hdntzisdaylightsaving" value="{{ is_daylight_saving }}" />
+
+<header id="header" class="header fixed-top d-flex align-items-center">
+    <div class="d-flex align-items-center justify-content-between">
+        <i class="bi bi-list toggle-sidebar-btn" title="Show/Hide Menu"></i>
+        <a class="logo d-flex align-items-center" style="width: 150px; padding-left: 20px;" href="/Home/Index1?projectid=0">
+            <img src="{% static 'img/epicenter_zero.png' %}" alt="" style="height:400px;">
+        </a>
+    </div>
+    <div class="search-bar" style="width: 65%">
+        <div class="row">
+            <div class="col-1" style="margin-top:7px; width:30px;">
+                <a style="font-size:11px" href="{% url 'forecast_app:time_zone' %}" title="Change time zone?">
+                    <img src="{% static 'img/time.png' %}" alt="TimeChange?" style="width:27px;height:27px;" />
+                </a>
+            </div>
+            <div class="col-11">
+                <!-- Dynamic time zone label using the abbreviation -->
+                <label style="color: black; padding-top: 10px; padding-bottom: 10px;">
+                    {{  tz_fullname }} ({{ tz_abbreviation }} {{ utcoffset }})
+                </label>
+                <label style="font-size: 14px; color: black; font-weight: bold" id="tzcurrenttime"></label>
+            </div>
+        </div>
+    </div><!-- End Search Bar -->
+
+    <nav class="header-nav ms-auto">
+        <ul class="d-flex align-items-center">
+
+            <li class="nav-item d-block d-lg-none">
+                <a class="nav-link nav-icon search-bar-toggle " href="#">
+                    <i class="bi bi-search"></i>
+                </a>
+            </li><!-- End Search Icon-->
+            <li class="nav-item dropdown pe-3">
+                <a class="nav-link nav-profile d-flex align-items-center pe-0" href="#" data-bs-toggle="dropdown">
+
+                    <img src="{% static 'img/UserImage.png' %}"  alt="Profile" class="rounded-circle">
+                    <span class="d-none d-md-block dropdown-toggle ps-2">{{ user_name }}</span>
+                </a><!-- End Profile Iamge Icon -->
+
+                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-arrow profile">
+                    <li>
+                        <a class="dropdown-item d-flex align-items-center" href="{% url 'forecast_app:logout' %}">
+
+                            <i class="bi bi-box-arrow-right"></i>
+                            Log Out
+                        </a>
+                    </li>
+                    {% if is_staff %}
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center" href="{% url 'admin:core_user_changelist' %}">
+
+                                <i class="fas fa-user-cog"></i>
+                                User management
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul><!-- End Profile Dropdown Items -->
+            </li><!-- End Profile Nav -->
+
+        </ul>
+    </nav><!-- End Icons Navigation -->
+</header><!-- End Header -->
+
+{% include  'pages/navigation.html' %}
+
+<main id="main" class="main">
+        {% block content2 %}{% endblock %}
+</main>
+
+</body>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.2/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.33/moment-timezone-with-data.min.js"></script>
+
+
+    <link rel="stylesheet" href="{% static 'css/select2-4.0.6-rc.0.min.css' %}">
+    <script src="{% static 'js/main.js' %}"></script>
+    <script src="{% static 'js/select2-4.0.6-rc.0.min.js' %}"></script>
+
+    {% block script %}{% endblock %}
+    
+</html>
