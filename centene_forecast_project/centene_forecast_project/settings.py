@@ -323,7 +323,6 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
             'level': 'INFO',
-
         },
         'file': {
             'class': f'{__name__}.CustomRotatingFileHandler',
@@ -331,6 +330,7 @@ LOGGING = {
             'formatter': 'verbose',
             'filename': get_log_file_name(current_file_number),  # Use the initial file name
             'maxBytes': MAX_LOG_SIZE,
+            'encoding': 'utf-8',  # Fix Unicode encoding issues
             # 'backupCount': BACKUP_COUNT,
         },
     },

@@ -143,12 +143,12 @@ class ManagerViewSerializer:
             # Add status message
             if kpi_data['is_shortage']:
                 formatted_kpi['status_message'] = (
-                    f"⚠️ Shortage in {kpi_data['kpi_month_display']}"
+                    f"[WARNING] Shortage in {kpi_data['kpi_month_display']}"
                 )
                 formatted_kpi['status_class'] = 'text-danger'
             else:
                 formatted_kpi['status_message'] = (
-                    f"✓ Surplus in {kpi_data['kpi_month_display']}"
+                    f"Surplus in {kpi_data['kpi_month_display']}"
                 )
                 formatted_kpi['status_class'] = 'text-success'
             

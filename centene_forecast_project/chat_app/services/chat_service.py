@@ -225,7 +225,7 @@ class ChatService:
             <div class="confirmation-actions">
                 <button class="btn btn-primary btn-sm chat-confirm-btn"
                         data-category="{category}"
-                        data-parameters='{{{self._format_json_params(parameters)}}}'>
+                        data-parameters='{self._format_json_params(parameters)}'>
                     Yes, Show Data
                 </button>
                 <button class="btn btn-secondary btn-sm chat-reject-btn"
@@ -309,7 +309,7 @@ class ChatService:
             <div class="preview-footer">
                 <small class="text-muted">Showing {min(5, len(data))} of {len(data)} records</small>
                 <button class="btn btn-outline-primary btn-sm chat-view-full-btn"
-                        data-full-data='{{{self._format_json_data(data)}}}'>
+                        data-full-data='{self._format_json_data(data)}'>
                     View Full Data
                 </button>
             </div>

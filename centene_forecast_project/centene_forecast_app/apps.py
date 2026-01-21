@@ -50,9 +50,9 @@ class CenteneForecastAppConfig(AppConfig):
             """
             try:
                 reset_api_client()
-                logger.info("✓ API client closed gracefully on shutdown")
+                logger.info("[OK] API client closed gracefully on shutdown")
             except Exception as e:
-                logger.error(f"✗ Error during API client cleanup: {e}")
+                logger.error(f"[ERROR] Error during API client cleanup: {e}")
 
         # Register cleanup to run at exit
         atexit.register(cleanup)
