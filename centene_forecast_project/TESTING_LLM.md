@@ -306,3 +306,12 @@ If tests fail or you need help:
   }
 ```
 
+
+```powershell
+ $env:PYTHONHTTPSVERIFY = "0"; python -c "import ssl; ssl._create_default_https_context =
+  ssl._create_unverified_context; import urllib.request; urllib.request.urlopen('https://api.openai.com'); print('SUCCESS
+   - SSL disabled works!')"
+```
+
+
+

@@ -39,9 +39,9 @@ def configure_dev_ssl():
 
     # Method 4: Disable requests SSL warnings (if requests is installed)
     try:
-        import requests
-        from requests.packages.urllib3.exceptions import InsecureRequestWarning
-        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+        import warnings
+        from urllib3.exceptions import InsecureRequestWarning
+        warnings.filterwarnings('ignore', category=InsecureRequestWarning)
     except (ImportError, AttributeError):
         pass
 
