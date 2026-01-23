@@ -100,6 +100,7 @@
     align-items: center;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
+    gap: 12px;
 }
 
 .chat-header-title {
@@ -108,6 +109,8 @@
     gap: 10px;
     font-weight: 600;
     font-size: 16px;
+    flex: 1;
+    min-width: 0;
 }
 
 .chat-connection-status {
@@ -149,47 +152,73 @@
     }
 }
 
+.chat-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
 .chat-minimize-btn {
     background: transparent;
-    border: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
     color: white;
     cursor: pointer;
-    padding: 4px;
+    padding: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.2s;
+    transition: all 0.2s ease;
+    min-width: 36px;
+    min-height: 36px;
 }
 
 .chat-minimize-btn:hover {
-    opacity: 0.8;
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
 }
 
-/* New Chat Button */
+.chat-minimize-btn:active {
+    transform: translateY(0) scale(0.98);
+}
+
+/* New Chat Button - IMPROVED */
 .chat-new-chat-btn {
-    background: transparent;
-    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
     color: white;
     cursor: pointer;
-    padding: 4px;
+    padding: 8px 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: opacity 0.2s;
-    margin-right: 8px;
+    transition: all 0.2s ease;
+    margin-right: 12px;
+    min-width: 36px;
+    min-height: 36px;
 }
 
 .chat-new-chat-btn:hover {
-    opacity: 0.8;
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .chat-new-chat-btn:active {
-    transform: scale(0.95);
+    transform: translateY(0) scale(0.98);
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .chat-new-chat-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: none;
 }
 
 /* ========================================================================
@@ -602,4 +631,102 @@
     font-size: 13px;
     margin-bottom: 6px;
     color: #555;
+}
+
+/* ========================================================================
+   Responsive Design - Media Queries
+   ======================================================================== */
+
+/* Tablet and smaller (max-width: 768px) */
+@media (max-width: 768px) {
+    .chat-container {
+        width: 90vw;
+        height: 80vh;
+        right: 5vw;
+    }
+
+    .chat-header {
+        padding: 12px 16px;
+        gap: 8px;
+    }
+
+    .chat-header-title span:first-of-type {
+        font-size: 15px;
+    }
+
+    .chat-connection-status {
+        display: none;
+    }
+
+    .chat-new-chat-btn,
+    .chat-minimize-btn {
+        padding: 6px 10px;
+        min-width: 32px;
+        min-height: 32px;
+    }
+
+    .chat-new-chat-btn svg,
+    .chat-minimize-btn svg {
+        width: 22px;
+        height: 22px;
+    }
+}
+
+/* Mobile (max-width: 480px) */
+@media (max-width: 480px) {
+    .chat-container {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+        bottom: 0;
+        right: 0;
+    }
+
+    .chat-header {
+        padding: 10px 12px;
+        border-radius: 0;
+    }
+
+    .chat-header-title {
+        gap: 6px;
+    }
+
+    .chat-header-title svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .chat-header-title span:first-of-type {
+        font-size: 14px;
+    }
+
+    .chat-header-actions {
+        gap: 6px;
+    }
+
+    .chat-new-chat-btn,
+    .chat-minimize-btn {
+        padding: 6px 8px;
+        min-width: 30px;
+        min-height: 30px;
+    }
+
+    .chat-new-chat-btn svg,
+    .chat-minimize-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    /* Hide toggle button on mobile since chat is fullscreen */
+    .chat-toggle-btn {
+        display: none;
+    }
+}
+
+/* Large screens (min-width: 1440px) */
+@media (min-width: 1440px) {
+    .chat-container {
+        width: 50vw;
+        max-width: 800px;
+    }
 }
