@@ -65,6 +65,44 @@ def get_unverified_httpx_client():
     """
     try:
         import httpx
-        return httpx.Client(verify=False)
+        import ssl
+
+        # Create SSL context that doesn't verify
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        # Create httpx client with no SSL verification
+        client = httpx.Client(
+            verify=False,
+            timeout=30.0,
+            follow_redirects=True
+        )
+        return client
+    except ImportError:
+        return None
+
+
+def get_unverified_async_httpx_client():
+    """
+    Create an async httpx client with SSL verification disabled.
+
+    Returns:
+        httpx.AsyncClient: Async client with verify=False
+    """
+    try:
+        import httpx
+        import ssl
+
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        client = httpx.AsyncClient(
+            verify=False,
+            timeout=30.0,
+            follow_redirects=True
+        )
+        return client
     except ImportError:
         return None

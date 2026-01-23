@@ -5,11 +5,36 @@ Tests basic API connectivity and response generation.
 Usage:
     python manage.py test_llm
 """
+import os
+import ssl
+import warnings
+
+# AGGRESSIVE SSL DISABLING FOR CORPORATE NETWORKS
+# Step 1: Environment variables
+os.environ['PYTHONHTTPSVERIFY'] = '0'
+os.environ['CURL_CA_BUNDLE'] = ''
+os.environ['REQUESTS_CA_BUNDLE'] = ''
+os.environ['SSL_CERT_FILE'] = ''
+os.environ['SSL_NO_VERIFY'] = '1'
+
+# Step 2: SSL context monkey-patching
+ssl._create_default_https_context = ssl._create_unverified_context
+
+# Step 3: Disable all SSL warnings
+warnings.filterwarnings('ignore')
+try:
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    urllib3.disable_warnings()
+except:
+    pass
+
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+import httpx
 
 
 class Command(BaseCommand):
@@ -43,6 +68,9 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f'API Key configured: {api_key[:20]}...'))
         self.stdout.write(self.style.SUCCESS(f'Model: {settings.LLM_CONFIG.get("model")}\n'))
 
+        # Pre-test: Check basic connectivity
+        self.test_basic_connectivity()
+
         # Test 1: Direct OpenAI API
         if not options['skip_openai']:
             self.test_openai_direct(api_key)
@@ -55,13 +83,49 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('All tests completed successfully!'))
         self.stdout.write(self.style.SUCCESS('='*70 + '\n'))
 
+    def test_basic_connectivity(self):
+        """Test basic network connectivity to OpenAI"""
+        self.stdout.write(self.style.WARNING('\n[PRE-TEST] Basic Connectivity Check'))
+        self.stdout.write('-' * 70)
+
+        try:
+            # Test with httpx
+            self.stdout.write('Testing connection with httpx (SSL disabled)...')
+            client = httpx.Client(
+                verify=False,
+                timeout=10.0,
+                transport=httpx.HTTPTransport(verify=False)
+            )
+            response = client.get('https://api.openai.com')
+            self.stdout.write(self.style.SUCCESS(f'Connection successful! Status: {response.status_code}'))
+            client.close()
+
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f'Connection failed: {str(e)}'))
+            self.stdout.write(self.style.WARNING('\nThis might be a network/proxy issue, not just SSL.'))
+            self.stdout.write(self.style.WARNING('Check if you need proxy settings or if OpenAI is blocked.\n'))
+            raise
+
     def test_openai_direct(self, api_key):
         """Test direct OpenAI API call"""
         self.stdout.write(self.style.WARNING('\n[TEST 1] Direct OpenAI API Call'))
         self.stdout.write('-' * 70)
 
         try:
-            client = OpenAI(api_key=api_key)
+            # Create httpx client with all SSL verification disabled
+            http_client = httpx.Client(
+                verify=False,
+                timeout=30.0,
+                follow_redirects=True,
+                transport=httpx.HTTPTransport(
+                    verify=False,
+                    retries=3
+                )
+            )
+
+            self.stdout.write(f'HTTP Client created with SSL verification: {http_client._transport._pool._ssl_context.check_hostname if hasattr(http_client, "_transport") else "disabled"}')
+
+            client = OpenAI(api_key=api_key, http_client=http_client)
 
             self.stdout.write('Sending test message to OpenAI...')
 
@@ -93,12 +157,25 @@ class Command(BaseCommand):
         self.stdout.write('-' * 70)
 
         try:
-            # Initialize LangChain ChatOpenAI
+            # Create httpx client with all SSL verification disabled
+            http_client = httpx.Client(
+                verify=False,
+                timeout=30.0,
+                follow_redirects=True,
+                transport=httpx.HTTPTransport(
+                    verify=False,
+                    retries=3
+                )
+            )
+
+            self.stdout.write('HTTP Client configured with SSL verification disabled')
+
             llm = ChatOpenAI(
                 model="gpt-4o-mini",  # Use cheaper model for testing
                 temperature=0,
                 openai_api_key=api_key,
-                max_tokens=100
+                max_tokens=100,
+                http_client=http_client
             )
 
             self.stdout.write('Testing LangChain message format...')
@@ -126,11 +203,23 @@ class Command(BaseCommand):
         self.stdout.write('-' * 70)
 
         try:
+            # Create httpx client with all SSL verification disabled
+            http_client = httpx.Client(
+                verify=False,
+                timeout=30.0,
+                follow_redirects=True,
+                transport=httpx.HTTPTransport(
+                    verify=False,
+                    retries=3
+                )
+            )
+
             llm = ChatOpenAI(
                 model="gpt-4o-mini",
                 temperature=0,
                 openai_api_key=api_key,
-                max_tokens=200
+                max_tokens=200,
+                http_client=http_client
             )
 
             prompt = """You are a forecast assistant. Categorize this user request:

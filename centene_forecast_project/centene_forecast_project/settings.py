@@ -353,3 +353,15 @@ LOGGING = {
         },
     },
 }
+
+# =============================================================================
+# DEVELOPMENT SSL CONFIGURATION
+# =============================================================================
+# Disable SSL verification for development (corporate SSL inspection workaround)
+# WARNING: Only runs when DEBUG=True. Never use in production!
+if DEBUG:
+    try:
+        from dev_ssl_config import configure_dev_ssl
+        configure_dev_ssl()
+    except ImportError:
+        pass
