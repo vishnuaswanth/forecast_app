@@ -12,9 +12,20 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
+import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Initialize django-environ
+env = environ.Env(
+    # Set default values and casting
+    DEBUG=(bool, False),
+    OPENAI_API_KEY=(str, ''),
+)
+
+# Read .env file
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 
 # Quick-start development settings - unsuitable for production
@@ -234,7 +245,7 @@ CHANNEL_LAYERS = {
 # =============================================================================
 CHAT_CONFIG = {
     'enabled': True,
-    'mock_mode': True,  # Phase 1: Use mock responses (no real LLM)
+    'mock_mode': True,  # Set to False to use real LLM (Phase 2)
     'max_conversation_history': 50,
     'rate_limit_messages_per_minute': 10,
 }
@@ -243,7 +254,7 @@ CHAT_CONFIG = {
 LLM_CONFIG = {
     'provider': 'openai',
     'model': 'gpt-4-turbo-preview',
-    'api_key': os.environ.get('OPENAI_API_KEY', ''),
+    'api_key': env('OPENAI_API_KEY'),  # Read from .env file
     'max_tokens': 4096,
     'temperature': 0.1,
     'use_langchain': True,
