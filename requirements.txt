@@ -17,3 +17,4 @@ daphne==4.0.0
 openai>=2.15.0
 langchain>=1.2.6
 langchain-openai>=1.1.7
+langchain-core>=0.3.28

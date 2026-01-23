@@ -74,6 +74,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_confirm_category(data)
             elif message_type == 'reject_category':
                 await self.handle_reject_category(data)
+            elif message_type == 'new_conversation':
+                await self.handle_new_conversation(data)
             else:
                 await self.send_error(f"Unknown message type: {message_type}")
 
@@ -190,6 +192,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'rejected_category': category
         }))
 
+    async def handle_new_conversation(self, data):
+        """
+        Handle user request to start a new conversation.
+        Marks current conversation as inactive and creates a new one.
+        """
+        old_conversation_id = data.get('old_conversation_id')
+
+        # Mark old conversation as inactive (if exists)
+        if old_conversation_id:
+            await self.mark_conversation_inactive(old_conversation_id)
+
+        # Create new conversation
+        self.conversation_id = await self.create_new_conversation()
+
+        # Send confirmation with new conversation ID
+        await self.send(text_data=json.dumps({
+            'type': 'system',
+            'message': 'New conversation started. Previous conversation has been archived.',
+            'conversation_id': str(self.conversation_id)
+        }))
+
+        logger.info(f"User {self.user.portal_id} started new conversation: {self.conversation_id}")
+
     async def send_error(self, error_message):
         """
         Send error message to client.
@@ -208,6 +233,34 @@ class ChatConsumer(AsyncWebsocketConsumer):
             user=self.user,
             is_active=True,
             defaults={'title': 'New Chat'}
+        )
+        return conversation.id
+
+    @database_sync_to_async
+    def mark_conversation_inactive(self, conversation_id):
+        """
+        Mark a conversation as inactive (archive it).
+        """
+        try:
+            conversation = ChatConversation.objects.get(id=conversation_id, user=self.user)
+            conversation.is_active = False
+            conversation.save(update_fields=['is_active', 'updated_at'])
+            logger.info(f"Marked conversation {conversation_id} as inactive")
+        except ChatConversation.DoesNotExist:
+            logger.warning(f"Conversation {conversation_id} not found for user {self.user.portal_id}")
+
+    @database_sync_to_async
+    def create_new_conversation(self):
+        """
+        Create a new active conversation for the user.
+        Sets title with timestamp for easy identification.
+        """
+        from datetime import datetime
+
+        conversation = ChatConversation.objects.create(
+            user=self.user,
+            title=f'Chat - {datetime.now().strftime("%Y-%m-%d %H:%M")}',
+            is_active=True
         )
         return conversation.id
 

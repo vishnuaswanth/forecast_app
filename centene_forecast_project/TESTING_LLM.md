@@ -269,3 +269,40 @@ If tests fail or you need help:
 - "Hello" (very simple)
 - "What is 2+2?" (basic logic)
 - "Show me forecast" (app-specific)
+
+# toggle_ssl.ps1
+
+```powershell
+  param(
+      [switch]$Enable,
+      [switch]$Disable
+  )
+
+  if ($Disable) {
+      Write-Host "Disabling SSL verification..." -ForegroundColor Yellow
+      [Environment]::SetEnvironmentVariable("PYTHONHTTPSVERIFY", "0", "User")
+      [Environment]::SetEnvironmentVariable("CURL_CA_BUNDLE", "", "User")
+      [Environment]::SetEnvironmentVariable("REQUESTS_CA_BUNDLE", "", "User")
+      $env:PYTHONHTTPSVERIFY = "0"
+      $env:CURL_CA_BUNDLE = ""
+      $env:REQUESTS_CA_BUNDLE = ""
+      Write-Host "✓ SSL verification DISABLED" -ForegroundColor Green
+      Write-Host "⚠️  Remember: This is for DEVELOPMENT only!" -ForegroundColor Red
+  }
+  elseif ($Enable) {
+      Write-Host "Enabling SSL verification..." -ForegroundColor Yellow
+      [Environment]::SetEnvironmentVariable("PYTHONHTTPSVERIFY", $null, "User")
+      [Environment]::SetEnvironmentVariable("CURL_CA_BUNDLE", $null, "User")
+      [Environment]::SetEnvironmentVariable("REQUESTS_CA_BUNDLE", $null, "User")
+      Remove-Item Env:\PYTHONHTTPSVERIFY -ErrorAction SilentlyContinue
+      Remove-Item Env:\CURL_CA_BUNDLE -ErrorAction SilentlyContinue
+      Remove-Item Env:\REQUESTS_CA_BUNDLE -ErrorAction SilentlyContinue
+      Write-Host "✓ SSL verification ENABLED" -ForegroundColor Green
+  }
+  else {
+      Write-Host "Usage:" -ForegroundColor Cyan
+      Write-Host "  .\toggle_ssl.ps1 -Disable    # Disable SSL verification"
+      Write-Host "  .\toggle_ssl.ps1 -Enable     # Enable SSL verification"
+  }
+```
+

@@ -31,6 +31,7 @@
             toggleBtn: document.getElementById('chat-toggle-btn'),
             container: document.getElementById('chat-container'),
             minimizeBtn: document.getElementById('chat-minimize-btn'),
+            newChatBtn: document.getElementById('chat-new-chat-btn'),
             messagesArea: document.getElementById('chat-messages'),
             input: document.getElementById('chat-input'),
             sendBtn: document.getElementById('chat-send-btn'),
@@ -154,9 +155,23 @@
     // ========================================================================
     function handleSystemMessage(data) {
         if (data.conversation_id) {
+            // Check if this is a NEW conversation (different from current)
+            if (ChatState.conversationId && ChatState.conversationId !== data.conversation_id) {
+                // Clear UI for new conversation
+                clearMessages();
+            }
+
+            // Update conversation ID
             ChatState.conversationId = data.conversation_id;
         }
+
+        // Display system message
         addMessage('system', data.message);
+
+        // Re-enable new chat button if it exists
+        if (elements.newChatBtn) {
+            elements.newChatBtn.disabled = false;
+        }
     }
 
     function handleTypingIndicator(data) {
@@ -296,6 +311,32 @@
         // Clear input
         elements.input.value = '';
         elements.input.style.height = 'auto';
+    }
+
+    function startNewChat() {
+        // 1. Disable button to prevent double-clicks
+        elements.newChatBtn.disabled = true;
+
+        // 2. Send new_conversation message to backend
+        sendWebSocketMessage({
+            type: 'new_conversation',
+            old_conversation_id: ChatState.conversationId
+        });
+
+        // Note: Don't clear state here - wait for server confirmation
+        // This ensures proper database updates happen first
+    }
+
+    function clearMessages() {
+        // Remove all messages except system messages
+        const messages = elements.messagesArea.querySelectorAll('.chat-message:not(.chat-message-system)');
+        messages.forEach(msg => msg.remove());
+
+        // Clear pending confirmations
+        ChatState.pendingConfirmations.clear();
+
+        // Reset scroll position
+        elements.messagesArea.scrollTop = 0;
     }
 
     // ========================================================================
@@ -477,6 +518,9 @@
         // Toggle chat
         elements.toggleBtn.addEventListener('click', toggleChat);
         elements.minimizeBtn.addEventListener('click', toggleChat);
+
+        // New chat
+        elements.newChatBtn.addEventListener('click', startNewChat);
 
         // Send message
         elements.sendBtn.addEventListener('click', sendMessage);

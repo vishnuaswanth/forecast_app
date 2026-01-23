@@ -165,6 +165,33 @@
     opacity: 0.8;
 }
 
+/* New Chat Button */
+.chat-new-chat-btn {
+    background: transparent;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s;
+    margin-right: 8px;
+}
+
+.chat-new-chat-btn:hover {
+    opacity: 0.8;
+}
+
+.chat-new-chat-btn:active {
+    transform: scale(0.95);
+}
+
+.chat-new-chat-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* ========================================================================
    Chat Messages Area
    ======================================================================== */
