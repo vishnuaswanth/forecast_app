@@ -1,0 +1,52 @@
+Let's start working on phase 2: instead of mock let's use LLM, to repond, make tool calls, classify etc. I have tested the LLM working refer @test_llm.py file.
+- create new repository.py for API calls,
+- create python functions to be used as tools for making API calls, generating UI.
+- properly segrate code as functionality like tool calls, parsing, classification, output UI generation
+- Use pydantic parsing along with langchain to get proper inputs for different types of request we are going to process.
+- Context of previous chat has to be store, especially the entitities
+    - Forecast report month and year
+    - Roster report month and year
+    - if any forecast record or group of records are selected by user
+    - filter options user asked to apply
+    - Many more critical data
+- Diffent types of request( user input) , the classifcation types:
+    1. get forecast Data
+    2. Reallocate Forecast Data
+    3. Allocate ramp FTEs to forecast Data
+    4. get roster data
+    5. modify roster data
+    6. Show allocated resources
+- For the next let's focus on getting forecast Data
+- Work flow:
+    - **Get Forecast Data**
+    - if user asks to display forecast data, first system has check if it has report month and year(mandatory) and other filters and send a message to get confirmation or seek mandatory report month and year, if confirmed proceed further
+        - check and validate report month and year input
+        - if rejected sent message we don't have the feature you are looking for. Such user input that was reject has to stored and easily filterable for analysis(future analytics purpose)
+        - Filters:
+            - Main Lob: consist of Platform + Market +Locality. Either some of Main Lobs can be filtered by or combination of (platforms, Markets and Localities)
+                - Platform: Amysis, Facets and Xcelys
+                - Market: something like Medicaid, Medicare, High Dollar and so many
+                - Locality: global,
+            - Either Main lobs can be filtered or combinations of Platforms
+            - State
+            - Case type
+            - Forecast month
+        - more details will be shared via API spec @centene_forecast_project/api_specs/LLM_FORECAST_API_SPEC.md
+    - LLM has to confirm the details and make calls
+    - Data returns will be huge with meta data for LLM to understand the context. So they should be properly chunked and sent to LLM for processing
+    - Top 5 data should be displayed in tabular form in chat for more the modal should be openned to display entire set of data with paginated table.
+    - store the recieved data as cache for future use if user asks again
+    - Table format
+        - Headers: Main LOB, State, Case type, Target CPH, 6 different months and the year(based on data atleast 1 and atmost 6 months data will be available accordingly the table should be contructed)
+        - Sub headers only the months have subheaders others don't have. Forecast, FTE_required, FTE_avail, Capacity and Gap, the order should not change. The gap should have color indicators to represent positive an negative values
+        - make the table scrollable to view data fully withough extending the screen or minimising screen size
+
+- if users ask for totals,
+    - list total for each forecast month and only for values forecast, Forecast, FTE_required, FTE_avail, Capacity and based on it also calculate gap value and display
+    - if they speciafically asked for specific filtered data then do for them alone
+    - No need to show entire data in table, only show totals
+
+- Use Langchain, context management, LLM prompts, tools effectively - donot create too many tools or write everything thorugh propmt, leave it to LLM whenever  LLM can deliver consistent result, also on critical places use reflective validation of LLM response using reasoning model and fix proper final version from previous draft. Use thinks effectively and make code and process simplified.
+
+
+- create and update the workflow I provide in a mermaid file

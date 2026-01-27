@@ -34,12 +34,18 @@ class ChatService:
         """Initialize chat service with LLM service"""
         self.llm_service = get_llm_service()
 
-    def process_message(self, user_text: str, conversation_id: str, user) -> Dict[str, Any]:
+    async def process_message(self, user_text: str, conversation_id: str, user) -> Dict[str, Any]:
         """
         Process user message and return categorization with confirmation UI.
 
+        Flow:
+        1. Sanitize user input (remove threats, normalize whitespace)
+        2. Format prompt (clear, compact, preserve parameters)
+        3. Categorize intent with LLM
+        4. Return result with UI
+
         Args:
-            user_text: User's input message
+            user_text: User's input message (raw)
             conversation_id: Current conversation ID
             user: Django user object
 
@@ -47,30 +53,70 @@ class ChatService:
             Dictionary with category, confidence, and UI component
         """
         try:
-            # Categorize user intent
-            result = self.llm_service.categorize_intent(user_text)
+            # STEP 1: Sanitize user input
+            from chat_app.utils.input_sanitizer import get_sanitizer
+            sanitizer = get_sanitizer()
+
+            sanitized_text, sanitization_metadata = sanitizer.sanitize(user_text)
+
+            # Log sanitization results
+            if sanitization_metadata['threats_detected']:
+                logger.warning(
+                    f"[Chat Service] Security threats detected in user input: "
+                    f"{', '.join(sanitization_metadata['threats_detected'])}"
+                )
+
+            if sanitization_metadata['truncated']:
+                logger.info(
+                    f"[Chat Service] Input truncated from "
+                    f"{sanitization_metadata['original_length']} to "
+                    f"{sanitization_metadata['sanitized_length']} characters"
+                )
+
+            # If sanitized text is empty, return error
+            if not sanitized_text:
+                logger.warning("[Chat Service] Sanitized text is empty")
+                return {
+                    'category': 'error',
+                    'confidence': 0.0,
+                    'parameters': {},
+                    'ui_component': self._build_error_ui(
+                        "Your message could not be processed. Please try again with a different query."
+                    ),
+                    'metadata': {'error': 'empty_after_sanitization'}
+                }
+
+            # STEP 2: Get recent message history for context
+            message_history = await self._get_message_history(conversation_id, limit=10)
+
+            # STEP 3: Categorize user intent with LLM (with sanitized input)
+            result = await self.llm_service.categorize_intent(
+                user_text=sanitized_text,  # ← Sanitized input
+                conversation_id=conversation_id,
+                message_history=message_history
+            )
 
             category = result.get('category')
             confidence = result.get('confidence')
             parameters = result.get('parameters', {})
+            ui_component = result.get('ui_component')  # LLM service now generates UI
 
-            logger.info(f"Categorized message as '{category}' with {confidence} confidence")
+            logger.info(f"[Chat Service] Categorized as '{category}' with {confidence:.2f} confidence")
 
-            # Build confirmation UI
-            ui_component = self._build_confirmation_ui(category, parameters, user_text)
+            # Add sanitization metadata to result
+            result_metadata = result.get('metadata', {})
+            result_metadata['sanitization'] = sanitization_metadata
 
             return {
                 'category': category,
                 'confidence': confidence,
                 'parameters': parameters,
                 'ui_component': ui_component,
-                'metadata': {
-                    'original_text': user_text
-                }
+                'metadata': result_metadata
             }
 
         except Exception as e:
-            logger.error(f"Error processing message: {str(e)}", exc_info=True)
+            logger.error(f"[Chat Service] Error processing message: {str(e)}", exc_info=True)
             return {
                 'category': 'error',
                 'confidence': 0.0,
@@ -79,8 +125,47 @@ class ChatService:
                 'metadata': {'error': str(e)}
             }
 
-    def execute_confirmed_action(self, category: str, parameters: Dict[str, Any],
-                                 conversation_id: str, user) -> Dict[str, Any]:
+    async def _get_message_history(self, conversation_id: str, limit: int = 10) -> list:
+        """
+        Get recent message history from database.
+
+        Args:
+            conversation_id: Conversation ID
+            limit: Maximum number of messages to retrieve
+
+        Returns:
+            List of message dictionaries with role and content
+        """
+        from chat_app.models import ChatMessage, ChatConversation
+        from channels.db import database_sync_to_async
+
+        @database_sync_to_async
+        def get_messages():
+            try:
+                conversation = ChatConversation.objects.get(id=conversation_id)
+                messages = ChatMessage.objects.filter(
+                    conversation=conversation
+                ).order_by('-created_at')[:limit]
+
+                # Reverse to get chronological order
+                return [
+                    {
+                        'role': msg.role,
+                        'content': msg.content
+                    }
+                    for msg in reversed(messages)
+                ]
+            except ChatConversation.DoesNotExist:
+                logger.warning(f"Conversation {conversation_id} not found")
+                return []
+            except Exception as e:
+                logger.error(f"Error retrieving message history: {str(e)}")
+                return []
+
+        return await get_messages()
+
+    async def execute_confirmed_action(self, category: str, parameters: Dict[str, Any],
+                                       conversation_id: str, user) -> Dict[str, Any]:
         """
         Execute confirmed action and return results with UI.
 
@@ -94,7 +179,14 @@ class ChatService:
             Dictionary with success status, data, and UI component
         """
         try:
-            if category == 'forecast_query':
+            # Handle new Phase 2 categories with LLM service
+            if category == 'get_forecast_data':
+                return await self.llm_service.execute_forecast_query(
+                    parameters=parameters,
+                    conversation_id=conversation_id
+                )
+            # Legacy Phase 1 categories (mock mode)
+            elif category == 'forecast_query':
                 return self._handle_forecast_query(parameters)
             elif category == 'roster_query':
                 return self._handle_roster_query(parameters)

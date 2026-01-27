@@ -198,6 +198,18 @@ def upload_view(request):
                 logger.info("Clearing forecast caches after successful upload")
                 # Clear all forecast-related caches
                 clear_all_caches()
+
+                # NEW: Clear filter options cache for LLM chat validation
+                try:
+                    from chat_app.utils.filter_cache import get_filter_cache
+                    filter_cache = get_filter_cache()
+                    filter_cache.clear_all()
+                    logger.info("Cleared filter options cache for LLM chat validation")
+                except ImportError:
+                    logger.debug("Filter cache not available (chat_app not installed)")
+                except Exception as filter_cache_error:
+                    logger.warning(f"Failed to clear filter cache: {filter_cache_error}")
+
                 logger.info("Note: Cleared cascade caches. Forecast data cache will expire naturally.")
             elif file_type == 'prod_team_roster':
                 logger.info("Clearing prod team roster caches after successful upload")
