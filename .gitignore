@@ -180,3 +180,4 @@ logs/
 cache_files/
 **/cache_files/
 *.djcache
+.aider*
