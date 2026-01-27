@@ -49,11 +49,16 @@ class LLMService:
 
     def __init__(self):
         """Initialize LLM service with OpenAI client and supporting services."""
-        # SSL handling for corporate networks
+        # SSL handling for corporate networks (both sync and async clients)
         self.http_client = httpx.Client(
             verify=False,
             timeout=30.0,
             transport=httpx.HTTPTransport(verify=False)
+        )
+        self.http_async_client = httpx.AsyncClient(
+            verify=False,
+            timeout=30.0,
+            transport=httpx.AsyncHTTPTransport(verify=False)
         )
 
         # Get LLM configuration from settings
@@ -65,7 +70,8 @@ class LLMService:
             temperature=llm_config.get('temperature', 0.1),
             openai_api_key=llm_config.get('api_key'),
             max_tokens=llm_config.get('max_tokens', 4096),
-            http_client=self.http_client
+            http_client=self.http_client,
+            http_async_client=self.http_async_client
         )
 
         # Structured output LLM for classification
