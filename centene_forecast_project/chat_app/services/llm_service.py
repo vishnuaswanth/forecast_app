@@ -8,10 +8,11 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 from langchain_openai import ChatOpenAI
-from langchain.schema import SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from django.conf import settings
 import httpx
 
+from centene_forecast_project.chat_app.services.tools.validation_tools import CombinationDiagnosticResult
 from chat_app.services.tools.forecast_tools import (
     get_forecast_data_tool,
     fetch_forecast_data,
@@ -741,7 +742,7 @@ Be concise - maximum 4-5 sentences.
     async def _generate_diagnostic_guidance(
         self,
         params: ForecastQueryParams,
-        diagnosis: 'CombinationDiagnosticResult'
+        diagnosis: CombinationDiagnosticResult
     ) -> str:
         """
         Generate LLM-powered diagnostic guidance for filter combination issues.
@@ -756,7 +757,7 @@ Be concise - maximum 4-5 sentences.
         Returns:
             HTML string with diagnostic guidance
         """
-        from langchain.schema import HumanMessage
+        from langchain_core.messages import HumanMessage
         from chat_app.services.tools.ui_tools import generate_combination_diagnostic_ui
 
         # Build context for LLM
