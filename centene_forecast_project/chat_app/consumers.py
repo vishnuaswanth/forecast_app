@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Optional, Dict, Any, Union
 from uuid import UUID
+from datetime import datetime, date
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.conf import settings
@@ -15,6 +16,18 @@ from chat_app.models import ChatConversation, ChatMessage
 from chat_app.services.chat_service import ChatService
 
 logger = logging.getLogger(__name__)
+
+
+class SafeJSONEncoder(json.JSONEncoder):
+    """JSON encoder that handles datetime, UUID, and other non-serializable types."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        if isinstance(obj, date):
+            return obj.isoformat()
+        if isinstance(obj, UUID):
+            return str(obj)
+        return super().default(obj)
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -28,6 +41,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.user: Optional[AbstractUser] = None
         self.conversation_id: Optional[str] = None
         self.chat_service: Optional[ChatService] = None
+
+    async def send_json(self, data: dict) -> None:
+        """Send JSON data with safe serialization of datetime/UUID objects."""
+        await self.send(text_data=json.dumps(data, cls=SafeJSONEncoder))
 
     async def connect(self) -> None:
         """
@@ -66,11 +83,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         logger.info(f"User {self.user.portal_id} connected to chat (conversation: {self.conversation_id})")
 
         # Send welcome message
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'system',
             'message': 'Connected to chat. How can I help you today?',
             'conversation_id': str(self.conversation_id)
-        }))
+        })
 
     async def disconnect(self, close_code: int) -> None:
         """
@@ -141,10 +158,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Send typing indicator
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'typing',
             'is_typing': True
-        }))
+        })
 
         # Process message through chat service (async method, call directly)
         try:
@@ -159,20 +176,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Stop typing indicator
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'typing',
             'is_typing': False
-        }))
+        })
 
         # Send response to client
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'assistant_response',
             'category': response.get('category'),
             'confidence': response.get('confidence'),
             'ui_component': response.get('ui_component'),
             'message_id': str(message_id),
             'metadata': response.get('metadata', {})
-        }))
+        })
 
     async def handle_confirm_category(self, data: Dict[str, Any]) -> None:
         """
@@ -192,10 +209,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         message_id = data.get('message_id')
 
         # Send typing indicator
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'typing',
             'is_typing': True
-        }))
+        })
 
         # Execute the confirmed action (async method, call directly)
         try:
@@ -211,10 +228,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Stop typing indicator
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'typing',
             'is_typing': False
-        }))
+        })
 
         # Save assistant response
         try:
@@ -224,7 +241,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             # Continue execution - don't fail the entire operation for logging issues
 
         # Send result to client
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'tool_result',
             'category': category,
             'success': result.get('success', False),
@@ -232,7 +249,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'message': result.get('message'),
             'data': result.get('data'),
             'metadata': result.get('metadata', {})
-        }))
+        })
 
     async def handle_reject_category(self, data: Dict[str, Any]) -> None:
         """
@@ -253,11 +270,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             logger.error(f"Failed to save rejection response: {str(e)}")
             # Continue execution - don't fail for logging issues
 
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'rejection_response',
             'message': message,
             'rejected_category': category
-        }))
+        })
 
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:
         """
@@ -283,11 +300,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         # Send confirmation with new conversation ID
-        await self.send(text_data=json.dumps({
+        await self.send_json({
             'type': 'system',
             'message': 'New conversation started. Previous conversation has been archived.',
             'conversation_id': str(self.conversation_id)
-        }))
+        })
 
         if hasattr(self.user, 'portal_id'):
             logger.info(f"User {self.user.portal_id} started new conversation: {self.conversation_id}")
@@ -297,10 +314,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         Send error message to client.
         """
         try:
-            await self.send(text_data=json.dumps({
+            await self.send_json({
                 'type': 'error',
                 'message': error_message
-            }))
+            })
         except Exception as e:
             logger.error(f"Failed to send error message: {str(e)}")
 
@@ -417,7 +434,7 @@ class TestConsumer(AsyncWebsocketConsumer):
                 'message': 'Empty message received'
             }))
             return
-            
+
         try:
             data = json.loads(text_data)
             if not isinstance(data, dict):
@@ -426,7 +443,7 @@ class TestConsumer(AsyncWebsocketConsumer):
                     'message': 'Message must be a JSON object'
                 }))
                 return
-                
+
             await self.send(text_data=json.dumps({
                 'type': 'echo',
                 'received': data,

@@ -12,7 +12,7 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from django.conf import settings
 import httpx
 
-from centene_forecast_project.chat_app.services.tools.validation_tools import CombinationDiagnosticResult
+from chat_app.services.tools.validation_tools import CombinationDiagnosticResult
 from chat_app.services.tools.forecast_tools import (
     get_forecast_data_tool,
     fetch_forecast_data,
@@ -178,7 +178,7 @@ class LLMService:
             'metadata': {
                 'reasoning': classification.reasoning,
                 'missing_params': classification.missing_parameters,
-                'context_used': context.dict() if context else {}
+                'context_used': context.model_dump(mode='json') if context else {}
             }
         }
 
@@ -287,7 +287,7 @@ Be specific about what's needed.
             'confidence': 0.0,
             'parameters': {},
             'ui_component': generate_clarification_ui(clarification_text),
-            'metadata': {'original_classification': classification.dict() if classification else {}}
+            'metadata': {'original_classification': classification.model_dump(mode='json') if classification else {}}
         }
 
     async def execute_available_reports_query(
