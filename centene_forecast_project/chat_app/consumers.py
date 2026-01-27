@@ -234,7 +234,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             is_active=True,
             defaults={'title': 'New Chat'}
         )
-        return conversation.id
+        return str(conversation.id)
 
     @database_sync_to_async
     def mark_conversation_inactive(self, conversation_id):
@@ -262,7 +262,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             title=f'Chat - {datetime.now().strftime("%Y-%m-%d %H:%M")}',
             is_active=True
         )
-        return conversation.id
+        return str(conversation.id)
 
     @database_sync_to_async
     def save_message(self, role, content, metadata=None):
