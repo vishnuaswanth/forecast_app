@@ -105,8 +105,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_typing': True
         }))
 
-        # Process message through chat service
-        response = await database_sync_to_async(self.chat_service.process_message)(
+        # Process message through chat service (async method, call directly)
+        response = await self.chat_service.process_message(
             user_text=user_text,
             conversation_id=self.conversation_id,
             user=self.user
@@ -143,8 +143,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_typing': True
         }))
 
-        # Execute the confirmed action
-        result = await database_sync_to_async(self.chat_service.execute_confirmed_action)(
+        # Execute the confirmed action (async method, call directly)
+        result = await self.chat_service.execute_confirmed_action(
             category=category,
             parameters=parameters,
             conversation_id=self.conversation_id,
