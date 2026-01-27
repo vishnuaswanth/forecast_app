@@ -12,13 +12,19 @@ from langchain.schema import SystemMessage, HumanMessage, AIMessage
 from django.conf import settings
 import httpx
 
-from chat_app.services.tools.forecast_tools import get_forecast_data_tool, fetch_forecast_data
+from chat_app.services.tools.forecast_tools import (
+    get_forecast_data_tool,
+    fetch_forecast_data,
+    fetch_available_reports,
+    validate_report_exists
+)
 from chat_app.services.tools.ui_tools import (
     generate_forecast_table_html,
     generate_totals_table_html,
     generate_confirmation_ui,
     generate_error_ui,
-    generate_clarification_ui
+    generate_clarification_ui,
+    generate_available_reports_ui
 )
 from chat_app.services.tools.validation import (
     ForecastQueryParams,
@@ -277,6 +283,80 @@ Be specific about what's needed.
             'metadata': {'original_classification': classification.dict() if classification else {}}
         }
 
+    async def execute_available_reports_query(
+        self,
+        parameters: dict,
+        conversation_id: str
+    ) -> Dict:
+        """
+        List available forecast reports.
+
+        Fetches all available reports from the backend and generates a UI card
+        with report details. Uses the LLM to generate a natural language summary.
+
+        Args:
+            parameters: Query parameters (unused for this query, no params required)
+            conversation_id: Conversation identifier
+
+        Returns:
+            Dictionary with:
+                - success: Boolean
+                - message: Natural language summary
+                - data: Raw reports data
+                - ui_component: HTML card listing reports
+                - metadata: Report count info
+        """
+        logger.info("[LLM Service] Executing available reports query")
+
+        try:
+            data = await fetch_available_reports()
+        except Exception as e:
+            logger.error(f"[LLM Service] Failed to fetch available reports: {str(e)}", exc_info=True)
+            return {
+                'success': False,
+                'message': f"Failed to retrieve available reports: {str(e)}",
+                'ui_component': generate_error_ui(f"Could not fetch available reports: {str(e)}")
+            }
+
+        # Generate UI card
+        ui_html = generate_available_reports_ui(data)
+
+        # Build natural language summary
+        reports = data.get('reports', [])
+        current_reports = [r for r in reports if r.get('is_valid', False)]
+        total = len(reports)
+
+        if total == 0:
+            message = (
+                "There are no forecast reports currently available. "
+                "Please upload forecast data to get started."
+            )
+        else:
+            # Build summary of available periods
+            report_periods = [f"{r.get('month', '?')} {r.get('year', '?')}" for r in reports[:5]]
+            periods_str = ", ".join(report_periods)
+            if total > 5:
+                periods_str += f", and {total - 5} more"
+
+            message = (
+                f"I found {total} forecast report{'s' if total != 1 else ''} available"
+                f" ({len(current_reports)} current). "
+                f"Available periods: {periods_str}."
+            )
+
+        logger.info(f"[LLM Service] Available reports query complete - {total} reports")
+
+        return {
+            'success': True,
+            'message': message,
+            'data': data,
+            'ui_component': ui_html,
+            'metadata': {
+                'report_count': total,
+                'current_count': len(current_reports)
+            }
+        }
+
     async def execute_forecast_query(
         self,
         parameters: dict,
@@ -316,7 +396,55 @@ Be specific about what's needed.
                 'ui_component': generate_error_ui(f"Invalid parameters: {str(e)}")
             }
 
-        # PRE-FLIGHT VALIDATION (NEW)
+        # STEP 0: Validate report exists for the given month/year
+        try:
+            validation = await validate_report_exists(params.month, params.year)
+
+            if not validation['exists']:
+                month_name = calendar.month_name[params.month]
+                logger.info(
+                    f"[LLM Service] No report for {month_name} {params.year} - "
+                    f"showing available reports"
+                )
+
+                # Build UI showing available reports
+                available_reports = validation.get('available_reports', [])
+                reports_data = {
+                    'reports': available_reports,
+                    'total_reports': len(available_reports)
+                }
+                ui_html = generate_available_reports_ui(reports_data)
+
+                # Add header message about the missing report
+                no_data_header = f'''
+                <div class="alert alert-warning mb-3">
+                    <h6 class="alert-heading">
+                        <i class="bi bi-exclamation-triangle"></i> No Data Available
+                    </h6>
+                    <p class="mb-0">
+                        No forecast report exists for <strong>{month_name} {params.year}</strong>.
+                        Please choose from the available reports below, or upload data for this period.
+                    </p>
+                </div>
+                '''
+
+                return {
+                    'success': False,
+                    'message': f'No forecast report found for {month_name} {params.year}.',
+                    'ui_component': no_data_header + ui_html,
+                    'metadata': {
+                        'report_validation': 'no_report',
+                        'requested_period': f'{month_name} {params.year}',
+                        'available_report_count': len(available_reports)
+                    }
+                }
+        except Exception as e:
+            # If validation fails, log and proceed (don't block the query)
+            logger.warning(
+                f"[LLM Service] Report validation failed: {str(e)} - proceeding without validation"
+            )
+
+        # PRE-FLIGHT FILTER VALIDATION
         from chat_app.services.tools.validation_tools import FilterValidator, ConfidenceLevel
         from chat_app.services.tools.validation import FilterValidationSummary
         from chat_app.services.tools.ui_tools import generate_validation_confirmation_ui

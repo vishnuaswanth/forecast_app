@@ -9,6 +9,113 @@ from typing import List, Dict
 logger = logging.getLogger(__name__)
 
 
+def generate_available_reports_ui(reports_data: dict) -> str:
+    """
+    Generate HTML card listing available forecast reports.
+
+    Displays a summary line and table with columns:
+    Report Period | Status | Records | Data Freshness
+
+    Current reports are highlighted; outdated reports are dimmed.
+
+    Args:
+        reports_data: Dictionary from /api/llm/forecast/available-reports with:
+            - reports: List of report dicts (month, year, is_valid, record_count, etc.)
+            - total_reports: int
+
+    Returns:
+        HTML string for available reports card
+    """
+    reports = reports_data.get('reports', [])
+    total_reports = reports_data.get('total_reports', len(reports))
+
+    current_count = sum(1 for r in reports if r.get('is_valid', False))
+    outdated_count = total_reports - current_count
+
+    logger.info(
+        f"[UI Tools] Generating available reports UI - "
+        f"{total_reports} reports ({current_count} current, {outdated_count} outdated)"
+    )
+
+    # Summary header
+    html = f'''
+    <div class="available-reports-card">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h6 class="mb-0">
+                    <i class="bi bi-file-earmark-bar-graph"></i>
+                    Available Forecast Reports
+                </h6>
+            </div>
+            <div class="card-body">
+                <p class="mb-3">
+                    <strong>{total_reports}</strong> report{"s" if total_reports != 1 else ""} available
+                    (<span class="text-success">{current_count} current</span>,
+                     <span class="text-muted">{outdated_count} outdated</span>)
+                </p>
+    '''
+
+    if reports:
+        html += '''
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Report Period</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-end">Records</th>
+                                <th>Data Freshness</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        '''
+
+        for report in reports:
+            month = report.get('month', 'Unknown')
+            year = report.get('year', '')
+            is_valid = report.get('is_valid', False)
+            record_count = report.get('record_count', 0)
+            freshness = report.get('data_freshness', 'Unknown')
+
+            # Status badge
+            if is_valid:
+                status_badge = '<span class="badge bg-success">Current</span>'
+                row_class = ''
+            else:
+                status_badge = '<span class="badge bg-secondary">Outdated</span>'
+                row_class = ' class="text-muted"'
+
+            html += f'''
+                            <tr{row_class}>
+                                <td><strong>{month} {year}</strong></td>
+                                <td class="text-center">{status_badge}</td>
+                                <td class="text-end">{record_count:,} records</td>
+                                <td><small>{freshness}</small></td>
+                            </tr>
+            '''
+
+        html += '''
+                        </tbody>
+                    </table>
+                </div>
+        '''
+    else:
+        html += '''
+                <div class="alert alert-info mb-0">
+                    No forecast reports are currently available.
+                    Please upload forecast data to get started.
+                </div>
+        '''
+
+    html += '''
+            </div>
+        </div>
+    </div>
+    '''
+
+    return html
+
+
 def generate_forecast_table_html(
     records: List[dict],
     months: dict,
@@ -216,6 +323,32 @@ def generate_confirmation_ui(category: str, params: dict) -> str:
         HTML string for confirmation card
     """
     import calendar
+
+    # Handle list_available_reports category (no parameters needed)
+    if category == 'list_available_reports':
+        params_json = json.dumps(params)
+        logger.info(f"[UI Tools] Generated confirmation UI for category: {category}")
+        return f'''
+        <div class="chat-confirmation-card">
+            <div class="confirmation-header">
+                <strong>List Available Reports</strong>
+            </div>
+            <div class="confirmation-body">
+                I'll retrieve a list of all available forecast reports.
+            </div>
+            <div class="confirmation-actions">
+                <button class="btn btn-success btn-sm chat-confirm-btn"
+                        data-category="{category}"
+                        data-parameters='{params_json}'>
+                    ✓ Yes, Show Reports
+                </button>
+                <button class="btn btn-secondary btn-sm chat-reject-btn"
+                        data-category="{category}">
+                    ✗ No, Let me clarify
+                </button>
+            </div>
+        </div>
+        '''
 
     # Format parameters for display
     param_display = []

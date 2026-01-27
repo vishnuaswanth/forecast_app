@@ -185,6 +185,11 @@ class ChatService:
                     parameters=parameters,
                     conversation_id=conversation_id
                 )
+            elif category == 'list_available_reports':
+                return await self.llm_service.execute_available_reports_query(
+                    parameters=parameters,
+                    conversation_id=conversation_id
+                )
             # Legacy Phase 1 categories (mock mode)
             elif category == 'forecast_query':
                 return self._handle_forecast_query(parameters)

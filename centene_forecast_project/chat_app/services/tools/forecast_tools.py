@@ -15,6 +15,68 @@ from chat_app.repository import get_chat_api_client
 logger = logging.getLogger(__name__)
 
 
+async def fetch_available_reports() -> dict:
+    """
+    Fetch available forecast reports from API.
+
+    Returns:
+        Dictionary with available reports from /api/llm/forecast/available-reports
+
+    Raises:
+        ValueError: If API returns error
+        Exception: On other errors
+    """
+    try:
+        client = get_chat_api_client()
+        data = client.get_available_reports()
+        logger.info(f"[Forecast Tools] Fetched {data.get('total_reports', 0)} available reports")
+        return data
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Failed to fetch available reports: {str(e)}", exc_info=True)
+        raise
+
+
+async def validate_report_exists(month: int, year: int) -> dict:
+    """
+    Check if a forecast report exists for the given month/year.
+
+    Pre-flight validation helper that checks whether data exists for a
+    given month/year before attempting a full forecast query.
+
+    Args:
+        month: Month number (1-12)
+        year: Year (e.g., 2025)
+
+    Returns:
+        Dictionary with:
+            - exists: bool - Whether a report exists for this period
+            - report: dict|None - The matching report if found
+            - available_reports: list - All available reports
+    """
+    month_name = calendar.month_name[month]
+
+    try:
+        data = await fetch_available_reports()
+        reports = data.get('reports', [])
+
+        # Find matching report
+        for report in reports:
+            if report.get('month') == month_name and report.get('year') == year:
+                logger.info(f"[Forecast Tools] Report exists for {month_name} {year}")
+                return {"exists": True, "report": report, "available_reports": reports}
+
+        logger.info(f"[Forecast Tools] No report found for {month_name} {year}")
+        return {"exists": False, "report": None, "available_reports": reports}
+
+    except Exception as e:
+        logger.warning(
+            f"[Forecast Tools] Could not validate report for {month_name} {year}: {str(e)}. "
+            f"Proceeding without validation."
+        )
+        # Return exists=True to avoid blocking the query on validation failure
+        return {"exists": True, "report": None, "available_reports": []}
+
+
 class ForecastQueryInput(BaseModel):
     """Input schema for forecast query tool - all parameters from /api/llm/forecast endpoint"""
     month: int = Field(description="Report month (1-12)")
@@ -224,6 +286,25 @@ async def get_forecast_data_tool(
             "success": False,
             "error": str(e)
         }
+
+
+@tool("get_available_reports", return_direct=False)
+async def get_available_reports_tool() -> dict:
+    """
+    List all available forecast reports with their month, year, and status.
+
+    Returns a list of forecast reports including period, record count,
+    and whether the report is current or outdated.
+
+    Returns:
+        Dictionary with success status and available reports data
+    """
+    try:
+        data = await fetch_available_reports()
+        return {"success": True, "data": data}
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Available reports tool failed: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 
 @tool("calculate_forecast_totals")

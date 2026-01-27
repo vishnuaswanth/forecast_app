@@ -3,7 +3,7 @@ Pydantic Models for Chat App LLM Service
 Validation models for intent classification, forecast queries, and conversation context.
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime
 from enum import Enum
 import re
@@ -14,6 +14,7 @@ class IntentCategory(str, Enum):
     Enumeration of supported intent categories for user requests.
     """
     GET_FORECAST_DATA = "get_forecast_data"
+    LIST_AVAILABLE_REPORTS = "list_available_reports"
     REALLOCATE_FORECAST = "reallocate_forecast_data"
     ALLOCATE_RAMP_FTES = "allocate_ramp_ftes"
     GET_ROSTER_DATA = "get_roster_data"

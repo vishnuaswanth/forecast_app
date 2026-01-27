@@ -251,6 +251,49 @@ class ChatAPIClient:
             logger.error(f"[Chat API] Failed to get filter options: {str(e)}", exc_info=True)
             raise
 
+    def get_available_reports(self) -> Dict:
+        """
+        Get available forecast reports from /api/llm/forecast/available-reports endpoint.
+
+        Returns a list of all available forecast reports sorted newest-first,
+        including month, year, status, record count, and data freshness.
+
+        Returns:
+            Dictionary with available reports (JSON response):
+            {
+                'success': True,
+                'reports': [
+                    {'month': 'March', 'year': 2025, 'is_valid': True, 'record_count': 1250, ...},
+                    ...
+                ],
+                'total_reports': 3
+            }
+
+        Raises:
+            ValueError: If API returns error
+            httpx.HTTPStatusError: On HTTP error
+            httpx.RequestError: On connection error
+        """
+        try:
+            response = self.get('/api/llm/forecast/available-reports')
+            data = response.json()
+
+            if not data.get('success', False):
+                error_msg = data.get('error', 'Unknown error from API')
+                logger.error(f"[Chat API] Available reports API returned error: {error_msg}")
+                raise ValueError(f"API Error: {error_msg}")
+
+            logger.info(
+                f"[Chat API] Available reports retrieved successfully - "
+                f"{data.get('total_reports', 0)} reports found"
+            )
+
+            return data
+
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to get available reports: {str(e)}", exc_info=True)
+            raise
+
     def close(self):
         """Close the HTTP client and cleanup resources."""
         self.client.close()
