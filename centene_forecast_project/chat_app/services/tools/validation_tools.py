@@ -4,6 +4,7 @@ Proactive validation and reactive diagnosis for forecast queries.
 """
 
 import logging
+import time
 from typing import Dict, List, Optional, Tuple
 from difflib import SequenceMatcher, get_close_matches
 from dataclasses import dataclass, field
@@ -13,8 +14,10 @@ import calendar
 from chat_app.repository import get_chat_api_client
 from chat_app.utils.filter_cache import get_filter_cache
 from chat_app.services.tools.validation import ForecastQueryParams
+from chat_app.utils.llm_logger import get_llm_logger, get_correlation_id
 
 logger = logging.getLogger(__name__)
+llm_logger = get_llm_logger()
 
 
 class ConfidenceLevel(str, Enum):
@@ -254,6 +257,9 @@ class FilterValidator:
         Returns:
             Dictionary mapping filter names to validation results
         """
+        correlation_id = get_correlation_id()
+        start_time = time.time()
+
         # Get filter options for the month/year
         filter_options = await self.get_filter_options(params.month, params.year)
 
@@ -348,10 +354,30 @@ class FilterValidator:
             1 for vals in results.values()
             for val in vals if not val.is_valid
         )
+        auto_corrected = sum(
+            1 for vals in results.values()
+            for val in vals if val.confidence_level == ConfidenceLevel.HIGH and val.corrected_value
+        )
+        needs_confirmation = sum(
+            1 for vals in results.values()
+            for val in vals if val.confidence_level == ConfidenceLevel.MEDIUM
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
 
         logger.info(
             f"[Filter Validator] Validated {total_validated} values, "
             f"{failed} failed"
+        )
+
+        # Log validation summary
+        llm_logger.log_validation_summary(
+            correlation_id=correlation_id,
+            total_validated=total_validated,
+            auto_corrected=auto_corrected,
+            needs_confirmation=needs_confirmation,
+            rejected=failed,
+            duration_ms=duration_ms
         )
 
         return results
@@ -413,9 +439,20 @@ class CombinationDiagnostic:
         Returns:
             CombinationDiagnosticResult with diagnosis
         """
+        correlation_id = get_correlation_id()
+        start_time = time.time()
+
         logger.info(
             f"[Combination Diagnostic] Starting diagnosis for "
             f"{calendar.month_name[params.month]} {params.year}"
+        )
+
+        # Log tool execution start
+        llm_logger.log_tool_execution(
+            correlation_id=correlation_id,
+            tool_name='CombinationDiagnostic.diagnose',
+            parameters={'month': params.month, 'year': params.year},
+            status='started'
         )
 
         # Step 1: Check if data exists for this month/year
@@ -486,6 +523,33 @@ class CombinationDiagnostic:
             problematic_filters,
             working_combinations,
             total_available
+        )
+
+        duration_ms = (time.time() - start_time) * 1000
+
+        # Log diagnosis result
+        llm_logger.log_combination_diagnostic(
+            correlation_id=correlation_id,
+            is_data_issue=False,
+            is_combination_issue=True,
+            problematic_filters=problematic_filters,
+            total_records_available=total_available,
+            working_combinations=working_combinations,
+            duration_ms=duration_ms
+        )
+
+        # Log tool execution complete
+        llm_logger.log_tool_execution(
+            correlation_id=correlation_id,
+            tool_name='CombinationDiagnostic.diagnose',
+            parameters={'month': params.month, 'year': params.year},
+            result_summary={
+                'is_combination_issue': True,
+                'problematic_filters': problematic_filters,
+                'total_available': total_available
+            },
+            duration_ms=duration_ms,
+            status='success'
         )
 
         return CombinationDiagnosticResult(

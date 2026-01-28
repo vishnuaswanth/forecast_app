@@ -260,6 +260,19 @@ LLM_CONFIG = {
     'use_langchain': True,
 }
 
+# =============================================================================
+# LLM WORKFLOW LOGGING CONFIGURATION
+# =============================================================================
+LLM_LOGGING_CONFIG = {
+    'enabled': True,
+    'log_level': 'DEBUG' if DEBUG else 'INFO',
+    'log_full_prompts': DEBUG,      # Full prompts only in dev
+    'log_full_responses': DEBUG,    # Full responses only in dev
+    'max_preview_length': 500,      # Truncate in production
+    'redact_api_keys': True,
+    'redact_user_pii': not DEBUG,
+}
+
 
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
@@ -285,6 +298,19 @@ def get_log_file_name(file_number):
     os.makedirs(date_directory, exist_ok=True)
 
     return os.path.join(date_directory, f"log{today_str}_{file_number}.log")
+
+
+# Function to generate LLM workflow log file name
+def get_llm_log_file_name():
+    today_str = datetime.now().strftime("%Y%m%d")
+    date = datetime.now().date()
+
+    date_directory = os.path.join(LOG_DIR, str(date))
+
+    # Ensure the date-specific log directory exists
+    os.makedirs(date_directory, exist_ok=True)
+
+    return os.path.join(date_directory, f"llm_workflow_{today_str}.log")
 
 # Setting the maximum size for log files
 MAX_LOG_SIZE = 5 * 1024 * 1024  # 5MB
@@ -328,6 +354,9 @@ LOGGING = {
             'format': '{levelname} {message}',
             'style': '{',
         },
+        'json': {
+            '()': 'chat_app.utils.llm_logger.LLMLogFormatter',
+        },
     },
     'handlers': {
         'console': {
@@ -344,12 +373,50 @@ LOGGING = {
             'encoding': 'utf-8',  # Fix Unicode encoding issues
             # 'backupCount': BACKUP_COUNT,
         },
+        'llm_file': {
+            'class': f'{__name__}.CustomRotatingFileHandler',
+            'level': 'DEBUG',
+            'formatter': 'json',
+            'filename': get_llm_log_file_name(),
+            'maxBytes': MAX_LOG_SIZE,
+            'encoding': 'utf-8',
+        },
     },
     'loggers': {
         'django': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': True,
+        },
+        'llm_workflow': {
+            'handlers': ['console', 'llm_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'llm_workflow.intent': {
+            'handlers': ['console', 'llm_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'llm_workflow.parameters': {
+            'handlers': ['console', 'llm_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'llm_workflow.validation': {
+            'handlers': ['console', 'llm_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'llm_workflow.query': {
+            'handlers': ['console', 'llm_file'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+        'llm_workflow.error': {
+            'handlers': ['console', 'llm_file'],
+            'level': 'DEBUG',
+            'propagate': False,
         },
     },
 }

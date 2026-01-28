@@ -4,6 +4,7 @@ Handles WebSocket connections, message routing, and chat orchestration.
 """
 import json
 import logging
+import time
 from typing import Optional, Dict, Any, Union
 from uuid import UUID
 from datetime import datetime, date
@@ -14,8 +15,10 @@ from django.contrib.auth.models import AbstractUser
 
 from chat_app.models import ChatConversation, ChatMessage
 from chat_app.services.chat_service import ChatService
+from chat_app.utils.llm_logger import get_llm_logger, create_correlation_id, CorrelationContext
 
 logger = logging.getLogger(__name__)
+llm_logger = get_llm_logger()
 
 
 class SafeJSONEncoder(json.JSONEncoder):
@@ -82,6 +85,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         logger.info(f"User {self.user.portal_id} connected to chat (conversation: {self.conversation_id})")
 
+        # Log WebSocket connection
+        llm_logger.log_websocket_connect(
+            user_id=self.user.portal_id,
+            conversation_id=str(self.conversation_id)
+        )
+
         # Send welcome message
         await self.send_json({
             'type': 'system',
@@ -95,6 +104,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         if hasattr(self, 'user') and self.user and hasattr(self.user, 'portal_id'):
             logger.info(f"User {self.user.portal_id} disconnected from chat (code: {close_code})")
+
+            # Log WebSocket disconnection
+            llm_logger.log_websocket_disconnect(
+                user_id=self.user.portal_id,
+                conversation_id=str(self.conversation_id) if self.conversation_id else None,
+                close_code=close_code
+            )
 
     async def receive(self, text_data: str) -> None:
         """
@@ -142,18 +158,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not self.chat_service or not self.conversation_id:
             await self.send_error("Chat service not initialized")
             return
-            
+
         user_text = data.get('message', '').strip()
 
         if not user_text:
             await self.send_error("Empty message")
             return
 
+        # Create correlation ID for this message
+        correlation_id = create_correlation_id(str(self.conversation_id))
+        user_id = self.user.portal_id if hasattr(self.user, 'portal_id') else str(self.user.id)
+        start_time = time.time()
+
+        # Log message processing start
+        llm_logger.log_message_processing_start(
+            correlation_id=correlation_id,
+            conversation_id=str(self.conversation_id),
+            user_id=user_id,
+            message_type='user_message'
+        )
+
         # Save user message to database
         try:
             message_id = await self.save_message('user', user_text)
         except Exception as e:
             logger.error(f"Failed to save user message: {str(e)}")
+            llm_logger.log_error(
+                correlation_id=correlation_id,
+                error=e,
+                stage='save_user_message'
+            )
             await self.send_error("Failed to save message")
             return
 
@@ -172,6 +206,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         except Exception as e:
             logger.error(f"Failed to process message through chat service: {str(e)}")
+            total_duration_ms = (time.time() - start_time) * 1000
+            llm_logger.log_error(
+                correlation_id=correlation_id,
+                error=e,
+                stage='process_message',
+                context={'duration_ms': total_duration_ms}
+            )
             await self.send_error("Failed to process message")
             return
 
@@ -199,14 +240,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not self.chat_service or not self.conversation_id:
             await self.send_error("Chat service not initialized")
             return
-            
+
         category = data.get('category')
         if not category:
             await self.send_error("Category is required")
             return
-            
+
         parameters = data.get('parameters', {})
         message_id = data.get('message_id')
+
+        # Create correlation ID for this action
+        correlation_id = create_correlation_id(str(self.conversation_id), str(message_id) if message_id else None)
+        user_id = self.user.portal_id if hasattr(self.user, 'portal_id') else str(self.user.id)
+        start_time = time.time()
+
+        # Log tool execution start
+        llm_logger.log_tool_execution(
+            correlation_id=correlation_id,
+            tool_name=f'confirm_category_{category}',
+            parameters=parameters,
+            status='started'
+        )
 
         # Send typing indicator
         await self.send_json({
@@ -216,16 +270,44 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         # Execute the confirmed action (async method, call directly)
         try:
-            result = await self.chat_service.execute_confirmed_action(
-                category=category,
-                parameters=parameters,
-                conversation_id=self.conversation_id,
-                user=self.user
-            )
+            async with CorrelationContext(
+                correlation_id=correlation_id,
+                conversation_id=str(self.conversation_id),
+                user_id=user_id
+            ):
+                result = await self.chat_service.execute_confirmed_action(
+                    category=category,
+                    parameters=parameters,
+                    conversation_id=self.conversation_id,
+                    user=self.user
+                )
         except Exception as e:
             logger.error(f"Failed to execute confirmed action: {str(e)}")
+            duration_ms = (time.time() - start_time) * 1000
+            llm_logger.log_tool_execution(
+                correlation_id=correlation_id,
+                tool_name=f'confirm_category_{category}',
+                parameters=parameters,
+                status='failed',
+                error=str(e),
+                duration_ms=duration_ms
+            )
             await self.send_error("Failed to execute action")
             return
+
+        # Log tool execution complete
+        duration_ms = (time.time() - start_time) * 1000
+        llm_logger.log_tool_execution(
+            correlation_id=correlation_id,
+            tool_name=f'confirm_category_{category}',
+            parameters=parameters,
+            result_summary={
+                'success': result.get('success', False),
+                'record_count': result.get('metadata', {}).get('record_count')
+            },
+            duration_ms=duration_ms,
+            status='success' if result.get('success', False) else 'failed'
+        )
 
         # Stop typing indicator
         await self.send_json({

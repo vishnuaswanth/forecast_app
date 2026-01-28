@@ -3,11 +3,19 @@ Chat Service - Orchestrates chat interactions between user, LLM, and tools.
 Handles message processing, tool execution, and UI generation.
 """
 import logging
+import time
 from typing import Dict, Any
 from django.conf import settings
 from django.template.loader import render_to_string
 
+from chat_app.utils.llm_logger import (
+    get_llm_logger,
+    create_correlation_id,
+    CorrelationContext
+)
+
 logger = logging.getLogger(__name__)
+llm_logger = get_llm_logger()
 
 
 def get_llm_service():
@@ -52,78 +60,142 @@ class ChatService:
         Returns:
             Dictionary with category, confidence, and UI component
         """
-        try:
-            # STEP 1: Sanitize user input
-            from chat_app.utils.input_sanitizer import get_sanitizer
-            sanitizer = get_sanitizer()
+        # Create correlation ID for tracing this request
+        correlation_id = create_correlation_id(conversation_id)
+        user_id = getattr(user, 'portal_id', str(user.id)) if user else 'anonymous'
+        start_time = time.time()
 
-            sanitized_text, sanitization_metadata = sanitizer.sanitize(user_text)
+        # Create correlation context for this request
+        async with CorrelationContext(
+            correlation_id=correlation_id,
+            conversation_id=conversation_id,
+            user_id=user_id
+        ):
+            # Log message processing start
+            llm_logger.log_message_processing_start(
+                correlation_id=correlation_id,
+                conversation_id=conversation_id,
+                user_id=user_id,
+                message_type='user_message'
+            )
 
-            # Log sanitization results
-            if sanitization_metadata['threats_detected']:
-                logger.warning(
-                    f"[Chat Service] Security threats detected in user input: "
-                    f"{', '.join(sanitization_metadata['threats_detected'])}"
+            try:
+                # STEP 1: Sanitize user input
+                from chat_app.utils.input_sanitizer import get_sanitizer
+                sanitizer = get_sanitizer()
+
+                sanitized_text, sanitization_metadata = sanitizer.sanitize(user_text)
+
+                # Log user input with sanitization details
+                llm_logger.log_user_input(
+                    correlation_id=correlation_id,
+                    raw_input=user_text,
+                    sanitized_input=sanitized_text,
+                    context={'sanitization': sanitization_metadata},
+                    conversation_id=conversation_id,
+                    user_id=user_id
                 )
 
-            if sanitization_metadata['truncated']:
-                logger.info(
-                    f"[Chat Service] Input truncated from "
-                    f"{sanitization_metadata['original_length']} to "
-                    f"{sanitization_metadata['sanitized_length']} characters"
+                # Log sanitization results
+                if sanitization_metadata['threats_detected']:
+                    logger.warning(
+                        f"[Chat Service] Security threats detected in user input: "
+                        f"{', '.join(sanitization_metadata['threats_detected'])}"
+                    )
+
+                if sanitization_metadata['truncated']:
+                    logger.info(
+                        f"[Chat Service] Input truncated from "
+                        f"{sanitization_metadata['original_length']} to "
+                        f"{sanitization_metadata['sanitized_length']} characters"
+                    )
+
+                # If sanitized text is empty, return error
+                if not sanitized_text:
+                    logger.warning("[Chat Service] Sanitized text is empty")
+
+                    llm_logger.log_error(
+                        correlation_id=correlation_id,
+                        error='Sanitized text is empty',
+                        stage='input_sanitization',
+                        context={'sanitization': sanitization_metadata}
+                    )
+
+                    return {
+                        'category': 'error',
+                        'confidence': 0.0,
+                        'parameters': {},
+                        'ui_component': self._build_error_ui(
+                            "Your message could not be processed. Please try again with a different query."
+                        ),
+                        'metadata': {'error': 'empty_after_sanitization', 'correlation_id': correlation_id}
+                    }
+
+                # STEP 2: Get recent message history for context
+                message_history = await self._get_message_history(conversation_id, limit=10)
+
+                # STEP 3: Categorize user intent with LLM (with sanitized input)
+                result = await self.llm_service.categorize_intent(
+                    user_text=sanitized_text,  # Sanitized input
+                    conversation_id=conversation_id,
+                    message_history=message_history
                 )
 
-            # If sanitized text is empty, return error
-            if not sanitized_text:
-                logger.warning("[Chat Service] Sanitized text is empty")
+                category = result.get('category')
+                confidence = result.get('confidence')
+                parameters = result.get('parameters', {})
+                ui_component = result.get('ui_component')  # LLM service now generates UI
+
+                logger.info(f"[Chat Service] Categorized as '{category}' with {confidence:.2f} confidence")
+
+                # Add sanitization metadata to result
+                result_metadata = result.get('metadata', {})
+                result_metadata['sanitization'] = sanitization_metadata
+                result_metadata['correlation_id'] = correlation_id
+
+                # Log message processing complete
+                total_duration_ms = (time.time() - start_time) * 1000
+                llm_logger.log_message_processing_complete(
+                    correlation_id=correlation_id,
+                    success=True,
+                    total_duration_ms=total_duration_ms,
+                    category=category
+                )
+
+                return {
+                    'category': category,
+                    'confidence': confidence,
+                    'parameters': parameters,
+                    'ui_component': ui_component,
+                    'metadata': result_metadata
+                }
+
+            except Exception as e:
+                logger.error(f"[Chat Service] Error processing message: {str(e)}", exc_info=True)
+
+                # Log error
+                total_duration_ms = (time.time() - start_time) * 1000
+                llm_logger.log_error(
+                    correlation_id=correlation_id,
+                    error=e,
+                    stage='process_message',
+                    context={'duration_ms': total_duration_ms}
+                )
+
+                llm_logger.log_message_processing_complete(
+                    correlation_id=correlation_id,
+                    success=False,
+                    total_duration_ms=total_duration_ms,
+                    category='error'
+                )
+
                 return {
                     'category': 'error',
                     'confidence': 0.0,
                     'parameters': {},
-                    'ui_component': self._build_error_ui(
-                        "Your message could not be processed. Please try again with a different query."
-                    ),
-                    'metadata': {'error': 'empty_after_sanitization'}
+                    'ui_component': self._build_error_ui(str(e)),
+                    'metadata': {'error': str(e), 'correlation_id': correlation_id}
                 }
-
-            # STEP 2: Get recent message history for context
-            message_history = await self._get_message_history(conversation_id, limit=10)
-
-            # STEP 3: Categorize user intent with LLM (with sanitized input)
-            result = await self.llm_service.categorize_intent(
-                user_text=sanitized_text,  # ← Sanitized input
-                conversation_id=conversation_id,
-                message_history=message_history
-            )
-
-            category = result.get('category')
-            confidence = result.get('confidence')
-            parameters = result.get('parameters', {})
-            ui_component = result.get('ui_component')  # LLM service now generates UI
-
-            logger.info(f"[Chat Service] Categorized as '{category}' with {confidence:.2f} confidence")
-
-            # Add sanitization metadata to result
-            result_metadata = result.get('metadata', {})
-            result_metadata['sanitization'] = sanitization_metadata
-
-            return {
-                'category': category,
-                'confidence': confidence,
-                'parameters': parameters,
-                'ui_component': ui_component,
-                'metadata': result_metadata
-            }
-
-        except Exception as e:
-            logger.error(f"[Chat Service] Error processing message: {str(e)}", exc_info=True)
-            return {
-                'category': 'error',
-                'confidence': 0.0,
-                'parameters': {},
-                'ui_component': self._build_error_ui(str(e)),
-                'metadata': {'error': str(e)}
-            }
 
     async def _get_message_history(self, conversation_id: str, limit: int = 10) -> list:
         """

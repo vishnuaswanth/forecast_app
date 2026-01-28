@@ -408,26 +408,238 @@
     function attachViewFullDataListeners() {
         const viewFullBtns = elements.messagesArea.querySelectorAll('.chat-view-full-btn');
         viewFullBtns.forEach(btn => {
-            btn.addEventListener('click', handleViewFullData);
+            // Only attach if not already attached
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', handleViewFullData);
+            }
         });
     }
 
     function handleViewFullData(event) {
         const btn = event.currentTarget;
-        const fullDataJson = btn.getAttribute('data-full-data');
+        const container = btn.closest('.forecast-paginated-table');
+
+        if (container) {
+            // New paginated forecast table
+            openForecastModal(container);
+        } else {
+            // Legacy handling (fallback)
+            const fullDataJson = btn.getAttribute('data-full-data');
+            try {
+                const data = JSON.parse(fullDataJson);
+                openModal('Full Data View', data);
+            } catch (error) {
+                console.error('[Chat] Error parsing full data:', error);
+            }
+        }
+    }
+
+    function openForecastModal(sourceContainer) {
+        const recordsJson = sourceContainer.getAttribute('data-forecast-records');
+        const monthsJson = sourceContainer.getAttribute('data-forecast-months');
+        const totalRecords = parseInt(sourceContainer.getAttribute('data-total-records'), 10);
 
         try {
-            const data = JSON.parse(fullDataJson);
-            openModal('Full Data View', data);
+            const records = JSON.parse(recordsJson);
+            const months = JSON.parse(monthsJson);
+
+            elements.modalTitle.textContent = `Forecast Data (${totalRecords} Records)`;
+
+            // Build paginated table in modal
+            const tableHTML = buildPaginatedForecastTable(records, months);
+            elements.modalBody.innerHTML = tableHTML;
+
+            // Initialize pagination
+            initForecastPagination(elements.modalBody, records, months);
+
+            // Show modal
+            elements.modalOverlay.style.display = 'flex';
         } catch (error) {
-            console.error('[Chat] Error parsing full data:', error);
+            console.error('[Chat] Error parsing forecast data:', error);
+        }
+    }
+
+    function buildPaginatedForecastTable(records, months) {
+        const totalRecords = records.length;
+
+        let html = `
+        <div class="forecast-modal-container"
+             data-current-page="1"
+             data-page-size="25"
+             data-total-records="${totalRecords}">
+            <div class="forecast-table-wrapper">
+                <table class="table table-sm table-bordered table-hover forecast-table">
+                    ${buildForecastHeaders(months)}
+                    <tbody class="forecast-table-body">
+                    </tbody>
+                </table>
+            </div>
+            <div class="forecast-pagination">
+                <div class="pagination-info">
+                    <span class="showing-info">Showing 1-25 of ${totalRecords} records</span>
+                </div>
+                <div class="pagination-controls">
+                    <button class="btn btn-sm btn-outline-secondary pagination-prev" disabled>
+                        &laquo; Prev
+                    </button>
+                    <span class="pagination-page-info">Page 1 of ${Math.ceil(totalRecords / 25)}</span>
+                    <button class="btn btn-sm btn-outline-secondary pagination-next" ${totalRecords <= 25 ? 'disabled' : ''}>
+                        Next &raquo;
+                    </button>
+                </div>
+            </div>
+        </div>
+        `;
+
+        return html;
+    }
+
+    function buildForecastHeaders(months) {
+        let headerHTML = `
+            <thead class="table-light forecast-table-header">
+                <tr>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-lob">Main LOB</th>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-state">State</th>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-casetype">Case Type</th>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-cph">Target CPH</th>
+        `;
+
+        // Month headers (colspan=5 for each month)
+        months.forEach(month => {
+            headerHTML += `<th colspan="5" class="text-center month-header">${month}</th>`;
+        });
+
+        headerHTML += '</tr><tr>';
+
+        // Sub-headers for each month
+        months.forEach(() => {
+            headerHTML += `
+                <th class="text-center sub-header">Forecast</th>
+                <th class="text-center sub-header">FTE Req</th>
+                <th class="text-center sub-header">FTE Avail</th>
+                <th class="text-center sub-header">Capacity</th>
+                <th class="text-center sub-header">Gap</th>
+            `;
+        });
+
+        headerHTML += '</tr></thead>';
+        return headerHTML;
+    }
+
+    function buildForecastRow(record, months) {
+        let rowHTML = `
+            <tr>
+                <td class="forecast-fixed-col forecast-col-lob">${record.main_lob || 'N/A'}</td>
+                <td class="forecast-fixed-col forecast-col-state">${record.state || 'N/A'}</td>
+                <td class="forecast-fixed-col forecast-col-casetype">${record.case_type || 'N/A'}</td>
+                <td class="text-end forecast-fixed-col forecast-col-cph">${(record.target_cph || 0).toFixed(1)}</td>
+        `;
+
+        months.forEach(month => {
+            const monthData = (record.months || {})[month] || {};
+            const forecast = monthData.forecast || 0;
+            const fteReq = monthData.fte_required || 0;
+            const fteAvail = monthData.fte_available || 0;
+            const capacity = monthData.capacity || 0;
+            const gap = monthData.gap || 0;
+
+            // Determine gap class
+            let gapClass = 'text-muted';
+            if (gap < 0) gapClass = 'gap-negative';
+            else if (gap > 0) gapClass = 'gap-positive';
+
+            rowHTML += `
+                <td class="text-end">${forecast.toLocaleString()}</td>
+                <td class="text-end">${fteReq}</td>
+                <td class="text-end">${fteAvail}</td>
+                <td class="text-end">${capacity.toLocaleString()}</td>
+                <td class="text-end ${gapClass}"><strong>${gap.toLocaleString()}</strong></td>
+            `;
+        });
+
+        rowHTML += '</tr>';
+        return rowHTML;
+    }
+
+    function initForecastPagination(modalBody, records, months) {
+        const container = modalBody.querySelector('.forecast-modal-container');
+        if (!container) return;
+
+        // Store data on container for pagination
+        container._forecastRecords = records;
+        container._forecastMonths = months;
+
+        // Render first page
+        renderForecastPage(container, 1);
+
+        // Attach pagination listeners
+        const prevBtn = container.querySelector('.pagination-prev');
+        const nextBtn = container.querySelector('.pagination-next');
+
+        prevBtn.addEventListener('click', () => {
+            const currentPage = parseInt(container.getAttribute('data-current-page'), 10);
+            if (currentPage > 1) {
+                renderForecastPage(container, currentPage - 1);
+            }
+        });
+
+        nextBtn.addEventListener('click', () => {
+            const currentPage = parseInt(container.getAttribute('data-current-page'), 10);
+            const pageSize = parseInt(container.getAttribute('data-page-size'), 10);
+            const totalRecords = parseInt(container.getAttribute('data-total-records'), 10);
+            const totalPages = Math.ceil(totalRecords / pageSize);
+
+            if (currentPage < totalPages) {
+                renderForecastPage(container, currentPage + 1);
+            }
+        });
+    }
+
+    function renderForecastPage(container, page) {
+        const records = container._forecastRecords;
+        const months = container._forecastMonths;
+        const pageSize = parseInt(container.getAttribute('data-page-size'), 10);
+        const totalRecords = parseInt(container.getAttribute('data-total-records'), 10);
+        const totalPages = Math.ceil(totalRecords / pageSize);
+
+        // Calculate slice indices
+        const startIdx = (page - 1) * pageSize;
+        const endIdx = Math.min(startIdx + pageSize, totalRecords);
+        const pageRecords = records.slice(startIdx, endIdx);
+
+        // Update current page
+        container.setAttribute('data-current-page', page);
+
+        // Render rows
+        const tbody = container.querySelector('.forecast-table-body');
+        tbody.innerHTML = pageRecords.map(record => buildForecastRow(record, months)).join('');
+
+        // Update pagination info
+        const showingInfo = container.querySelector('.showing-info');
+        showingInfo.textContent = `Showing ${startIdx + 1}-${endIdx} of ${totalRecords} records`;
+
+        const pageInfo = container.querySelector('.pagination-page-info');
+        pageInfo.textContent = `Page ${page} of ${totalPages}`;
+
+        // Update button states
+        const prevBtn = container.querySelector('.pagination-prev');
+        const nextBtn = container.querySelector('.pagination-next');
+
+        prevBtn.disabled = page === 1;
+        nextBtn.disabled = page === totalPages;
+
+        // Scroll table to top
+        const tableWrapper = container.querySelector('.forecast-table-wrapper');
+        if (tableWrapper) {
+            tableWrapper.scrollTop = 0;
         }
     }
 
     function openModal(title, data) {
         elements.modalTitle.textContent = title;
 
-        // Build full table
+        // Build full table (legacy)
         const tableHTML = buildFullDataTable(data);
         elements.modalBody.innerHTML = tableHTML;
 

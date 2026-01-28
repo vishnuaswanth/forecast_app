@@ -123,76 +123,68 @@ def generate_forecast_table_html(
     max_preview: int = 5
 ) -> str:
     """
-    Generate responsive, scrollable HTML table for forecast data.
+    Generate responsive, scrollable HTML table for forecast data with pagination support.
 
     Format:
-    - Headers: Main LOB, State, Case Type, Target CPH, Month columns
-    - Sub-headers for months: Forecast, FTE Req, FTE Avail, Capacity, Gap
+    - Two-tier headers: Fixed columns (Main LOB, State, Case Type, Target CPH) +
+      Dynamic month columns with sub-headers (Forecast, FTE Req, FTE Avail, Capacity, Gap)
     - Color-coded gaps: Red (negative), Green (positive)
-    - Scrollable horizontally
+    - Scrollable horizontally and vertically
+    - Client-side pagination for full data view
 
     Args:
         records: List of forecast records
         months: Dictionary mapping Month1, Month2, etc to Apr-25, May-25, etc
-        show_full: Whether to show all records or preview
+        show_full: Whether to show all records or preview (preview = max_preview rows)
         max_preview: Maximum records to show in preview mode
 
     Returns:
-        HTML string for table
+        HTML string for table with embedded data for JS pagination
     """
-    # Determine which records to show
-    display_records = records if show_full else records[:max_preview]
     total_records = len(records)
-
-    # Get month labels (Month1, Month2, etc)
     month_labels = list(months.values())  # ["Apr-25", "May-25", ...]
 
     logger.info(
-        f"[UI Tools] Generating table with {len(display_records)} records "
-        f"(total: {total_records}, months: {len(month_labels)})"
+        f"[UI Tools] Generating forecast table (total: {total_records}, months: {len(month_labels)})"
     )
 
-    html = f'''
-    <div class="forecast-table-container" style="overflow-x: auto; max-width: 100%;">
-        <table class="table table-sm table-bordered table-hover">
-            <thead class="table-light">
+    # Build the two-tier header HTML
+    def build_table_header():
+        header_html = '''
+            <thead class="table-light forecast-table-header">
                 <tr>
-                    <th rowspan="2" class="align-middle">Main LOB</th>
-                    <th rowspan="2" class="align-middle">State</th>
-                    <th rowspan="2" class="align-middle">Case Type</th>
-                    <th rowspan="2" class="align-middle">Target CPH</th>
-    '''
-
-    # Month headers (colspan=5 for each month)
-    for month_label in month_labels:
-        html += f'<th colspan="5" class="text-center">{month_label}</th>'
-
-    html += '</tr><tr>'
-
-    # Sub-headers for each month
-    for _ in month_labels:
-        html += '''
-            <th class="text-center" style="font-size: 0.85em;">Forecast</th>
-            <th class="text-center" style="font-size: 0.85em;">FTE Req</th>
-            <th class="text-center" style="font-size: 0.85em;">FTE Avail</th>
-            <th class="text-center" style="font-size: 0.85em;">Capacity</th>
-            <th class="text-center" style="font-size: 0.85em;">Gap</th>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-lob">Main LOB</th>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-state">State</th>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-casetype">Case Type</th>
+                    <th rowspan="2" class="align-middle forecast-fixed-col forecast-col-cph">Target CPH</th>
         '''
+        # Month headers (colspan=5 for each month)
+        for month_label in month_labels:
+            header_html += f'<th colspan="5" class="text-center month-header">{month_label}</th>'
 
-    html += '''
-            </tr>
-        </thead>
-        <tbody>
-    '''
+        header_html += '</tr><tr>'
 
-    # Data rows
-    for record in display_records:
-        html += f'''
+        # Sub-headers for each month
+        for _ in month_labels:
+            header_html += '''
+                <th class="text-center sub-header">Forecast</th>
+                <th class="text-center sub-header">FTE Req</th>
+                <th class="text-center sub-header">FTE Avail</th>
+                <th class="text-center sub-header">Capacity</th>
+                <th class="text-center sub-header">Gap</th>
+            '''
+
+        header_html += '</tr></thead>'
+        return header_html
+
+    # Build a single data row
+    def build_data_row(record):
+        row_html = f'''
             <tr>
-                <td>{record.get('main_lob', 'N/A')}</td>
-                <td>{record.get('state', 'N/A')}</td>
-                <td>{record.get('case_type', 'N/A')}</td>
-                <td class="text-end">{record.get('target_cph', 0):.1f}</td>
+                <td class="forecast-fixed-col forecast-col-lob">{record.get('main_lob', 'N/A')}</td>
+                <td class="forecast-fixed-col forecast-col-state">{record.get('state', 'N/A')}</td>
+                <td class="forecast-fixed-col forecast-col-casetype">{record.get('case_type', 'N/A')}</td>
+                <td class="text-end forecast-fixed-col forecast-col-cph">{record.get('target_cph', 0):.1f}</td>
         '''
 
         # Month data
@@ -205,15 +197,15 @@ def generate_forecast_table_html(
             capacity = month_data.get('capacity', 0)
             gap = month_data.get('gap', 0)
 
-            # Determine gap color
+            # Determine gap color class
             if gap < 0:
-                gap_class = "text-danger"
+                gap_class = "gap-negative"
             elif gap > 0:
-                gap_class = "text-success"
+                gap_class = "gap-positive"
             else:
                 gap_class = "text-muted"
 
-            html += f'''
+            row_html += f'''
                 <td class="text-end">{forecast:,.0f}</td>
                 <td class="text-end">{fte_req}</td>
                 <td class="text-end">{fte_avail}</td>
@@ -221,27 +213,50 @@ def generate_forecast_table_html(
                 <td class="text-end {gap_class}"><strong>{gap:,.0f}</strong></td>
             '''
 
-        html += '</tr>'
+        row_html += '</tr>'
+        return row_html
 
-    html += '''
-        </tbody>
-    </table>
-    </div>
+    # Determine preview records
+    preview_records = records[:max_preview]
+
+    # JSON encode data for client-side pagination
+    records_json = json.dumps(records).replace("'", "&#39;")
+    months_json = json.dumps(month_labels).replace("'", "&#39;")
+
+    # Build the preview table (always shown inline)
+    html = f'''
+    <div class="forecast-paginated-table"
+         data-forecast-records='{records_json}'
+         data-forecast-months='{months_json}'
+         data-total-records="{total_records}">
+        <div class="forecast-table-wrapper">
+            <table class="table table-sm table-bordered table-hover forecast-table">
+                {build_table_header()}
+                <tbody>
     '''
 
-    # Add "View Full Data" button if showing preview
-    if not show_full and total_records > max_preview:
-        # JSON encode the full records for modal
-        full_data_json = json.dumps(records)
+    # Add preview rows
+    for record in preview_records:
+        html += build_data_row(record)
+
+    html += '''
+                </tbody>
+            </table>
+        </div>
+    '''
+
+    # Add "View Full Data" button if more records than preview
+    if total_records > max_preview:
         html += f'''
         <div class="mt-2 text-center">
             <button class="btn btn-sm btn-primary chat-view-full-btn"
-                    data-full-data='{full_data_json}'
                     data-record-count="{total_records}">
                 View All {total_records} Records
             </button>
         </div>
         '''
+
+    html += '</div>'
 
     return html
 

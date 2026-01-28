@@ -4,6 +4,7 @@ Real LLM-powered chat service using LangChain + OpenAI for intent classification
 """
 import logging
 import calendar
+import time
 from typing import Dict, List, Optional
 from datetime import datetime
 
@@ -36,8 +37,10 @@ from chat_app.services.tools.validation import (
 from chat_app.utils.context_manager import ConversationContextManager
 from chat_app.utils.chunking import ForecastDataChunker
 from chat_app.prompts.system_prompts import CLASSIFICATION_SYSTEM_PROMPT
+from chat_app.utils.llm_logger import get_llm_logger, get_correlation_id, create_correlation_id
 
 logger = logging.getLogger(__name__)
+llm_logger = get_llm_logger()
 
 
 class LLMService:
@@ -64,12 +67,17 @@ class LLMService:
         # Get LLM configuration from settings
         llm_config = getattr(settings, 'LLM_CONFIG', {})
 
+        # Store config for logging
+        self.model_name = llm_config.get('model', 'gpt-4o-mini')
+        self.temperature = llm_config.get('temperature', 0.1)
+        self.max_tokens = llm_config.get('max_tokens', 4096)
+
         # Initialize LLM
         self.llm = ChatOpenAI(
-            model=llm_config.get('model', 'gpt-4o-mini'),
-            temperature=llm_config.get('temperature', 0.1),
+            model=self.model_name,
+            temperature=self.temperature,
             openai_api_key=llm_config.get('api_key'),
-            max_tokens=llm_config.get('max_tokens', 4096),
+            max_tokens=self.max_tokens,
             http_client=self.http_client,
             http_async_client=self.http_async_client
         )
@@ -83,7 +91,18 @@ class LLMService:
         # Data chunker
         self.chunker = ForecastDataChunker()
 
-        logger.info(f"[LLM Service] Initialized with model: {llm_config.get('model', 'gpt-4o-mini')}")
+        logger.info(f"[LLM Service] Initialized with model: {self.model_name}")
+
+        # Log service initialization
+        llm_logger._log(
+            logging.INFO,
+            'llm_service_initialized',
+            {
+                'model': self.model_name,
+                'temperature': self.temperature,
+                'max_tokens': self.max_tokens,
+            }
+        )
 
     async def categorize_intent(
         self,
@@ -107,7 +126,19 @@ class LLMService:
                 - ui_component: HTML for UI
                 - metadata: Additional info
         """
+        # Get or create correlation ID
+        correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
+        start_time = time.time()
+
         logger.info(f"[LLM Service] Categorizing intent for: '{user_text[:100]}...'")
+
+        # Log user input received
+        llm_logger.log_user_input(
+            correlation_id=correlation_id,
+            raw_input=user_text,
+            sanitized_input=user_text,  # Already sanitized by ChatService
+            conversation_id=conversation_id
+        )
 
         # Get conversation context
         context = await self.context_manager.get_context(conversation_id)
@@ -142,15 +173,55 @@ class LLMService:
         # Add formatted user query (compact, clear, preserves all parameters)
         messages.append(HumanMessage(content=formatted_prompt))
 
+        # Log LLM request
+        llm_logger.log_llm_request(
+            correlation_id=correlation_id,
+            model=self.model_name,
+            messages=[{'role': type(m).__name__, 'content': m.content} for m in messages],
+            config={'temperature': self.temperature, 'max_tokens': self.max_tokens},
+            request_type='intent_classification'
+        )
+
         # Classify with structured output
+        llm_start_time = time.time()
         try:
             classification: IntentClassification = await self.structured_llm.ainvoke(messages)
+            llm_duration_ms = (time.time() - llm_start_time) * 1000
+
             logger.info(
                 f"[LLM Service] Classification: {classification.category.value} "
                 f"(confidence: {classification.confidence:.2f})"
             )
+
+            # Log LLM response
+            llm_logger.log_llm_response(
+                correlation_id=correlation_id,
+                response={'category': classification.category.value, 'confidence': classification.confidence},
+                duration_ms=llm_duration_ms,
+                model=self.model_name
+            )
+
+            # Log intent classification
+            llm_logger.log_intent_classification(
+                correlation_id=correlation_id,
+                category=classification.category.value,
+                confidence=classification.confidence,
+                reasoning=classification.reasoning,
+                duration_ms=llm_duration_ms
+            )
+
         except Exception as e:
+            llm_duration_ms = (time.time() - llm_start_time) * 1000
             logger.error(f"[LLM Service] Classification error: {str(e)}", exc_info=True)
+
+            # Log error
+            llm_logger.log_error(
+                correlation_id=correlation_id,
+                error=e,
+                stage='intent_classification',
+                context={'duration_ms': llm_duration_ms}
+            )
+
             # Fallback to unknown category
             classification = IntentClassification(
                 category=IntentCategory.UNKNOWN,
@@ -170,6 +241,14 @@ class LLMService:
         # Build confirmation UI
         ui_component = generate_confirmation_ui(classification.category.value, params)
 
+        total_duration_ms = (time.time() - start_time) * 1000
+        llm_logger.log_message_processing_complete(
+            correlation_id=correlation_id,
+            success=True,
+            total_duration_ms=total_duration_ms,
+            category=classification.category.value
+        )
+
         return {
             'category': classification.category.value,
             'confidence': classification.confidence,
@@ -178,7 +257,8 @@ class LLMService:
             'metadata': {
                 'reasoning': classification.reasoning,
                 'missing_params': classification.missing_parameters,
-                'context_used': context.model_dump(mode='json') if context else {}
+                'context_used': context.model_dump(mode='json') if context else {},
+                'correlation_id': correlation_id
             }
         }
 
@@ -199,6 +279,9 @@ class LLMService:
         Returns:
             Dictionary of extracted parameters
         """
+        correlation_id = get_correlation_id()
+        start_time = time.time()
+
         if classification.category == IntentCategory.GET_FORECAST_DATA:
             # Use structured output with ForecastQueryParams
             # Build compact context
@@ -232,15 +315,45 @@ Rules:
 
             try:
                 params = await param_llm.ainvoke([HumanMessage(content=extraction_prompt)])
+                duration_ms = (time.time() - start_time) * 1000
+
                 logger.info(f"[LLM Service] Extracted parameters: {params.dict()}")
+
+                # Log parameter extraction
+                llm_logger.log_parameter_extraction(
+                    correlation_id=correlation_id,
+                    params=params.dict(),
+                    source='llm',
+                    duration_ms=duration_ms
+                )
+
                 return params.dict()
             except Exception as e:
+                duration_ms = (time.time() - start_time) * 1000
                 logger.warning(f"[LLM Service] Parameter extraction failed: {str(e)}")
+
+                # Log error
+                llm_logger.log_error(
+                    correlation_id=correlation_id,
+                    error=e,
+                    stage='parameter_extraction',
+                    context={'duration_ms': duration_ms}
+                )
+
                 # Fallback to context defaults
-                return {
+                fallback_params = {
                     'month': context.current_forecast_month or datetime.now().month,
                     'year': context.current_forecast_year or datetime.now().year
                 }
+
+                llm_logger.log_parameter_extraction(
+                    correlation_id=correlation_id,
+                    params=fallback_params,
+                    source='context_fallback',
+                    duration_ms=duration_ms
+                )
+
+                return fallback_params
 
         return {}
 
@@ -390,7 +503,18 @@ Be specific about what's needed.
                 - ui_component: HTML for display
                 - metadata: Additional info (including validation_summary)
         """
+        correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
+        query_start_time = time.time()
+
         logger.info(f"[LLM Service] Executing forecast query with params: {parameters}")
+
+        # Log tool execution start
+        llm_logger.log_tool_execution(
+            correlation_id=correlation_id,
+            tool_name='execute_forecast_query',
+            parameters=parameters,
+            status='started'
+        )
 
         # Validate parameters
         try:
@@ -457,6 +581,7 @@ Be specific about what's needed.
         from chat_app.services.tools.ui_tools import generate_validation_confirmation_ui
 
         validator = FilterValidator()
+        validation_start_time = time.time()
 
         try:
             validation_results = await validator.validate_all(params)
@@ -466,9 +591,23 @@ Be specific about what's needed.
 
         # Process validation results
         validation_summary = FilterValidationSummary()
+        auto_corrected_count = 0
+        needs_confirmation_count = 0
+        rejected_count = 0
 
         for field_name, results in validation_results.items():
             for result in results:
+                # Log each validation result
+                llm_logger.log_validation(
+                    correlation_id=correlation_id,
+                    field=field_name,
+                    original_value=result.original_value,
+                    corrected_value=result.corrected_value,
+                    confidence=result.confidence,
+                    is_valid=result.is_valid,
+                    suggestions=result.suggestions
+                )
+
                 if result.confidence_level == ConfidenceLevel.HIGH:
                     # Auto-correct (>90% confidence)
                     if result.corrected_value:
@@ -480,6 +619,7 @@ Be specific about what's needed.
                         if field_list and result.original_value in field_list:
                             idx = field_list.index(result.original_value)
                             field_list[idx] = result.corrected_value
+                            auto_corrected_count += 1
                             logger.info(
                                 f"[LLM Service] Auto-corrected: "
                                 f"{result.original_value} → {result.corrected_value}"
@@ -490,12 +630,26 @@ Be specific about what's needed.
                     validation_summary.needs_confirmation.setdefault(field_name, []).append(
                         (result.original_value, result.corrected_value, result.confidence)
                     )
+                    needs_confirmation_count += 1
 
                 elif not result.is_valid:
                     # Rejected (<60% confidence)
                     validation_summary.rejected.setdefault(field_name, []).append(
                         (result.original_value, result.suggestions)
                     )
+                    rejected_count += 1
+
+        # Log validation summary
+        validation_duration_ms = (time.time() - validation_start_time) * 1000
+        total_validated = sum(len(v) for v in validation_results.values())
+        llm_logger.log_validation_summary(
+            correlation_id=correlation_id,
+            total_validated=total_validated,
+            auto_corrected=auto_corrected_count,
+            needs_confirmation=needs_confirmation_count,
+            rejected=rejected_count,
+            duration_ms=validation_duration_ms
+        )
 
         # If we have confirmations or rejections, return confirmation UI
         if validation_summary.has_issues():
@@ -514,15 +668,42 @@ Be specific about what's needed.
                 ),
                 'metadata': {
                     'validation_summary': validation_summary.dict(),
-                    'requires_confirmation': True
+                    'requires_confirmation': True,
+                    'correlation_id': correlation_id
                 }
             }
 
         # Fetch data using tool (with validation disabled since we already validated)
+        fetch_start_time = time.time()
         try:
             data = await fetch_forecast_data(params, enable_validation=False)
+            fetch_duration_ms = (time.time() - fetch_start_time) * 1000
+
+            # Log API call success
+            llm_logger.log_api_call(
+                correlation_id=correlation_id,
+                endpoint='/api/forecast/data',
+                method='GET',
+                params={'month': params.month, 'year': params.year},
+                response_status=200,
+                duration_ms=fetch_duration_ms
+            )
+
         except Exception as e:
+            fetch_duration_ms = (time.time() - fetch_start_time) * 1000
             logger.error(f"[LLM Service] API call failed: {str(e)}", exc_info=True)
+
+            # Log API call failure
+            llm_logger.log_api_call(
+                correlation_id=correlation_id,
+                endpoint='/api/forecast/data',
+                method='GET',
+                params={'month': params.month, 'year': params.year},
+                response_status=500,
+                duration_ms=fetch_duration_ms,
+                error=str(e)
+            )
+
             return {
                 'success': False,
                 'message': f"API error: {str(e)}",
@@ -548,14 +729,38 @@ Be specific about what's needed.
             from chat_app.services.tools.validation_tools import CombinationDiagnostic
 
             diagnostic = CombinationDiagnostic()
+            diagnosis_start_time = time.time()
 
             try:
                 diagnosis_result = await diagnostic.diagnose(params, data)
+                diagnosis_duration_ms = (time.time() - diagnosis_start_time) * 1000
+
+                # Log combination diagnostic
+                llm_logger.log_combination_diagnostic(
+                    correlation_id=correlation_id,
+                    is_data_issue=diagnosis_result.is_data_issue,
+                    is_combination_issue=diagnosis_result.is_combination_issue,
+                    problematic_filters=diagnosis_result.problematic_filters,
+                    total_records_available=diagnosis_result.total_records_available,
+                    working_combinations=diagnosis_result.working_combinations,
+                    duration_ms=diagnosis_duration_ms
+                )
 
                 # Generate diagnostic UI with LLM-powered guidance
                 ui_html = await self._generate_diagnostic_guidance(
                     params,
                     diagnosis_result
+                )
+
+                # Log query execution result
+                total_duration_ms = (time.time() - query_start_time) * 1000
+                llm_logger.log_query_execution(
+                    correlation_id=correlation_id,
+                    params=parameters,
+                    record_count=0,
+                    duration_ms=total_duration_ms,
+                    success=False,
+                    error='No records found - combination issue'
                 )
 
                 return {
@@ -570,7 +775,8 @@ Be specific about what's needed.
                             'problematic_filters': diagnosis_result.problematic_filters,
                             'total_records_available': diagnosis_result.total_records_available
                         },
-                        'validation_summary': validation_summary.dict()
+                        'validation_summary': validation_summary.dict(),
+                        'correlation_id': correlation_id
                     }
                 }
 
@@ -629,7 +835,28 @@ Be specific about what's needed.
             corrections_note += "</small></div>"
             ui_html += corrections_note
 
-        logger.info(f"[LLM Service] Query executed successfully - {len(data.get('records', []))} records")
+        record_count = len(data.get('records', []))
+        logger.info(f"[LLM Service] Query executed successfully - {record_count} records")
+
+        # Log successful query execution
+        total_duration_ms = (time.time() - query_start_time) * 1000
+        llm_logger.log_query_execution(
+            correlation_id=correlation_id,
+            params=parameters,
+            record_count=record_count,
+            duration_ms=total_duration_ms,
+            success=True
+        )
+
+        # Log tool execution complete
+        llm_logger.log_tool_execution(
+            correlation_id=correlation_id,
+            tool_name='execute_forecast_query',
+            parameters=parameters,
+            result_summary={'record_count': record_count, 'status': 'success'},
+            duration_ms=total_duration_ms,
+            status='success'
+        )
 
         return {
             'success': True,
@@ -637,10 +864,11 @@ Be specific about what's needed.
             'data': data,
             'ui_component': ui_html,
             'metadata': {
-                'record_count': len(data.get('records', [])),
+                'record_count': record_count,
                 'months_included': list(data.get('months', {}).values()),
                 'filters_applied': data.get('filters_applied', {}),
-                'validation_summary': validation_summary.dict()
+                'validation_summary': validation_summary.dict(),
+                'correlation_id': correlation_id
             }
         }
 
@@ -662,6 +890,9 @@ Be specific about what's needed.
         Returns:
             HTML string with helpful guidance
         """
+        correlation_id = get_correlation_id()
+        start_time = time.time()
+
         # Build context for LLM
         month_name = calendar.month_name[params.month]
 
@@ -709,12 +940,39 @@ Be concise - maximum 4-5 sentences.
 
         try:
             logger.info(f"[LLM Service] Generating no-data guidance for {month_name} {params.year}")
+
+            # Log LLM request for guidance
+            llm_logger.log_llm_request(
+                correlation_id=correlation_id,
+                model=self.model_name,
+                messages=[{'role': 'HumanMessage', 'content': guidance_prompt}],
+                request_type='no_data_guidance'
+            )
+
+            llm_start = time.time()
             response = await self.llm.ainvoke([HumanMessage(content=guidance_prompt)])
+            llm_duration_ms = (time.time() - llm_start) * 1000
             guidance_text = response.content.strip()
+
+            # Log LLM response
+            llm_logger.log_llm_response(
+                correlation_id=correlation_id,
+                response=guidance_text,
+                duration_ms=llm_duration_ms,
+                model=self.model_name
+            )
 
             logger.info(f"[LLM Service] Generated guidance: {guidance_text[:100]}...")
         except Exception as e:
             logger.error(f"[LLM Service] Failed to generate guidance: {str(e)}")
+
+            # Log error
+            llm_logger.log_error(
+                correlation_id=correlation_id,
+                error=e,
+                stage='no_data_guidance_generation'
+            )
+
             # Fallback message
             guidance_text = (
                 f"No forecast data was found for {month_name} {params.year} with your specified filters. "
@@ -765,6 +1023,8 @@ Be concise - maximum 4-5 sentences.
         """
         from langchain_core.messages import HumanMessage
         from chat_app.services.tools.ui_tools import generate_combination_diagnostic_ui
+
+        correlation_id = get_correlation_id()
 
         # Build context for LLM
         month_name = calendar.month_name[params.month]
@@ -821,12 +1081,39 @@ Be concise - maximum 5-6 sentences.
 
         try:
             logger.info(f"[LLM Service] Generating combination diagnostic guidance")
+
+            # Log LLM request for diagnostic guidance
+            llm_logger.log_llm_request(
+                correlation_id=correlation_id,
+                model=self.model_name,
+                messages=[{'role': 'HumanMessage', 'content': guidance_prompt}],
+                request_type='diagnostic_guidance'
+            )
+
+            llm_start = time.time()
             response = await self.llm.ainvoke([HumanMessage(content=guidance_prompt)])
+            llm_duration_ms = (time.time() - llm_start) * 1000
             guidance_text = response.content.strip()
+
+            # Log LLM response
+            llm_logger.log_llm_response(
+                correlation_id=correlation_id,
+                response=guidance_text,
+                duration_ms=llm_duration_ms,
+                model=self.model_name
+            )
 
             logger.info(f"[LLM Service] Generated diagnostic guidance: {guidance_text[:100]}...")
         except Exception as e:
             logger.error(f"[LLM Service] Failed to generate diagnostic guidance: {str(e)}")
+
+            # Log error
+            llm_logger.log_error(
+                correlation_id=correlation_id,
+                error=e,
+                stage='diagnostic_guidance_generation'
+            )
+
             # Fallback to simple message
             guidance_text = diagnosis.diagnosis_message
 
