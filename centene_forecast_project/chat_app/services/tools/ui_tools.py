@@ -74,7 +74,7 @@ def generate_available_reports_ui(reports_data: dict) -> str:
             month = report.get('month', 'Unknown')
             year = report.get('year', '')
             is_valid = report.get('is_valid', False)
-            record_count = report.get('record_count', 0)
+            record_count = report.get('records_count', 0)
             freshness = report.get('data_freshness', 'Unknown')
 
             # Status badge
@@ -220,14 +220,16 @@ def generate_forecast_table_html(
     preview_records = records[:max_preview]
 
     # JSON encode data for client-side pagination
-    records_json = json.dumps(records).replace("'", "&#39;")
-    months_json = json.dumps(month_labels).replace("'", "&#39;")
+    # Use HTML entity encoding for safe embedding in HTML attributes
+    import html as html_module
+    records_json = html_module.escape(json.dumps(records))
+    months_json = html_module.escape(json.dumps(month_labels))
 
     # Build the preview table (always shown inline)
     html = f'''
     <div class="forecast-paginated-table"
-         data-forecast-records='{records_json}'
-         data-forecast-months='{months_json}'
+         data-forecast-records="{records_json}"
+         data-forecast-months="{months_json}"
          data-total-records="{total_records}">
         <div class="forecast-table-wrapper">
             <table class="table table-sm table-bordered table-hover forecast-table">

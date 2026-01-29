@@ -42,7 +42,14 @@ class ChatService:
         """Initialize chat service with LLM service"""
         self.llm_service = get_llm_service()
 
-    async def process_message(self, user_text: str, conversation_id: str, user) -> Dict[str, Any]:
+    async def process_message(
+        self,
+        user_text: str,
+        conversation_id: str,
+        user,
+        message_id: str = None,
+        selected_row: dict = None
+    ) -> Dict[str, Any]:
         """
         Process user message and return categorization with confirmation UI.
 
@@ -56,18 +63,21 @@ class ChatService:
             user_text: User's input message (raw)
             conversation_id: Current conversation ID
             user: Django user object
+            message_id: Unique identifier for the message (optional)
+            selected_row: Selected forecast row data (optional)
 
         Returns:
             Dictionary with category, confidence, and UI component
         """
         # Create correlation ID for tracing this request
-        correlation_id = create_correlation_id(conversation_id)
+        correlation_id = create_correlation_id(conversation_id, message_id)
         user_id = getattr(user, 'portal_id', str(user.id)) if user else 'anonymous'
         start_time = time.time()
 
         # Create correlation context for this request
         async with CorrelationContext(
             correlation_id=correlation_id,
+            message_id=message_id,
             conversation_id=conversation_id,
             user_id=user_id
         ):
@@ -138,7 +148,8 @@ class ChatService:
                 result = await self.llm_service.categorize_intent(
                     user_text=sanitized_text,  # Sanitized input
                     conversation_id=conversation_id,
-                    message_history=message_history
+                    message_history=message_history,
+                    selected_row=selected_row  # Pass selected row context
                 )
 
                 category = result.get('category')
@@ -196,6 +207,63 @@ class ChatService:
                     'ui_component': self._build_error_ui(str(e)),
                     'metadata': {'error': str(e), 'correlation_id': correlation_id}
                 }
+
+    async def execute_cph_update(
+        self,
+        update_data: dict,
+        conversation_id: str,
+        user
+    ) -> Dict[str, Any]:
+        """
+        Execute the confirmed CPH update.
+        Note: Actual API call is stubbed - backend API is in planning phase.
+
+        Args:
+            update_data: CPH update data including old/new values and row info
+            conversation_id: Current conversation ID
+            user: Django user object
+
+        Returns:
+            Dictionary with success status and message
+        """
+        try:
+            logger.info(f"[Chat Service] CPH Update requested: {update_data}")
+
+            # Extract update details for logging
+            main_lob = update_data.get('main_lob', 'N/A')
+            state = update_data.get('state', 'N/A')
+            old_cph = update_data.get('old_cph', 0)
+            new_cph = update_data.get('new_cph', 0)
+
+            # TODO: When API is ready, call:
+            # result = await self.llm_service.submit_cph_update(update_data)
+
+            # For now, return success with note about API status
+            ui_component = f"""
+            <div class="update-success-card">
+                <div class="success-icon">✓</div>
+                <div class="success-message">
+                    <strong>Update Recorded</strong>
+                    <p>CPH changed from {old_cph} to {new_cph}
+                    for {main_lob} - {state}</p>
+                    <small class="text-muted">Note: Backend API integration pending</small>
+                </div>
+            </div>
+            """
+
+            return {
+                'success': True,
+                'message': 'CPH update recorded. Note: Backend update API is in planning phase.',
+                'ui_component': ui_component
+            }
+
+        except Exception as e:
+            logger.error(f"[Chat Service] Error in execute_cph_update: {e}")
+            return {
+                'success': False,
+                'message': f'Failed to update CPH: {str(e)}',
+                'ui_component': ''
+            }
 
     async def _get_message_history(self, conversation_id: str, limit: int = 10) -> list:
         """

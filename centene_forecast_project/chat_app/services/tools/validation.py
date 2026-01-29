@@ -20,6 +20,8 @@ class IntentCategory(str, Enum):
     GET_ROSTER_DATA = "get_roster_data"
     MODIFY_ROSTER_DATA = "modify_roster_data"
     SHOW_ALLOCATED_RESOURCES = "show_allocated_resources"
+    GET_FTE_DETAILS = "get_fte_details"  # Get FTE mapping info for selected row
+    MODIFY_CPH = "modify_cph"  # Modify target CPH for selected row
     UNKNOWN = "unknown"
 
 
@@ -164,6 +166,12 @@ class ConversationContext(BaseModel):
     selected_forecast_records: List[str] = Field(
         default_factory=list,
         description="Record IDs selected by user"
+    )
+
+    # Selected row from forecast modal (for FTE/CPH operations)
+    selected_row: Optional[dict] = Field(
+        default=None,
+        description="Currently selected forecast row data for operations"
     )
 
     # Cached data

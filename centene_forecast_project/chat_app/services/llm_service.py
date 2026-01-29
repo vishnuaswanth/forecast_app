@@ -108,7 +108,8 @@ class LLMService:
         self,
         user_text: str,
         conversation_id: str,
-        message_history: List[dict] = None
+        message_history: List[dict] = None,
+        selected_row: dict = None
     ) -> Dict:
         """
         Classify user intent with LLM.
@@ -117,6 +118,7 @@ class LLMService:
             user_text: User's message (already sanitized by ChatService)
             conversation_id: Conversation identifier
             message_history: Optional list of previous messages
+            selected_row: Optional selected forecast row data for context
 
         Returns:
             Dictionary with:
@@ -143,6 +145,13 @@ class LLMService:
         # Get conversation context
         context = await self.context_manager.get_context(conversation_id)
 
+        # Store selected row in context if provided
+        if selected_row:
+            await self.context_manager.update_entities(
+                conversation_id,
+                selected_row=selected_row
+            )
+
         # Format input into clear, compact prompt
         from chat_app.utils.input_sanitizer import get_sanitizer
         sanitizer = get_sanitizer()
@@ -159,8 +168,11 @@ class LLMService:
         formatted_prompt = sanitizer.format_for_llm(user_text, context_dict)
         logger.debug(f"[LLM Service] Formatted prompt: {formatted_prompt}")
 
+        # Build system prompt with selected row context
+        system_prompt = self._build_system_prompt_with_row_context(selected_row)
+
         # Build messages with history
-        messages = [SystemMessage(content=CLASSIFICATION_SYSTEM_PROMPT)]
+        messages = [SystemMessage(content=system_prompt)]
 
         # Add recent conversation history (last 5 turns)
         if message_history:
@@ -235,7 +247,46 @@ class LLMService:
         if classification.requires_clarification or classification.confidence < 0.7:
             return await self._handle_clarification(classification, context, user_text)
 
-        # Extract parameters
+        # Handle FTE/CPH intents with selected row
+        if classification.category == IntentCategory.GET_FTE_DETAILS:
+            if selected_row:
+                return await self.generate_fte_details(selected_row, conversation_id)
+            else:
+                return {
+                    'category': classification.category.value,
+                    'confidence': classification.confidence,
+                    'parameters': {},
+                    'ui_component': generate_error_ui("Please select a row from the forecast table first."),
+                    'response_type': 'assistant_response',
+                    'metadata': {'error': 'no_row_selected', 'correlation_id': correlation_id}
+                }
+
+        if classification.category == IntentCategory.MODIFY_CPH:
+            if selected_row:
+                # Extract new CPH value from user text
+                try:
+                    new_cph = await self.extract_cph_value(user_text, selected_row.get('target_cph', 0))
+                    return await self.generate_cph_preview(selected_row, new_cph, conversation_id)
+                except ValueError as e:
+                    return {
+                        'category': classification.category.value,
+                        'confidence': classification.confidence,
+                        'parameters': {},
+                        'ui_component': generate_error_ui(f"Could not understand CPH value: {str(e)}"),
+                        'response_type': 'assistant_response',
+                        'metadata': {'error': 'invalid_cph_value', 'correlation_id': correlation_id}
+                    }
+            else:
+                return {
+                    'category': classification.category.value,
+                    'confidence': classification.confidence,
+                    'parameters': {},
+                    'ui_component': generate_error_ui("Please select a row from the forecast table first."),
+                    'response_type': 'assistant_response',
+                    'metadata': {'error': 'no_row_selected', 'correlation_id': correlation_id}
+                }
+
+        # Extract parameters for other intents
         params = await self._extract_parameters(user_text, classification, context)
 
         # Build confirmation UI
@@ -1165,3 +1216,312 @@ Conversation Context:
 - Has cached data: {'Yes' if context.last_forecast_data else 'No'}
 - Last query returned: {last_record_count} records
 """
+
+    def _build_system_prompt_with_row_context(self, selected_row: dict = None) -> str:
+        """
+        Build system prompt with optional selected row context.
+
+        Args:
+            selected_row: Selected forecast row data (optional)
+
+        Returns:
+            System prompt string with row context if available
+        """
+        import json
+
+        base_prompt = CLASSIFICATION_SYSTEM_PROMPT
+
+        if selected_row:
+            row_info = f"""
+
+SELECTED ROW CONTEXT:
+The user has selected a forecast row with the following data:
+- Main LOB: {selected_row.get('main_lob', 'N/A')}
+- State: {selected_row.get('state', 'N/A')}
+- Case Type: {selected_row.get('case_type', 'N/A')}
+- Target CPH: {selected_row.get('target_cph', 'N/A')}
+- Monthly Data: {json.dumps(selected_row.get('months', {}), indent=2)}
+
+If the user asks about "this row", "the selected row", "FTEs", "FTE details", or wants to modify/change CPH,
+they are referring to this selected row.
+
+Additional categories to recognize:
+- GET_FTE_DETAILS: User wants FTE information for the selected row (e.g., "get FTEs", "show FTE details", "what are the FTEs for this row")
+- MODIFY_CPH: User wants to change the target CPH value (e.g., "change CPH to 3.5", "increase CPH by 10%", "set target CPH to 4")
+"""
+            return base_prompt + row_info
+
+        return base_prompt
+
+    async def generate_fte_details(self, row_data: dict, conversation_id: str) -> dict:
+        """
+        Generate FTE details response for selected row.
+
+        Args:
+            row_data: Selected forecast row data
+            conversation_id: Conversation identifier
+
+        Returns:
+            Dictionary with FTE details UI and metadata
+        """
+        correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
+
+        logger.info(f"[LLM Service] Generating FTE details for row: {row_data.get('main_lob')}")
+
+        # Determine domestic vs global
+        main_lob = row_data.get('main_lob', '').lower()
+        case_type = row_data.get('case_type', '').lower()
+        is_domestic = 'domestic' in main_lob or 'domestic' in case_type
+        config_type = 'DOMESTIC' if is_domestic else 'GLOBAL'
+
+        # Build monthly details HTML
+        months_html = ""
+        for month_name, month_data in row_data.get('months', {}).items():
+            gap = month_data.get('gap', 0)
+            gap_class = 'gap-negative' if gap < 0 else 'gap-positive' if gap > 0 else ''
+
+            fte_req = month_data.get('fte_required', 0)
+            fte_avail = month_data.get('fte_available', 0)
+
+            months_html += f"""
+            <div class="fte-detail-item">
+                <div class="fte-detail-label">{month_name}</div>
+                <div class="fte-detail-value">
+                    FTE Req: {fte_req} |
+                    FTE Avail: {fte_avail} |
+                    <span class="{gap_class}">Gap: {gap:+d}</span>
+                </div>
+            </div>
+            """
+
+        badge_class = 'bg-primary' if is_domestic else 'bg-secondary'
+        ui_component = f"""
+        <div class="fte-details-card">
+            <div class="fte-details-header">
+                FTE Details: {row_data.get('main_lob')} | {row_data.get('state')} | {row_data.get('case_type')}
+            </div>
+            <div class="fte-config-badge" style="margin-bottom: 12px;">
+                <span class="badge {badge_class}">
+                    {config_type} Configuration
+                </span>
+                <span style="margin-left: 8px;">Target CPH: {row_data.get('target_cph', 'N/A')}</span>
+            </div>
+            <div class="fte-details-grid">
+                {months_html}
+            </div>
+        </div>
+        """
+
+        return {
+            'success': True,
+            'category': 'get_fte_details',
+            'confidence': 1.0,
+            'message': f"FTE details for {row_data.get('main_lob')}",
+            'ui_component': ui_component,
+            'response_type': 'fte_details',
+            'metadata': {
+                'config_type': config_type,
+                'row_key': f"{row_data.get('main_lob')}|{row_data.get('state')}|{row_data.get('case_type')}",
+                'correlation_id': correlation_id
+            }
+        }
+
+    async def generate_cph_preview(
+        self,
+        row_data: dict,
+        new_cph: float,
+        conversation_id: str
+    ) -> dict:
+        """
+        Calculate new values with modified CPH and generate preview.
+
+        Formulas:
+        - fte_required = forecast / target_cph
+        - capacity = fte_available * target_cph
+        - gap = capacity - forecast
+
+        Args:
+            row_data: Selected forecast row data
+            new_cph: New CPH value to apply
+            conversation_id: Conversation identifier
+
+        Returns:
+            Dictionary with CPH preview UI and calculated values
+        """
+        import json
+
+        correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
+
+        logger.info(f"[LLM Service] Generating CPH preview: {row_data.get('target_cph')} -> {new_cph}")
+
+        old_cph = row_data.get('target_cph', 0)
+
+        # Determine domestic vs global
+        main_lob = row_data.get('main_lob', '').lower()
+        case_type = row_data.get('case_type', '').lower()
+        is_domestic = 'domestic' in main_lob or 'domestic' in case_type
+        config_type = 'DOMESTIC' if is_domestic else 'GLOBAL'
+
+        # Build preview data structure
+        preview_data = {
+            'main_lob': row_data.get('main_lob'),
+            'state': row_data.get('state'),
+            'case_type': row_data.get('case_type'),
+            'old_cph': old_cph,
+            'new_cph': new_cph,
+            'config_type': config_type,
+            'months': {}
+        }
+
+        months_preview_html = ""
+
+        for month_name, month_data in row_data.get('months', {}).items():
+            forecast = month_data.get('forecast', 0)
+            fte_available = month_data.get('fte_available', 0)
+
+            # Old values
+            old_fte_req = month_data.get('fte_required', 0)
+            old_capacity = month_data.get('capacity', 0)
+            old_gap = month_data.get('gap', 0)
+
+            # New calculated values
+            new_fte_req = round(forecast / new_cph, 1) if new_cph > 0 else 0
+            new_capacity = round(fte_available * new_cph)
+            new_gap = new_capacity - forecast
+
+            preview_data['months'][month_name] = {
+                'forecast': forecast,
+                'fte_available': fte_available,
+                'old': {'fte_required': old_fte_req, 'capacity': old_capacity, 'gap': old_gap},
+                'new': {'fte_required': new_fte_req, 'capacity': new_capacity, 'gap': new_gap}
+            }
+
+            # Gap color class
+            new_gap_class = 'gap-positive' if new_gap >= 0 else 'gap-negative'
+
+            months_preview_html += f"""
+            <div class="cph-month-preview">
+                <strong>{month_name}</strong>
+                <div class="cph-preview-row">
+                    <span class="cph-preview-label">FTE Required:</span>
+                    <span class="cph-preview-old">{old_fte_req}</span>
+                    <span class="cph-preview-arrow">→</span>
+                    <span class="cph-preview-new">{new_fte_req}</span>
+                </div>
+                <div class="cph-preview-row">
+                    <span class="cph-preview-label">Capacity:</span>
+                    <span class="cph-preview-old">{old_capacity:,}</span>
+                    <span class="cph-preview-arrow">→</span>
+                    <span class="cph-preview-new">{new_capacity:,}</span>
+                </div>
+                <div class="cph-preview-row">
+                    <span class="cph-preview-label">Gap:</span>
+                    <span class="cph-preview-old">{old_gap:+d}</span>
+                    <span class="cph-preview-arrow">→</span>
+                    <span class="cph-preview-new {new_gap_class}">{new_gap:+d}</span>
+                </div>
+            </div>
+            """
+
+        # Escape JSON for HTML attribute
+        preview_data_json = json.dumps(preview_data).replace('"', '&quot;')
+
+        badge_class = 'bg-primary' if is_domestic else 'bg-secondary'
+        ui_component = f"""
+        <div class="cph-preview-card">
+            <div class="cph-preview-header">
+                CPH Change Preview
+                <span class="badge {badge_class} ms-2">{config_type}</span>
+            </div>
+            <div class="cph-preview-row" style="margin-bottom: 16px;">
+                <span class="cph-preview-label">Target CPH:</span>
+                <span class="cph-preview-old">{old_cph}</span>
+                <span class="cph-preview-arrow">→</span>
+                <span class="cph-preview-new">{new_cph}</span>
+            </div>
+            <div class="cph-preview-subtitle">
+                <strong>{row_data.get('main_lob')}</strong> | {row_data.get('state')} | {row_data.get('case_type')}
+            </div>
+            <div class="cph-months-preview">
+                {months_preview_html}
+            </div>
+            <div class="cph-preview-actions">
+                <button class="cph-confirm-btn" data-update="{preview_data_json}">
+                    Confirm Change
+                </button>
+                <button class="cph-reject-btn">Cancel</button>
+            </div>
+        </div>
+        """
+
+        return {
+            'success': True,
+            'category': 'modify_cph',
+            'confidence': 1.0,
+            'message': f"Preview of CPH change from {old_cph} to {new_cph}",
+            'ui_component': ui_component,
+            'response_type': 'cph_preview',
+            'preview_data': preview_data,
+            'metadata': {
+                'old_cph': old_cph,
+                'new_cph': new_cph,
+                'config_type': config_type,
+                'correlation_id': correlation_id
+            }
+        }
+
+    async def extract_cph_value(self, user_text: str, current_cph: float) -> float:
+        """
+        Extract new CPH value from user message.
+        Handles: "change to 3.5", "increase by 10%", "decrease to 2.0"
+
+        Args:
+            user_text: User's message
+            current_cph: Current CPH value for percentage calculations
+
+        Returns:
+            New CPH value as float
+
+        Raises:
+            ValueError: If CPH value cannot be extracted
+        """
+        import re
+
+        prompt = f"""Extract the new CPH value from this user message.
+Current CPH: {current_cph}
+
+User message: "{user_text}"
+
+Rules:
+- If user says "change to X" or "set to X" or just mentions a number, return X
+- If user says "increase by X%", calculate: {current_cph} * (1 + X/100)
+- If user says "decrease by X%", calculate: {current_cph} * (1 - X/100)
+- If user says "increase by X" (not %), calculate: {current_cph} + X
+- If user says "decrease by X" (not %), calculate: {current_cph} - X
+
+Return ONLY the numeric value, nothing else. Round to 2 decimal places."""
+
+        try:
+            response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+            result_text = response.content.strip()
+
+            # Try to parse the numeric value
+            try:
+                return round(float(result_text), 2)
+            except ValueError:
+                # Try to extract number from response
+                numbers = re.findall(r'[\d.]+', result_text)
+                if numbers:
+                    return round(float(numbers[0]), 2)
+                raise ValueError(f"Could not extract CPH value from response: {result_text}")
+
+        except Exception as e:
+            logger.error(f"[LLM Service] Error extracting CPH value: {e}")
+
+            # Fallback: try simple regex extraction from user text
+            numbers = re.findall(r'[\d.]+', user_text)
+            if numbers:
+                # Return the last number found (most likely the target value)
+                return round(float(numbers[-1]), 2)
+
+            raise ValueError(f"Could not extract CPH value from: {user_text}")

@@ -19,6 +19,7 @@
         reconnectDelay: 1000, // Start with 1 second
         messageQueue: [],
         pendingConfirmations: new Map(),
+        selectedForecastRow: null, // Currently selected forecast row data
     };
 
     // ========================================================================
@@ -104,6 +105,15 @@
                     break;
                 case 'error':
                     handleErrorMessage(data);
+                    break;
+                case 'cph_preview':
+                    handleCphPreview(data);
+                    break;
+                case 'cph_update_result':
+                    handleCphUpdateResult(data);
+                    break;
+                case 'fte_details':
+                    handleFteDetails(data);
                     break;
                 default:
                     console.warn('[Chat] Unknown message type:', data.type);
@@ -302,11 +312,19 @@
         // Add user message to UI
         addMessage('user', text);
 
-        // Send to WebSocket
-        sendWebSocketMessage({
+        // Build message payload with optional row context
+        const payload = {
             type: 'user_message',
             message: text
-        });
+        };
+
+        // Include selected row if available
+        if (ChatState.selectedForecastRow) {
+            payload.selected_row = ChatState.selectedForecastRow;
+        }
+
+        // Send to WebSocket
+        sendWebSocketMessage(payload);
 
         // Clear input
         elements.input.value = '';
@@ -440,9 +458,30 @@
         const monthsJson = sourceContainer.getAttribute('data-forecast-months');
         const totalRecords = parseInt(sourceContainer.getAttribute('data-total-records'), 10);
 
+        console.log('[Chat] Opening forecast modal, totalRecords:', totalRecords);
+        console.log('[Chat] recordsJson length:', recordsJson ? recordsJson.length : 'null');
+        console.log('[Chat] monthsJson:', monthsJson);
+
+        if (!recordsJson || !monthsJson) {
+            console.error('[Chat] Missing data attributes on source container');
+            console.log('[Chat] Source container:', sourceContainer);
+            console.log('[Chat] Container HTML:', sourceContainer.outerHTML.substring(0, 500));
+            return;
+        }
+
         try {
             const records = JSON.parse(recordsJson);
             const months = JSON.parse(monthsJson);
+
+            console.log('[Chat] Parsed records count:', records.length);
+            console.log('[Chat] Parsed months:', months);
+
+            if (!records || records.length === 0) {
+                console.warn('[Chat] No records found in parsed data');
+                elements.modalBody.innerHTML = '<p class="text-muted p-3">No records available.</p>';
+                elements.modalOverlay.style.display = 'flex';
+                return;
+            }
 
             elements.modalTitle.textContent = `Forecast Data (${totalRecords} Records)`;
 
@@ -457,6 +496,7 @@
             elements.modalOverlay.style.display = 'flex';
         } catch (error) {
             console.error('[Chat] Error parsing forecast data:', error);
+            console.error('[Chat] recordsJson preview:', recordsJson ? recordsJson.substring(0, 200) : 'null');
         }
     }
 
@@ -468,6 +508,7 @@
              data-current-page="1"
              data-page-size="25"
              data-total-records="${totalRecords}">
+            <div class="selection-indicator" style="display: none;"></div>
             <div class="forecast-table-wrapper">
                 <table class="table table-sm table-bordered table-hover forecast-table">
                     ${buildForecastHeaders(months)}
@@ -527,9 +568,12 @@
         return headerHTML;
     }
 
-    function buildForecastRow(record, months) {
+    function buildForecastRow(record, months, rowIndex) {
+        // Escape record data for HTML attribute
+        const recordDataJson = JSON.stringify(record).replace(/"/g, '&quot;');
+
         let rowHTML = `
-            <tr>
+            <tr data-row-index="${rowIndex}" data-row-record="${recordDataJson}" class="selectable-forecast-row">
                 <td class="forecast-fixed-col forecast-col-lob">${record.main_lob || 'N/A'}</td>
                 <td class="forecast-fixed-col forecast-col-state">${record.state || 'N/A'}</td>
                 <td class="forecast-fixed-col forecast-col-casetype">${record.case_type || 'N/A'}</td>
@@ -564,7 +608,12 @@
 
     function initForecastPagination(modalBody, records, months) {
         const container = modalBody.querySelector('.forecast-modal-container');
-        if (!container) return;
+        if (!container) {
+            console.error('[Chat] forecast-modal-container not found in modal body');
+            return;
+        }
+
+        console.log('[Chat] Initializing pagination with', records.length, 'records and', months.length, 'months');
 
         // Store data on container for pagination
         container._forecastRecords = records;
@@ -611,9 +660,21 @@
         // Update current page
         container.setAttribute('data-current-page', page);
 
-        // Render rows
+        // Clear selection when changing pages
+        ChatState.selectedForecastRow = null;
+        const indicator = container.querySelector('.selection-indicator');
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+
+        // Render rows with indices
         const tbody = container.querySelector('.forecast-table-body');
-        tbody.innerHTML = pageRecords.map(record => buildForecastRow(record, months)).join('');
+        tbody.innerHTML = pageRecords.map((record, idx) =>
+            buildForecastRow(record, months, startIdx + idx)
+        ).join('');
+
+        // Attach row click handlers
+        attachRowClickHandlers(container);
 
         // Update pagination info
         const showingInfo = container.querySelector('.showing-info');
@@ -634,6 +695,140 @@
         if (tableWrapper) {
             tableWrapper.scrollTop = 0;
         }
+    }
+
+    // ========================================================================
+    // Row Selection Handlers
+    // ========================================================================
+    function attachRowClickHandlers(container) {
+        const rows = container.querySelectorAll('.selectable-forecast-row');
+        rows.forEach(row => {
+            if (!row.hasAttribute('data-click-attached')) {
+                row.setAttribute('data-click-attached', 'true');
+                row.addEventListener('click', function() {
+                    handleRowSelection(this, container);
+                });
+            }
+        });
+    }
+
+    function handleRowSelection(rowElement, container) {
+        // Deselect all rows in this container
+        container.querySelectorAll('tr.selected-row').forEach(r => {
+            r.classList.remove('selected-row');
+        });
+
+        // Select clicked row
+        rowElement.classList.add('selected-row');
+
+        // Parse and store row data
+        try {
+            const recordJson = rowElement.getAttribute('data-row-record');
+            const rowData = JSON.parse(recordJson.replace(/&quot;/g, '"'));
+            ChatState.selectedForecastRow = rowData;
+
+            // Show selection indicator
+            const indicator = container.querySelector('.selection-indicator');
+            if (indicator) {
+                indicator.textContent = `Selected: ${rowData.main_lob} | ${rowData.state} | ${rowData.case_type}`;
+                indicator.style.display = 'block';
+            }
+
+            console.log('[Chat] Row selected:', rowData);
+        } catch (error) {
+            console.error('[Chat] Error parsing row data:', error);
+        }
+    }
+
+    function clearRowSelection() {
+        ChatState.selectedForecastRow = null;
+        document.querySelectorAll('tr.selected-row').forEach(r => {
+            r.classList.remove('selected-row');
+        });
+        document.querySelectorAll('.selection-indicator').forEach(ind => {
+            ind.style.display = 'none';
+        });
+    }
+
+    // ========================================================================
+    // CPH Preview and Update Handlers
+    // ========================================================================
+    function handleCphPreview(data) {
+        // Display preview card with confirm/reject buttons
+        addMessageWithHTML('assistant', data.ui_component);
+        attachCphConfirmListeners();
+        scrollToBottom();
+    }
+
+    function handleCphUpdateResult(data) {
+        if (data.success) {
+            addMessageWithHTML('assistant', data.ui_component || data.message);
+        } else {
+            addMessage('assistant', data.message || 'Failed to update CPH.');
+        }
+        scrollToBottom();
+    }
+
+    function handleFteDetails(data) {
+        addMessageWithHTML('assistant', data.ui_component);
+        scrollToBottom();
+    }
+
+    function attachCphConfirmListeners() {
+        const confirmBtns = elements.messagesArea.querySelectorAll('.cph-confirm-btn');
+        const rejectBtns = elements.messagesArea.querySelectorAll('.cph-reject-btn');
+
+        confirmBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', handleCphConfirm);
+            }
+        });
+
+        rejectBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', handleCphReject);
+            }
+        });
+    }
+
+    function handleCphConfirm(event) {
+        const btn = event.currentTarget;
+
+        try {
+            const updateDataStr = btn.getAttribute('data-update');
+            const updateData = JSON.parse(updateDataStr.replace(/&quot;/g, '"'));
+
+            sendWebSocketMessage({
+                type: 'confirm_cph_update',
+                update_data: updateData
+            });
+
+            // Disable all buttons in this preview
+            const actionsDiv = btn.closest('.cph-preview-actions');
+            if (actionsDiv) {
+                actionsDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+            }
+
+            // Show processing message
+            addMessage('assistant', 'Processing CPH update...');
+        } catch (error) {
+            console.error('[Chat] Error confirming CPH update:', error);
+            addMessage('system', 'Error: Could not process CPH update.');
+        }
+    }
+
+    function handleCphReject(event) {
+        const btn = event.currentTarget;
+
+        // Disable all buttons in this preview
+        const actionsDiv = btn.closest('.cph-preview-actions');
+        if (actionsDiv) {
+            actionsDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+        }
+
+        addMessage('assistant', 'CPH change cancelled.');
     }
 
     function openModal(title, data) {

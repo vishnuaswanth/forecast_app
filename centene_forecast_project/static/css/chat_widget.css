@@ -854,6 +854,252 @@
 }
 
 /* ========================================================================
+   Row Selection Styles
+   ======================================================================== */
+.forecast-table tbody tr.selectable-forecast-row {
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.forecast-table tbody tr.selected-row {
+    background-color: #cfe2ff !important;
+    outline: 2px solid #0d6efd;
+    outline-offset: -2px;
+}
+
+.forecast-table tbody tr.selected-row .forecast-fixed-col {
+    background-color: #cfe2ff !important;
+}
+
+/* Selection indicator */
+.selection-indicator {
+    padding: 8px 16px;
+    background: #e7f1ff;
+    border-left: 4px solid #0d6efd;
+    margin-bottom: 8px;
+    font-size: 0.9em;
+    color: #0d6efd;
+    border-radius: 0 4px 4px 0;
+}
+
+/* ========================================================================
+   CPH Preview Card
+   ======================================================================== */
+.cph-preview-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+    border: 1px solid #dee2e6;
+}
+
+.cph-preview-header {
+    font-weight: 600;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cph-preview-subtitle {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.cph-preview-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 8px;
+    align-items: center;
+}
+
+.cph-preview-label {
+    min-width: 120px;
+    color: #6c757d;
+    font-size: 0.9em;
+}
+
+.cph-preview-old {
+    color: #dc3545;
+    text-decoration: line-through;
+    min-width: 80px;
+}
+
+.cph-preview-new {
+    color: #28a745;
+    font-weight: 600;
+    min-width: 80px;
+}
+
+.cph-preview-arrow {
+    color: #6c757d;
+}
+
+.cph-preview-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+}
+
+.cph-confirm-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.cph-confirm-btn:hover:not(:disabled) {
+    background: #218838;
+}
+
+.cph-confirm-btn:disabled {
+    background: #a5d6a7;
+    cursor: not-allowed;
+}
+
+.cph-reject-btn {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.cph-reject-btn:hover:not(:disabled) {
+    background: #5a6268;
+}
+
+.cph-reject-btn:disabled {
+    background: #adb5bd;
+    cursor: not-allowed;
+}
+
+/* Month preview sections */
+.cph-months-preview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+}
+
+.cph-month-preview {
+    background: white;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.cph-month-preview strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #495057;
+}
+
+/* ========================================================================
+   FTE Details Card
+   ======================================================================== */
+.fte-details-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+    border: 1px solid #dee2e6;
+}
+
+.fte-details-header {
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.fte-config-badge {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.fte-details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.fte-detail-item {
+    background: white;
+    padding: 12px;
+    border-radius: 4px;
+    border-left: 3px solid #0d6efd;
+}
+
+.fte-detail-label {
+    font-size: 0.8em;
+    color: #6c757d;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.fte-detail-value {
+    font-size: 1.1em;
+    font-weight: 600;
+    color: #212529;
+}
+
+/* ========================================================================
+   Update Success Card
+   ======================================================================== */
+.update-success-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 8px 0;
+}
+
+.success-icon {
+    width: 40px;
+    height: 40px;
+    background: #28a745;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5em;
+    flex-shrink: 0;
+}
+
+.success-message {
+    flex: 1;
+}
+
+.success-message strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #155724;
+}
+
+.success-message p {
+    margin: 0;
+    color: #155724;
+}
+
+.success-message small {
+    display: block;
+    margin-top: 8px;
+}
+
+/* ========================================================================
    Responsive Design - Media Queries
    ======================================================================== */
 

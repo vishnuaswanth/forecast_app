@@ -38,7 +38,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     Main WebSocket consumer for chat interface.
     Handles user messages, LLM processing, and tool execution.
     """
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.user: Optional[AbstractUser] = None
@@ -62,7 +62,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             logger.warning("Unauthenticated WebSocket connection attempt")
             await self.close(code=4001)
             return
-        
+
         # Ensure user has required attributes
         if not hasattr(self.user, 'portal_id'):
             logger.error(f"User {self.user.id} missing portal_id attribute")
@@ -120,13 +120,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not text_data or not text_data.strip():
             await self.send_error("Empty message received")
             return
-            
+
         try:
             data = json.loads(text_data)
             if not isinstance(data, dict):
                 await self.send_error("Message must be a JSON object")
                 return
-                
+
             message_type = data.get('type')
             if not message_type:
                 await self.send_error("Message type is required")
@@ -140,6 +140,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_reject_category(data)
             elif message_type == 'new_conversation':
                 await self.handle_new_conversation(data)
+            elif message_type == 'confirm_cph_update':
+                await self.handle_confirm_cph_update(data)
             else:
                 await self.send_error(f"Unknown message type: {message_type}")
 
@@ -160,6 +162,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         user_text = data.get('message', '').strip()
+        selected_row = data.get('selected_row')  # Get selected row context if available
 
         if not user_text:
             await self.send_error("Empty message")
@@ -202,7 +205,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             response = await self.chat_service.process_message(
                 user_text=user_text,
                 conversation_id=self.conversation_id,
-                user=self.user
+                user=self.user,
+                message_id=str(message_id),
+                selected_row=selected_row  # Pass selected row context
             )
         except Exception as e:
             logger.error(f"Failed to process message through chat service: {str(e)}")
@@ -222,13 +227,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_typing': False
         })
 
+        # Determine response type based on category
+        response_type = response.get('response_type', 'assistant_response')
+
         # Send response to client
         await self.send_json({
-            'type': 'assistant_response',
+            'type': response_type,
             'category': response.get('category'),
             'confidence': response.get('confidence'),
             'ui_component': response.get('ui_component'),
             'message_id': str(message_id),
+            'message': response.get('message', ''),
             'metadata': response.get('metadata', {})
         })
 
@@ -358,6 +367,59 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'rejected_category': category
         })
 
+    async def handle_confirm_cph_update(self, data: Dict[str, Any]) -> None:
+        """
+        Handle confirmed CPH update request.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        update_data = data.get('update_data', {})
+
+        if not update_data:
+            await self.send_json({
+                'type': 'cph_update_result',
+                'success': False,
+                'message': 'No update data provided'
+            })
+            return
+
+        # Send typing indicator
+        await self.send_json({
+            'type': 'typing',
+            'is_typing': True
+        })
+
+        try:
+            result = await self.chat_service.execute_cph_update(
+                update_data=update_data,
+                conversation_id=self.conversation_id,
+                user=self.user
+            )
+
+            # Stop typing indicator
+            await self.send_json({
+                'type': 'typing',
+                'is_typing': False
+            })
+
+            await self.send_json({
+                'type': 'cph_update_result',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', '')
+            })
+
+        except Exception as e:
+            logger.error(f"Error executing CPH update: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'cph_update_result',
+                'success': False,
+                'message': str(e)
+            })
+
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:
         """
         Handle user request to start a new conversation.
@@ -410,7 +472,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         if not self.user:
             raise ValueError("User is required to create conversation")
-            
+
         conversation, created = ChatConversation.objects.get_or_create(
             user=self.user,
             is_active=True,
@@ -425,7 +487,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """
         if not self.user:
             raise ValueError("User is required to mark conversation inactive")
-            
+
         try:
             # Validate UUID format
             try:
@@ -433,7 +495,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except ValueError:
                 logger.warning(f"Invalid conversation ID format: {conversation_id}")
                 return
-                
+
             conversation = ChatConversation.objects.get(id=conversation_id, user=self.user)
             conversation.is_active = False
             conversation.save(update_fields=['is_active', 'updated_at'])
@@ -471,18 +533,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             raise ValueError("Message content cannot be empty")
         if role not in ['user', 'assistant', 'system']:
             raise ValueError(f"Invalid role: {role}")
-            
+
         try:
             # Validate UUID format
             UUID(self.conversation_id)
         except ValueError:
             raise ValueError(f"Invalid conversation ID format: {self.conversation_id}")
-            
+
         try:
             conversation = ChatConversation.objects.get(id=self.conversation_id)
         except ChatConversation.DoesNotExist:
             raise ValueError(f"Conversation {self.conversation_id} not found")
-            
+
         message = ChatMessage.objects.create(
             conversation=conversation,
             role=role,
