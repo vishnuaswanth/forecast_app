@@ -508,7 +508,20 @@
              data-current-page="1"
              data-page-size="25"
              data-total-records="${totalRecords}">
-            <div class="selection-indicator" style="display: none;"></div>
+            <div class="selection-indicator" style="display: none;">
+                <span class="selection-text"></span>
+                <div class="selection-actions">
+                    <button class="btn btn-sm btn-primary modal-get-fte-btn" title="Get FTE details for this row">
+                        <i class="bi bi-info-circle"></i> Get FTE Details
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary modal-modify-cph-btn" title="Modify CPH for this row">
+                        <i class="bi bi-pencil"></i> Modify CPH
+                    </button>
+                    <button class="btn btn-sm btn-outline-info modal-use-in-chat-btn" title="Use this row in chat">
+                        <i class="bi bi-chat-dots"></i> Use in Chat
+                    </button>
+                </div>
+            </div>
             <div class="forecast-table-wrapper">
                 <table class="table table-sm table-bordered table-hover forecast-table">
                     ${buildForecastHeaders(months)}
@@ -727,17 +740,81 @@
             const rowData = JSON.parse(recordJson.replace(/&quot;/g, '"'));
             ChatState.selectedForecastRow = rowData;
 
-            // Show selection indicator
+            // Show selection indicator with action buttons
             const indicator = container.querySelector('.selection-indicator');
             if (indicator) {
-                indicator.textContent = `Selected: ${rowData.main_lob} | ${rowData.state} | ${rowData.case_type}`;
-                indicator.style.display = 'block';
+                const selectionText = indicator.querySelector('.selection-text');
+                if (selectionText) {
+                    selectionText.textContent = `Selected: ${rowData.main_lob} | ${rowData.state} | ${rowData.case_type}`;
+                }
+                indicator.style.display = 'flex';
+
+                // Attach button handlers
+                attachModalActionHandlers(container);
             }
 
             console.log('[Chat] Row selected:', rowData);
         } catch (error) {
             console.error('[Chat] Error parsing row data:', error);
         }
+    }
+
+    function attachModalActionHandlers(container) {
+        // Get FTE Details button
+        const fteBtn = container.querySelector('.modal-get-fte-btn');
+        if (fteBtn && !fteBtn.hasAttribute('data-handler-attached')) {
+            fteBtn.setAttribute('data-handler-attached', 'true');
+            fteBtn.addEventListener('click', () => {
+                if (ChatState.selectedForecastRow) {
+                    // Close modal
+                    closeModal();
+                    // Send message to get FTE details
+                    sendRowActionMessage('Get FTE details for this row', ChatState.selectedForecastRow);
+                }
+            });
+        }
+
+        // Modify CPH button
+        const cphBtn = container.querySelector('.modal-modify-cph-btn');
+        if (cphBtn && !cphBtn.hasAttribute('data-handler-attached')) {
+            cphBtn.setAttribute('data-handler-attached', 'true');
+            cphBtn.addEventListener('click', () => {
+                if (ChatState.selectedForecastRow) {
+                    // Close modal
+                    closeModal();
+                    // Prompt user to enter new CPH value
+                    const currentCph = ChatState.selectedForecastRow.target_cph || 0;
+                    addMessage('assistant', `Selected row: ${ChatState.selectedForecastRow.main_lob} | ${ChatState.selectedForecastRow.state} | ${ChatState.selectedForecastRow.case_type}\nCurrent CPH: ${currentCph}\n\nTo modify the CPH, type something like "change CPH to 3.5" or "increase CPH by 10%"`);
+                }
+            });
+        }
+
+        // Use in Chat button
+        const useBtn = container.querySelector('.modal-use-in-chat-btn');
+        if (useBtn && !useBtn.hasAttribute('data-handler-attached')) {
+            useBtn.setAttribute('data-handler-attached', 'true');
+            useBtn.addEventListener('click', () => {
+                if (ChatState.selectedForecastRow) {
+                    // Close modal
+                    closeModal();
+                    // Confirm row selection in chat
+                    const row = ChatState.selectedForecastRow;
+                    addMessage('assistant', `Row selected and ready for interaction:\n• Main LOB: ${row.main_lob}\n• State: ${row.state}\n• Case Type: ${row.case_type}\n• Target CPH: ${row.target_cph}\n\nYou can now ask questions about this row, like "get FTE details" or "change CPH to 4.0"`);
+                }
+            });
+        }
+    }
+
+    function sendRowActionMessage(message, rowData) {
+        // Add user message to UI
+        addMessage('user', message);
+
+        // Send to WebSocket with selected row context
+        sendWebSocketMessage({
+            type: 'user_message',
+            message: message,
+            selected_row: rowData
+        });
     }
 
     function clearRowSelection() {

@@ -43,9 +43,24 @@ class ForecastQueryParams(BaseModel):
     Parameters for forecast data queries - maps to /api/llm/forecast endpoint.
 
     All filter parameters are optional and support multiple values (arrays).
+    Month and year are optional to allow the LLM to leave them unset when
+    the user doesn't specify them - triggering a clarification request.
     """
-    month: int = Field(ge=1, le=12, description="Report month (1-12)")
-    year: int = Field(ge=2020, le=2100, description="Report year")
+    month: Optional[int] = Field(default=None, ge=1, le=12, description="Report month (1-12). Set to null if user did not specify.")
+    year: Optional[int] = Field(default=None, ge=2020, le=2100, description="Report year. Set to null if user did not specify.")
+
+    def is_missing_required(self) -> bool:
+        """Check if required month/year parameters are missing."""
+        return self.month is None or self.year is None
+
+    def get_missing_fields(self) -> List[str]:
+        """Get list of missing required fields."""
+        missing = []
+        if self.month is None:
+            missing.append('month')
+        if self.year is None:
+            missing.append('year')
+        return missing
 
     # Filter parameters (all optional, multi-value arrays)
     # Note: If main_lobs is provided, platforms/markets/localities are IGNORED per API precedence rules
@@ -91,7 +106,9 @@ class ForecastQueryParams(BaseModel):
     @field_validator('month', 'year')
     @classmethod
     def validate_date(cls, v, info):
-        """Validate month and year ranges"""
+        """Validate month and year ranges (allow None for clarification flow)"""
+        if v is None:
+            return v
         field_name = info.field_name
         if field_name == 'month' and not (1 <= v <= 12):
             raise ValueError("Month must be between 1 and 12")

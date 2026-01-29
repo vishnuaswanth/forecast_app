@@ -289,6 +289,32 @@ class LLMService:
         # Extract parameters for other intents
         params = await self._extract_parameters(user_text, classification, context)
 
+        # Check if required parameters are missing (for forecast queries)
+        if params.get('_missing_required'):
+            missing_fields = params.pop('_missing_required')
+            logger.info(f"[LLM Service] Missing required parameters: {missing_fields}")
+
+            # Build a helpful clarification message
+            if 'month' in missing_fields and 'year' in missing_fields:
+                clarification_text = "Which report month and year would you like to see forecast data for? For example, 'March 2025'."
+            elif 'month' in missing_fields:
+                clarification_text = "Which month would you like to see forecast data for?"
+            else:
+                clarification_text = "Which year would you like to see forecast data for?"
+
+            return {
+                'category': 'clarification_needed',
+                'confidence': classification.confidence,
+                'parameters': params,
+                'ui_component': generate_clarification_ui(clarification_text),
+                'metadata': {
+                    'reasoning': 'Missing required month/year parameters',
+                    'missing_params': missing_fields,
+                    'original_classification': classification.category.value,
+                    'correlation_id': correlation_id
+                }
+            }
+
         # Build confirmation UI
         ui_component = generate_confirmation_ui(classification.category.value, params)
 
@@ -354,12 +380,19 @@ Context: {context_str}
 
 Extract: month (1-12), year, platforms[], markets[], localities[], states[], case_types[], forecast_months[]
 Rules:
-- Extract ALL mentioned values
-- Use context only if parameter not stated
+- CRITICAL: If user did NOT specify a month or year, set them to null. Do NOT guess or assume values.
+- Only extract values that are EXPLICITLY stated in the query
+- Use context ONLY if user says "same month", "that year", or similar references
+- If query is vague like "get forecast data" without month/year, set month=null and year=null
 - Multi-values → lists: "CA and TX" → ["CA", "TX"]
 - Month names → numbers: "March" → 3
 - "totals only" → show_totals_only=True
 - Preserve exact case type names: "Claims Processing", "Enrollment"
+
+Examples of null extraction:
+- "get forecast data" → month=null, year=null (user didn't specify)
+- "show me forecast records" → month=null, year=null (user didn't specify)
+- "show March 2025 data" → month=3, year=2025 (user specified both)
 """
 
             param_llm = self.llm.with_structured_output(ForecastQueryParams)
@@ -378,7 +411,13 @@ Rules:
                     duration_ms=duration_ms
                 )
 
-                return params.dict()
+                # Check if required fields are missing - flag for clarification
+                params_dict = params.dict()
+                if params.is_missing_required():
+                    params_dict['_missing_required'] = params.get_missing_fields()
+                    logger.info(f"[LLM Service] Missing required fields: {params_dict['_missing_required']}")
+
+                return params_dict
             except Exception as e:
                 duration_ms = (time.time() - start_time) * 1000
                 logger.warning(f"[LLM Service] Parameter extraction failed: {str(e)}")
@@ -391,11 +430,25 @@ Rules:
                     context={'duration_ms': duration_ms}
                 )
 
-                # Fallback to context defaults
+                # Check if we have context values to fall back to
+                has_context_month = context.current_forecast_month is not None
+                has_context_year = context.current_forecast_year is not None
+
                 fallback_params = {
-                    'month': context.current_forecast_month or datetime.now().month,
-                    'year': context.current_forecast_year or datetime.now().year
+                    'month': context.current_forecast_month,
+                    'year': context.current_forecast_year
                 }
+
+                # Flag missing fields if no context available
+                missing = []
+                if not has_context_month:
+                    missing.append('month')
+                if not has_context_year:
+                    missing.append('year')
+
+                if missing:
+                    fallback_params['_missing_required'] = missing
+                    logger.info(f"[LLM Service] Fallback has missing required: {missing}")
 
                 llm_logger.log_parameter_extraction(
                     correlation_id=correlation_id,
@@ -566,6 +619,24 @@ Be specific about what's needed.
             parameters=parameters,
             status='started'
         )
+
+        # Check for missing required parameters first
+        if parameters.get('month') is None or parameters.get('year') is None:
+            missing = []
+            if parameters.get('month') is None:
+                missing.append('month')
+            if parameters.get('year') is None:
+                missing.append('year')
+            logger.warning(f"[LLM Service] Missing required parameters: {missing}")
+            return {
+                'success': False,
+                'message': f"Missing required parameters: {', '.join(missing)}",
+                'ui_component': generate_clarification_ui(
+                    "Which report month and year would you like to see forecast data for? "
+                    "For example, 'March 2025'."
+                ),
+                'metadata': {'missing_params': missing, 'requires_clarification': True}
+            }
 
         # Validate parameters
         try:
