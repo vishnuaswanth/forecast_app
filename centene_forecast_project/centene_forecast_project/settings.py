@@ -276,10 +276,49 @@ LLM_LOGGING_CONFIG = {
 
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
+import logging
+import json
 
 # Global variable to track the current file number
 current_file_number = 1
 current_date = datetime.now().date()
+
+
+# =============================================================================
+# LLM JSON LOG FORMATTER (defined here to avoid circular imports)
+# =============================================================================
+class LLMJSONFormatter(logging.Formatter):
+    """Custom JSON formatter for structured LLM workflow logs."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        """Format log record as JSON."""
+        log_entry = {
+            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'level': record.levelname,
+            'logger': record.name,
+        }
+
+        # Add extra fields from record
+        if hasattr(record, 'correlation_id'):
+            log_entry['correlation_id'] = record.correlation_id
+        if hasattr(record, 'conversation_id'):
+            log_entry['conversation_id'] = record.conversation_id
+        if hasattr(record, 'user_id'):
+            log_entry['user_id'] = record.user_id
+        if hasattr(record, 'event'):
+            log_entry['event'] = record.event
+        if hasattr(record, 'data'):
+            log_entry['data'] = record.data
+
+        # Add message if not structured data
+        if record.msg and not hasattr(record, 'data'):
+            log_entry['message'] = record.getMessage()
+
+        # Add exception info if present
+        if record.exc_info:
+            log_entry['exception'] = self.formatException(record.exc_info)
+
+        return json.dumps(log_entry, default=str, ensure_ascii=False)
 
 # Base directory for logs
 LOG_DIR = os.path.join(BASE_DIR.parent, 'logs')
@@ -355,7 +394,7 @@ LOGGING = {
             'style': '{',
         },
         'json': {
-            '()': 'chat_app.utils.llm_logger.LLMLogFormatter',
+            '()': f'{__name__}.LLMJSONFormatter',
         },
     },
     'handlers': {
