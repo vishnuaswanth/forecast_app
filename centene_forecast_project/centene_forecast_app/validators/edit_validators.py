@@ -154,6 +154,23 @@ def validate_modified_records(records: list) -> list:
                 f"Record {idx}: modified_fields must be a list"
             )
 
+        if len(modified_fields) == 0:
+            raise ValidationError(
+                f"Record {idx}: modified_fields cannot be empty"
+            )
+
+        # Validate that modified_fields contains valid field names (not the months object itself)
+        for field_name in modified_fields:
+            if not isinstance(field_name, str):
+                raise ValidationError(
+                    f"Record {idx}: modified_fields must contain strings, got {type(field_name)}"
+                )
+            # Field names should be like "target_cph", "Jun-25.fte_req", etc.
+            if not field_name.strip():
+                raise ValidationError(
+                    f"Record {idx}: modified_fields cannot contain empty strings"
+                )
+
         # Validate months structure (nested object)
         months = record.get('months')
         if not isinstance(months, dict):
