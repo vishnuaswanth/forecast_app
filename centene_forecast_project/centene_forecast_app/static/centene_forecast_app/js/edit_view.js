@@ -156,6 +156,7 @@
             },
 
             // Field name mapping (canonical → actual field names)
+            // API spec uses: forecast, fte_req, fte_avail, capacity
             fields: {
                 forecast: 'forecast',
                 fteReq: 'fte_req',
@@ -225,7 +226,7 @@
             },
 
             // Field name mapping (canonical → actual field names)
-            // NOTE: Using same field names as bench allocation for consistency
+            // API spec uses: forecast, fte_req, fte_avail, capacity (same as bench allocation)
             fields: {
                 forecast: 'forecast',
                 fteReq: 'fte_req',
@@ -979,7 +980,8 @@
         if (config.dataAccess.monthDataPath === 'nested') {
             return record.data?.[month] || {};
         }
-        // Direct access - check new nested structure first, fallback to old direct access
+        // API spec: Month data is nested under record.months object
+        // Example: record.months = {"Jun-25": {forecast: 12500, fte_req: 10, ...}, ...}
         return (record.months && record.months[month]) || record[month] || {};
     }
 

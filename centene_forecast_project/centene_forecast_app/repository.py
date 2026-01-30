@@ -1113,10 +1113,10 @@ class APIClient:
         """
         Save bench allocation changes (NO CACHE - write operation).
 
-        IMPORTANT: This method transforms records before sending to backend.
+        IMPORTANT: Send the FULL record structure from preview response as per API spec.
         - Input: Records with nested 'months' object (from preview response)
-        - Output: Records with month data flattened directly on record (backend format)
-        - Transformation: record.months['Jun-25'] -> record['Jun-25']
+        - Output: Send complete structure to backend (API spec Section 3)
+        - Backend expects: Full nested structure with months mapping
 
         Args:
             month: Month name (e.g., 'April')
@@ -1146,26 +1146,15 @@ class APIClient:
             >>> response['history_log_id']
             '550e8400-e29b-41d4-a716-446655440000'
         """
-        # Transform records: Flatten nested 'months' object to direct month keys
-        # Frontend sends: {'months': {'Jun-25': {...}, 'Jul-25': {...}}}
-        # Backend expects: {'Jun-25': {...}, 'Jul-25': {...}}
-        flattened_records = []
-        for record in modified_records:
-            flattened_record = {k: v for k, v in record.items() if k != 'months'}
-
-            # Extract month data from nested 'months' object and place directly on record
-            if 'months' in record and isinstance(record['months'], dict):
-                for month_key, month_data in record['months'].items():
-                    flattened_record[month_key] = month_data
-
-            flattened_records.append(flattened_record)
-
+        # Send FULL structure as per API spec - DO NOT transform
+        # API spec Section 3: "Send the FULL record structure from the preview response"
+        # Backend handles the transformation internally
         endpoint = "/api/bench-allocation/update"
         data = {
             'month': month,
             'year': year,
             'months': months,
-            'modified_records': flattened_records,
+            'modified_records': modified_records,  # Send as-is from preview
             'user_notes': user_notes
         }
         response = self._make_request('POST', endpoint, data=data)
@@ -1295,16 +1284,13 @@ class APIClient:
         """
         Save CPH changes (NO CACHE - write operation).
 
-        IMPORTANT: CPH update uses ModifiedForecastRecord format (same as bench allocation).
+        IMPORTANT: Send FULL structure as per API spec Section 9.
+        CPH update uses ModifiedForecastRecord format (same as bench allocation).
         Each record includes:
         - target_cph (float): NEW CPH value
         - target_cph_change (float): Delta from original
         - Nested months object with forecast impact data (integers)
         - modified_fields array (includes "target_cph" + month fields)
-
-        Frontend sends nested structure, backend expects flat:
-        - Input: {'months': {'Jun-25': {...}}}
-        - Output: {'Jun-25': {...}}
 
         Args:
             month: Month name (e.g., 'April')
@@ -1332,46 +1318,20 @@ class APIClient:
             >>> response['success']
             True
         """
-        # Transform records: Flatten nested 'months' object to direct month keys
-        # (SAME transformation as bench allocation)
-        # Frontend sends: {'months': {'Jun-25': {...}, 'Jul-25': {...}}}
-        # Backend expects: {'Jun-25': {...}, 'Jul-25': {...}}
-        flattened_records = []
-        for record in modified_records:
-            flattened_record = {k: v for k, v in record.items() if k != 'months'}
-
-            # Extract month data from nested 'months' object and place directly on record
-            if 'months' in record and isinstance(record['months'], dict):
-                for month_key, month_data in record['months'].items():
-                    flattened_record[month_key] = month_data
-
-            flattened_records.append(flattened_record)
-        # TODO: Replace with actual API call when endpoint is ready
+        # Send FULL structure as per API spec Section 9 - DO NOT transform
+        # API spec: "Send the FULL record structure from the preview response"
+        # Backend handles the transformation internally
         endpoint = "/api/edit-view/target-cph/update/"
-        data = {'month': month, 'year': year, 'modified_records': flattened_records, 'user_notes': user_notes, 'months': months}
+        data = {
+            'month': month,
+            'year': year,
+            'months': months,  # Required top-level months mapping
+            'modified_records': modified_records,  # Send as-is from preview
+            'user_notes': user_notes
+        }
         timeout = 60  # Update timeout
         response = self._make_request('POST', endpoint, data=data, timeout=timeout)
     
-        # MOCK: Using mock data for now
-        logger.info(
-            f"[CPH Update] Using mock update for {month} {year} "
-            f"({len(modified_records)} CPH changes) - Notes: {user_notes[:50] if user_notes else 'None'}"
-        )
-
-        # Simulate successful update
-        # mock_update = {
-        #     'success': True,
-        #     'message': 'CPH updated successfully',
-        #     'records_updated': len(modified_records),
-        #     'cph_changes_applied': len(modified_records),
-        #     'forecast_rows_affected': len(modified_records) * 3  # Simulate each CPH affects 3 forecast rows
-#       #     'history_log_id': '550e8400-e29b-41d4-a716-446655440000'
-        # }
-
-        # logger.info(
-        #     f"[CPH Update] Update successful - {mock_update['records_updated']} CPH records updated, "
-        #     f"{mock_update['forecast_rows_affected']} forecast rows affected (MOCK)"
-        # )
         # Clear CPH caches after successful update
         try:
             from centene_forecast_app.app_utils.cache_utils import delete_pattern
