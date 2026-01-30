@@ -371,16 +371,12 @@
     }
 
     function extractMonthsFromRecord(record) {
-        // Handles both formats:
-        // 1. Months at top level: record["Jun-25"] = {forecast: 12500, ...}
-        // 2. Months nested: record.months = {"Jun-25": {forecast: 12500, ...}}
+        // Assuming structure: record has _modified_fields and month keys
+        // Example: record["Jun-25"] = {forecast: 12500, fte_req: 10.5, ...}
         const months = [];
         const monthPattern = /^[A-Z][a-z]{2}-\d{2}$/; // e.g., "Jun-25"
 
-        // Check if months are nested under 'months' key
-        const source = record.months && typeof record.months === 'object' ? record.months : record;
-
-        for (const key in source) {
+        for (const key in record) {
             if (monthPattern.test(key)) {
                 months.push(key);
             }
@@ -444,43 +440,32 @@
             tr.append(`<td>${escapeHtml(record.case_id || '-')}</td>`);
 
             // Target CPH (check if modified)
-            // Handle _modified_fields as either array or object
-            const modifiedFields = record._modified_fields || {};
-            const isFieldModified = (fieldName) => {
-                if (Array.isArray(modifiedFields)) {
-                    return modifiedFields.includes(fieldName);
-                } else if (typeof modifiedFields === 'object') {
-                    return fieldName in modifiedFields || Object.keys(modifiedFields).some(key => key === fieldName);
-                }
-                return false;
-            };
-
-            const targetCPHModified = isFieldModified('target_cph');
+            const modifiedFields = record._modified_fields || [];
+            const targetCPHModified = modifiedFields.includes('target_cph');
             const cphClass = targetCPHModified ? 'edit-view-modified-cell' : '';
             tr.append(`<td class="${cphClass}">${formatNumber(record.target_cph)}</td>`);
 
-            // Month columns - handle both formats (top-level or nested under 'months')
-            const monthsSource = record.months && typeof record.months === 'object' ? record.months : record;
+            // Month columns
             months.forEach(month => {
-                const monthData = monthsSource[month] || {};
+                const monthData = record[month] || {};
 
                 // Forecast
-                const forecastModified = isFieldModified(`${month}.forecast`);
+                const forecastModified = modifiedFields.includes(`${month}.forecast`);
                 const forecastClass = forecastModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${forecastClass}">${formatNumber(monthData.forecast)}</td>`);
 
                 // FTE Req
-                const fteReqModified = isFieldModified(`${month}.fte_req`);
+                const fteReqModified = modifiedFields.includes(`${month}.fte_req`);
                 const fteReqClass = fteReqModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${fteReqClass}">${formatNumber(monthData.fte_req)}</td>`);
 
                 // FTE Avail
-                const fteAvailModified = isFieldModified(`${month}.fte_avail`);
+                const fteAvailModified = modifiedFields.includes(`${month}.fte_avail`);
                 const fteAvailClass = fteAvailModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${fteAvailClass}">${formatNumber(monthData.fte_avail)}</td>`);
 
                 // Capacity
-                const capacityModified = isFieldModified(`${month}.capacity`);
+                const capacityModified = modifiedFields.includes(`${month}.capacity`);
                 const capacityClass = capacityModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${capacityClass}">${formatNumber(monthData.capacity)}</td>`);
             });
