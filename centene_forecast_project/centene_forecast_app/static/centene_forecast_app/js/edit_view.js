@@ -874,59 +874,8 @@
     // PREVIEW FILTERS
     // ============================================================================
 
-    function populatePreviewFilters(records) {
-        // Extract unique LOBs and Case Types from all records
-        const uniqueLobs = [...new Set(records.map(r => r.main_lob))].sort();
-        const uniqueCaseTypes = [...new Set(records.map(r => r.case_type))].sort();
-
-        // Populate LOB filter
-        DOM.previewLobFilter.empty();
-        uniqueLobs.forEach(lob => {
-            DOM.previewLobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
-        });
-
-        // Populate Case Type filter
-        DOM.previewCaseTypeFilter.empty();
-        uniqueCaseTypes.forEach(caseType => {
-            DOM.previewCaseTypeFilter.append(`<option value="${escapeHtml(caseType)}">${escapeHtml(caseType)}</option>`);
-        });
-
-        // Initialize Select2 on filters
-        initializeFilterSelect2();
-
-        // Show filters
-        showElement(DOM.previewFilters);
-
-        console.log(`Edit View: Filters populated - ${uniqueLobs.length} LOBs, ${uniqueCaseTypes.length} Case Types`);
-    }
-
-    function initializeFilterSelect2() {
-        // Destroy existing Select2 instances if present
-        if (DOM.previewLobFilter.data('select2')) {
-            DOM.previewLobFilter.select2('destroy');
-        }
-        if (DOM.previewCaseTypeFilter.data('select2')) {
-            DOM.previewCaseTypeFilter.select2('destroy');
-        }
-
-        // Initialize LOB filter
-        DOM.previewLobFilter.select2({
-            theme: 'bootstrap-5',
-            placeholder: 'All LOBs',
-            allowClear: true,
-            closeOnSelect: false,
-            width: '100%'
-        });
-
-        // Initialize Case Type filter
-        DOM.previewCaseTypeFilter.select2({
-            theme: 'bootstrap-5',
-            placeholder: 'All Case Types',
-            allowClear: true,
-            closeOnSelect: false,
-            width: '100%'
-        });
-    }
+    // NOTE: populatePreviewFilters removed - superseded by populateGenericFilters
+    // NOTE: initializeFilterSelect2 removed - superseded by generic system
 
     function updateCascadingFilters(changedFilter) {
         updateGenericCascadingFilters(changedFilter, PREVIEW_CONFIGS.benchAllocation);
@@ -958,90 +907,8 @@
         DOM.actionSummaryCount.text(totalOriginal);
     }
 
-    function calculateMonthwiseSummaryFromRecords(records) {
-        // Calculate month-wise summary statistics from all records (not filtered)
-        const monthwiseSummary = {};
-
-        records.forEach(record => {
-            const months = extractMonthsFromRecord(record);
-            months.forEach(month => {
-                if (!monthwiseSummary[month]) {
-                    monthwiseSummary[month] = {
-                        fte_req_change: 0,
-                        fte_avail_change: 0,
-                        capacity_change: 0
-                    };
-                }
-
-                const monthData = (record.months && record.months[month]) || record[month] || {};
-                monthwiseSummary[month].fte_req_change += (monthData.fte_req_change || 0);
-                monthwiseSummary[month].fte_avail_change += (monthData.fte_avail_change || 0);
-                monthwiseSummary[month].capacity_change += (monthData.capacity_change || 0);
-            });
-        });
-
-        return monthwiseSummary;
-    }
-
-    function updateMonthwiseChanges(monthwiseSummary) {
-        const container = $('#month-changes-container');
-        container.empty();
-
-        // Sort months chronologically
-        const sortedMonths = Object.keys(monthwiseSummary).sort((a, b) => {
-            const [monthA, yearA] = a.split('-');
-            const [monthB, yearB] = b.split('-');
-            const dateA = new Date(`20${yearA}-${getMonthNumber(monthA)}-01`);
-            const dateB = new Date(`20${yearB}-${getMonthNumber(monthB)}-01`);
-            return dateA - dateB;
-        });
-
-        sortedMonths.forEach(month => {
-            const changes = monthwiseSummary[month];
-            const monthCard = $('<div>').addClass('edit-view-month-summary-card edit-view-mb-2');
-            
-            const fteReqSign = changes.fte_req_change > 0 ? '+' : '';
-            const fteAvailSign = changes.fte_avail_change > 0 ? '+' : '';
-            const capacitySign = changes.capacity_change > 0 ? '+' : '';
-
-            const fteReqClass = changes.fte_req_change > 0 ? 'edit-view-text-success' : 
-                               changes.fte_req_change < 0 ? 'edit-view-text-danger' : '';
-            const fteAvailClass = changes.fte_avail_change > 0 ? 'edit-view-text-success' : 
-                                 changes.fte_avail_change < 0 ? 'edit-view-text-danger' : '';
-            const capacityClass = changes.capacity_change > 0 ? 'edit-view-text-success' : 
-                                 changes.capacity_change < 0 ? 'edit-view-text-danger' : '';
-
-            monthCard.html(`
-                <div class="edit-view-month-summary-header">
-                    <strong>${month}</strong>
-                </div>
-                <div class="edit-view-month-summary-details">
-                    <div class="edit-view-change-item">
-                        <span class="edit-view-change-label">FTE Req:</span>
-                        <span class="edit-view-change-value ${fteReqClass}">
-                            <strong>${fteReqSign}${formatNumber(changes.fte_req_change)}</strong>
-                        </span>
-                    </div>
-                    <div class="edit-view-change-item">
-                        <span class="edit-view-change-label">FTE Avail:</span>
-                        <span class="edit-view-change-value ${fteAvailClass}">
-                            <strong>${fteAvailSign}${formatNumber(changes.fte_avail_change)}</strong>
-                        </span>
-                    </div>
-                    <div class="edit-view-change-item">
-                        <span class="edit-view-change-label">Capacity:</span>
-                        <span class="edit-view-change-value ${capacityClass}">
-                            <strong>${capacitySign}${formatNumber(changes.capacity_change)}</strong>
-                        </span>
-                    </div>
-                </div>
-            `);
-
-            container.append(monthCard);
-        });
-
-        showElement(DOM.overallChanges);
-    }
+    // NOTE: calculateMonthwiseSummaryFromRecords removed - superseded by generic preview system
+    // NOTE: updateMonthwiseChanges removed - superseded by generic preview system
 
     function clearPreviewFilters() {
         const config = PREVIEW_CONFIGS.benchAllocation;
@@ -1741,75 +1608,10 @@
         return months[monthAbbr] || '01';
     }
 
-    function renderPreviewHeaders(months) {
-        DOM.previewTableHead.empty();
-
-        // Row 1: Main headers
-        const headerRow1 = $('<tr>');
-        headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">Main LOB</th>');
-        headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">State</th>');
-        headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">Case Type</th>');
-        headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">Target CPH</th>');
-
-        months.forEach(month => {
-            headerRow1.append(`<th colspan="4" class="text-center edit-view-month-header">${month}</th>`);
-        });
-
-        // Row 2: Sub-headers (using abbreviations)
-        const headerRow2 = $('<tr>');
-        months.forEach(() => {
-            headerRow2.append('<th class="text-center edit-view-month-header">CF</th>');
-            headerRow2.append('<th class="text-center edit-view-month-header">FTE Req</th>');
-            headerRow2.append('<th class="text-center edit-view-month-header">FTE Avail</th>');
-            headerRow2.append('<th class="text-center edit-view-month-header">Cap</th>');
-        });
-
-        DOM.previewTableHead.append(headerRow1).append(headerRow2);
-    }
-
-    function renderPreviewRows(records, months) {
-        DOM.previewTableBody.empty();
-
-        records.forEach(record => {
-            const tr = $('<tr>');
-            const modifiedFields = record.modified_fields || [];
-
-            // Fixed columns
-            tr.append(`<td>${escapeHtml(record.main_lob || '-')}</td>`);
-            tr.append(`<td>${escapeHtml(record.state || '-')}</td>`);
-            tr.append(`<td>${escapeHtml(record.case_type || '-')}</td>`);
-
-            // Target CPH (can be modified)
-            const targetCphModified = modifiedFields.includes('target_cph');
-            const targetCphChange = record.target_cph_change || 0;
-            tr.append(renderCell(record.target_cph, targetCphChange, targetCphModified, 'text-center'));
-
-            // Month columns
-            months.forEach(month => {
-                const monthData = (record.months && record.months[month]) || record[month] || {};
-
-                // CF - Client Forecast (not modified)
-                tr.append(`<td class="text-end">${formatNumber(monthData.forecast)}</td>`);
-
-                // FTE Req
-                const fteReqModified = modifiedFields.includes(`${month}.fte_req`);
-                const fteReqChange = monthData.fte_req_change || 0;
-                tr.append(renderCell(monthData.fte_req, fteReqChange, fteReqModified));
-
-                // FTE Avail
-                const fteAvailModified = modifiedFields.includes(`${month}.fte_avail`);
-                const fteAvailChange = monthData.fte_avail_change || 0;
-                tr.append(renderCell(monthData.fte_avail, fteAvailChange, fteAvailModified));
-
-                // Capacity
-                const capacityModified = modifiedFields.includes(`${month}.capacity`);
-                const capacityChange = monthData.capacity_change || 0;
-                tr.append(renderCell(monthData.capacity, capacityChange, capacityModified));
-            });
-
-            DOM.previewTableBody.append(tr);
-        });
-    }
+    // NOTE: renderPreviewHeaders removed - superseded by renderGenericPreviewTable
+    // NOTE: renderPreviewRows removed - superseded by renderGenericPreviewTable
+    // NOTE: renderPreviewTotals removed - superseded by renderGenericPreviewTable
+    // NOTE: renderPreviewPagination removed - superseded by renderGenericPreviewTable
 
     function renderCell(value, change, isModified, additionalClass = 'text-end') {
         if (!isModified || change === 0) {
@@ -1824,65 +1626,6 @@
         return `<td class="${additionalClass} ${cellClass}">${formatNumber(value)} ${badge}</td>`;
     }
 
-    function renderPreviewTotals(records, months) {
-        // Calculate totals for each month column
-        const totals = {};
-
-        months.forEach(month => {
-            totals[month] = {
-                forecast: 0,
-                fte_req: 0,
-                fte_avail: 0,
-                capacity: 0,
-                fte_req_change: 0,
-                fte_avail_change: 0,
-                capacity_change: 0
-            };
-        });
-
-        // Sum up all values from filtered records
-        records.forEach(record => {
-            months.forEach(month => {
-                const monthData = (record.months && record.months[month]) || record[month] || {};
-                totals[month].forecast += (monthData.forecast || 0);
-                totals[month].fte_req += (monthData.fte_req || 0);
-                totals[month].fte_avail += (monthData.fte_avail || 0);
-                totals[month].capacity += (monthData.capacity || 0);
-                totals[month].fte_req_change += (monthData.fte_req_change || 0);
-                totals[month].fte_avail_change += (monthData.fte_avail_change || 0);
-                totals[month].capacity_change += (monthData.capacity_change || 0);
-            });
-        });
-
-        // Render totals row
-        const tr = $('<tr class="edit-view-totals-row">');
-
-        // Fixed columns - show "Total" in first column, empty in others
-        tr.append('<td class="edit-view-totals-label"><strong>Total</strong></td>');
-        tr.append('<td></td>');
-        tr.append('<td></td>');
-        tr.append('<td></td>');
-
-        // Month columns - show totals with delta badges
-        months.forEach(month => {
-            const monthTotals = totals[month];
-
-            // CF - Client Forecast (no delta)
-            tr.append(`<td class="text-end"><strong>${formatNumber(monthTotals.forecast)}</strong></td>`);
-
-            // FTE Req with delta badge
-            tr.append(renderTotalCell(monthTotals.fte_req, monthTotals.fte_req_change));
-
-            // FTE Avail with delta badge
-            tr.append(renderTotalCell(monthTotals.fte_avail, monthTotals.fte_avail_change));
-
-            // Capacity with delta badge
-            tr.append(renderTotalCell(monthTotals.capacity, monthTotals.capacity_change));
-        });
-
-        DOM.previewTableBody.append(tr);
-    }
-
     function renderTotalCell(value, change) {
         if (!change || change === 0) {
             return `<td class="text-end"><strong>${formatNumber(value)}</strong></td>`;
@@ -1893,35 +1636,6 @@
         const badge = `<span class="edit-view-change-badge ${badgeClass}">${sign}${formatNumber(change)}</span>`;
 
         return `<td class="text-end"><strong>${formatNumber(value)}</strong> ${badge}</td>`;
-    }
-
-    function renderPreviewPagination() {
-        const paginationUl = DOM.previewPagination.find('ul.edit-view-pagination');
-        paginationUl.empty();
-
-        if (STATE.previewTotalPages <= 1) {
-            hideElement(DOM.previewPagination);
-            return;
-        }
-
-        showElement(DOM.previewPagination);
-
-        // Previous button
-        const prevLi = $('<li>').addClass('edit-view-page-item').addClass(STATE.previewCurrentPage === 1 ? 'edit-view-page-item-disabled' : '');
-        prevLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', STATE.previewCurrentPage - 1).text('Previous'));
-        paginationUl.append(prevLi);
-
-        // Page numbers
-        for (let i = 1; i <= STATE.previewTotalPages; i++) {
-            const pageLi = $('<li>').addClass('edit-view-page-item').addClass(i === STATE.previewCurrentPage ? 'edit-view-page-item-active' : '');
-            pageLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', i).text(i));
-            paginationUl.append(pageLi);
-        }
-
-        // Next button
-        const nextLi = $('<li>').addClass('edit-view-page-item').addClass(STATE.previewCurrentPage === STATE.previewTotalPages ? 'edit-view-page-item-disabled' : '');
-        nextLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', STATE.previewCurrentPage + 1).text('Next'));
-        paginationUl.append(nextLi);
     }
 
     function handlePreviewPageClick(e) {
@@ -2571,14 +2285,7 @@
         }
     }
 
-    function showErrorAlert(message) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: message,
-            confirmButtonColor: '#dc3545'
-        });
-    }
+    // NOTE: showErrorAlert removed - using Swal.fire directly instead
 
     function formatNumber(value) {
         if (value === null || value === undefined || value === '') {
@@ -3214,111 +2921,10 @@
         showElement(DOM.cphOverallChanges);
     }
 
-    function renderCphPreviewHeaders(months) {
-        let headersHtml = `
-            <tr>
-                <th class="edit-view-preview-fixed-col edit-view-preview-lob-col" rowspan="2">LOB</th>
-                <th class="edit-view-preview-fixed-col edit-view-preview-state-col" rowspan="2">State</th>
-                <th class="edit-view-preview-fixed-col edit-view-preview-case-type-col" rowspan="2">Case Type</th>
-                <th class="edit-view-preview-fixed-col edit-view-preview-case-id-col" rowspan="2">Case ID</th>
-        `;
-
-        months.forEach(month => {
-            headersHtml += `<th colspan="4" class="edit-view-text-center edit-view-month-header">${month}</th>`;
-        });
-
-        headersHtml += `</tr><tr>`;
-
-        months.forEach(() => {
-            headersHtml += `
-                <th class="edit-view-preview-metric-col">CF</th>
-                <th class="edit-view-preview-metric-col">FTE Req</th>
-                <th class="edit-view-preview-metric-col">FTE Avail</th>
-                <th class="edit-view-preview-metric-col">Cap</th>
-            `;
-        });
-
-        headersHtml += `</tr>`;
-        DOM.cphPreviewTableHead.html(headersHtml);
-    }
-
-    function renderCphPreviewRows(records, months) {
-        let rowsHtml = '';
-
-        records.forEach(record => {
-            rowsHtml += `
-                <tr>
-                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.main_lob)}</td>
-                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.state)}</td>
-                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.case_type)}</td>
-                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.case_id)}</td>
-            `;
-
-            months.forEach(month => {
-                const monthData = record.data[month] || {};
-                const modifiedFields = record.modified_fields || [];
-
-                rowsHtml += renderCell(monthData.cf, monthData.cf_change, modifiedFields.includes(`${month}_cf`));
-                rowsHtml += renderCell(monthData.fte_required, monthData.fte_required_change, modifiedFields.includes(`${month}_fte_required`));
-                rowsHtml += renderCell(monthData.fte_available, monthData.fte_available_change, modifiedFields.includes(`${month}_fte_available`));
-                rowsHtml += renderCell(monthData.capacity, monthData.capacity_change, modifiedFields.includes(`${month}_capacity`));
-            });
-
-            rowsHtml += `</tr>`;
-        });
-
-        DOM.cphPreviewTableBody.html(rowsHtml);
-    }
-
-    function populateCphPreviewFilters(records) {
-        const uniqueLobs = [...new Set(records.map(r => r.main_lob))].sort();
-        const uniqueCaseTypes = [...new Set(records.map(r => r.case_type))].sort();
-
-        // Populate LOB filter
-        DOM.cphPreviewLobFilter.empty();
-        uniqueLobs.forEach(lob => {
-            DOM.cphPreviewLobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
-        });
-
-        // Populate Case Type filter
-        DOM.cphPreviewCaseTypeFilter.empty();
-        uniqueCaseTypes.forEach(caseType => {
-            DOM.cphPreviewCaseTypeFilter.append(`<option value="${escapeHtml(caseType)}">${escapeHtml(caseType)}</option>`);
-        });
-
-        // Initialize Select2
-        initializeCphPreviewFilterSelect2();
-
-        // Show filters
-        showElement(DOM.cphPreviewFilters);
-
-        console.log(`Edit View: CPH preview filters populated - ${uniqueLobs.length} LOBs, ${uniqueCaseTypes.length} Case Types`);
-    }
-
-    function initializeCphPreviewFilterSelect2() {
-        if (DOM.cphPreviewLobFilter.data('select2')) {
-            DOM.cphPreviewLobFilter.select2('destroy');
-        }
-        if (DOM.cphPreviewCaseTypeFilter.data('select2')) {
-            DOM.cphPreviewCaseTypeFilter.select2('destroy');
-        }
-
-        DOM.cphPreviewLobFilter.select2({
-            theme: 'bootstrap-5',
-            placeholder: 'All LOBs',
-            allowClear: true,
-            closeOnSelect: false,
-            width: '100%'
-        });
-
-        DOM.cphPreviewCaseTypeFilter.select2({
-            theme: 'bootstrap-5',
-            placeholder: 'All Case Types',
-            allowClear: true,
-            closeOnSelect: false,
-            width: '100%'
-        });
-    }
+    // NOTE: renderCphPreviewHeaders removed - superseded by renderGenericPreviewTable
+    // NOTE: renderCphPreviewRows removed - superseded by renderGenericPreviewTable
+    // NOTE: populateCphPreviewFilters removed - superseded by populateGenericFilters
+    // NOTE: initializeCphPreviewFilterSelect2 removed - superseded by generic system
 
     function applyCphPreviewFilters() {
         const config = PREVIEW_CONFIGS.targetCph;
@@ -3343,65 +2949,8 @@
         applyCphPreviewFilters();
     }
 
-    function updateCphMonthwiseChanges(summary) {
-        let summaryHtml = '';
-
-        Object.keys(summary).forEach(month => {
-            const monthData = summary[month];
-            summaryHtml += `
-                <div class="edit-view-month-change-item">
-                    <strong>${month}:</strong>
-                    <span>CF: ${formatNumber(monthData.cf_total)}</span> |
-                    <span>FTE Req: ${formatNumber(monthData.fte_required_total)}</span> |
-                    <span>FTE Avail: ${formatNumber(monthData.fte_available_total)}</span> |
-                    <span>Cap: ${formatNumber(monthData.capacity_total)}</span>
-                </div>
-            `;
-        });
-
-        DOM.cphMonthChangesContainer.html(summaryHtml);
-    }
-
-    function renderCphPreviewPagination() {
-        const { previewCurrentPage, previewTotalPages } = STATE.cph;
-
-        if (previewTotalPages <= 1) {
-            hideElement(DOM.cphPreviewPagination);
-            return;
-        }
-
-        const paginationHtml = [];
-        paginationHtml.push(`
-            <li class="edit-view-page-item ${previewCurrentPage === 1 ? 'edit-view-disabled' : ''}">
-                <a class="edit-view-page-link" href="#" data-page="${previewCurrentPage - 1}">Previous</a>
-            </li>
-        `);
-
-        for (let i = 1; i <= previewTotalPages; i++) {
-            if (i === 1 || i === previewTotalPages || (i >= previewCurrentPage - 2 && i <= previewCurrentPage + 2)) {
-                paginationHtml.push(`
-                    <li class="edit-view-page-item ${i === previewCurrentPage ? 'edit-view-active' : ''}">
-                        <a class="edit-view-page-link" href="#" data-page="${i}">${i}</a>
-                    </li>
-                `);
-            } else if (i === previewCurrentPage - 3 || i === previewCurrentPage + 3) {
-                paginationHtml.push(`
-                    <li class="edit-view-page-item edit-view-disabled">
-                        <span class="edit-view-page-link">...</span>
-                    </li>
-                `);
-            }
-        }
-
-        paginationHtml.push(`
-            <li class="edit-view-page-item ${previewCurrentPage === previewTotalPages ? 'edit-view-disabled' : ''}">
-                <a class="edit-view-page-link" href="#" data-page="${previewCurrentPage + 1}">Next</a>
-            </li>
-        `);
-
-        DOM.cphPreviewPagination.find('ul').html(paginationHtml.join(''));
-        showElement(DOM.cphPreviewPagination);
-    }
+    // NOTE: updateCphMonthwiseChanges removed - superseded by generic preview system
+    // NOTE: renderCphPreviewPagination removed - superseded by generic preview system
 
     function handleCphPreviewPageClick(e) {
         e.preventDefault();

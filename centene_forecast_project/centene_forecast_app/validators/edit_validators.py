@@ -112,6 +112,7 @@ def validate_modified_records(records: list) -> list:
     - Input is a list
     - List is not empty
     - Each record has required fields
+    - modified_fields is an array with DOT notation strings
 
     Args:
         records: List of modified record dictionaries
@@ -123,7 +124,7 @@ def validate_modified_records(records: list) -> list:
         ValidationError: If structure is invalid or required fields missing
 
     Example:
-        >>> validate_modified_records([{'main_lob': 'A', 'state': 'TX', ...}])
+        >>> validate_modified_records([{'main_lob': 'A', 'state': 'TX', 'modified_fields': ['Jun-25.fte_avail'], ...}])
         [{'main_lob': 'A', ...}]
         >>> validate_modified_records([])
         ValidationError: No modified records provided
@@ -134,7 +135,7 @@ def validate_modified_records(records: list) -> list:
     if len(records) == 0:
         raise ValidationError("No modified records provided")
 
-    required_fields = ['main_lob', 'state', 'case_type', 'case_id', '_modified_fields']
+    required_fields = ['main_lob', 'state', 'case_type', 'case_id', 'modified_fields']
 
     for idx, record in enumerate(records):
         if not isinstance(record, dict):
@@ -146,11 +147,11 @@ def validate_modified_records(records: list) -> list:
                     f"Record {idx} missing required field: {field}"
                 )
 
-        # Validate _modified_fields structure
-        modified_fields = record.get('_modified_fields')
-        if not isinstance(modified_fields, dict):
+        # Validate modified_fields as array (not dict)
+        modified_fields = record.get('modified_fields')
+        if not isinstance(modified_fields, list):
             raise ValidationError(
-                f"Record {idx}: _modified_fields must be a dictionary"
+                f"Record {idx}: modified_fields must be an array"
             )
 
     return records

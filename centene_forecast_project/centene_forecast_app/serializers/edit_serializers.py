@@ -56,8 +56,8 @@ class EditViewSerializer:
         """
         Serialize bench allocation preview response.
 
-        Input: {'success': True, 'modified_records': [...], 'total_modified': 15}
-        Output: Enhanced with timestamp
+        Input: {'success': True, 'months': {...}, 'month': '...', 'year': ..., 'modified_records': [...], 'total_modified': 15, 'summary': {...}}
+        Output: Enhanced with timestamp, passing through all API spec fields
 
         Args:
             data: Raw preview data from repository
@@ -77,8 +77,12 @@ class EditViewSerializer:
 
             response = {
                 'success': data.get('success', True),
+                'months': data.get('months'),
+                'month': data.get('month'),
+                'year': data.get('year'),
                 'modified_records': modified_records,
                 'total_modified': total_modified,
+                'summary': data.get('summary'),
                 'message': data.get('message'),
                 'timestamp': _get_timestamp()
             }
@@ -95,8 +99,8 @@ class EditViewSerializer:
         """
         Serialize bench allocation update response.
 
-        Input: {'success': True, 'message': '...', 'records_updated': 15}
-        Output: Standard success response with timestamp
+        Input: {'success': True, 'message': '...', 'records_updated': 15, 'history_log_id': '...'}
+        Output: Standard success response with timestamp and history_log_id
 
         Args:
             data: Raw update response from repository
@@ -105,7 +109,7 @@ class EditViewSerializer:
             Formatted response dict
 
         Example:
-            >>> data = {'success': True, 'records_updated': 15}
+            >>> data = {'success': True, 'records_updated': 15, 'history_log_id': 'uuid-123'}
             >>> response = EditViewSerializer.serialize_update_response(data)
             >>> response['success']
             True
@@ -115,6 +119,7 @@ class EditViewSerializer:
                 'success': data.get('success', True),
                 'message': data.get('message', 'Allocation updated successfully'),
                 'records_updated': data.get('records_updated', 0),
+                'history_log_id': data.get('history_log_id'),
                 'timestamp': _get_timestamp()
             }
 
@@ -130,17 +135,17 @@ class EditViewSerializer:
         """
         Serialize history log response.
 
-        Input: {'success': True, 'data': [...], 'pagination': {...}}
-        Output: Enhanced with formatted timestamps
+        Input: {'success': True, 'data': [...], 'total': 127, 'page': 1, 'limit': 25, 'has_more': True}
+        Output: Flat pagination structure with formatted timestamps
 
         Args:
             data: Raw history data from repository
 
         Returns:
-            Formatted response dict with timestamp formatting
+            Formatted response dict with flat pagination
 
         Example:
-            >>> data = {'success': True, 'data': [...], 'pagination': {...}}
+            >>> data = {'success': True, 'data': [...], 'total': 127, 'page': 1, 'limit': 25, 'has_more': True}
             >>> response = EditViewSerializer.serialize_history_log_response(data)
             >>> len(response['data']) > 0
             True
@@ -148,15 +153,23 @@ class EditViewSerializer:
         try:
             entries = data.get('data', [])
 
-            # Format timestamps in each entry
+            # Format timestamps in each entry (created_at field per API spec)
             for entry in entries:
-                if 'timestamp' in entry:
+                if 'created_at' in entry:
+                    entry['created_at_formatted'] = _format_timestamp(entry['created_at'])
+                # Support legacy timestamp field as well
+                elif 'timestamp' in entry:
                     entry['timestamp_formatted'] = _format_timestamp(entry['timestamp'])
 
+            # Extract pagination - support both flat and nested formats
+            pagination = data.get('pagination', {})
             response = {
                 'success': data.get('success', True),
                 'data': entries,
-                'pagination': data.get('pagination', {}),
+                'total': data.get('total') or pagination.get('total', 0),
+                'page': data.get('page') or pagination.get('page', 1),
+                'limit': data.get('limit') or pagination.get('limit', 25),
+                'has_more': data.get('has_more') if 'has_more' in data else pagination.get('has_more', False),
                 'timestamp': _get_timestamp()
             }
 

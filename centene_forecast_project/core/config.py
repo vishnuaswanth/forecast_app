@@ -625,6 +625,12 @@ class EditViewConfig:
     Options: 'bench-allocation', 'cph-update', 'manual-update', 'history-log'
     """
 
+    MAX_USER_NOTES_LENGTH: int = 500
+    """
+    Maximum length for user notes in bench allocation updates.
+    Default: 500 characters
+    """
+
     # Validation Configuration
     VALIDATE_BEFORE_PREVIEW: bool = True
     """

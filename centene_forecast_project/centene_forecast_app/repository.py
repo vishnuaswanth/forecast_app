@@ -1,7 +1,6 @@
 # repository.py
 import logging
 from io import BytesIO
-import re
 from typing import Dict, List, Optional
 import requests
 from requests.adapters import HTTPAdapter
@@ -10,11 +9,7 @@ from urllib3.util.retry import Retry
 from django.conf import settings
 
 # Import mock data (will be replaced with API calls)
-from centene_forecast_app.mock_data import (
-    get_report_months,
-    get_categories,
-    get_manager_data
-)
+from centene_forecast_app.mock_data import get_available_change_types
 
 # Import caching utilities
 from centene_forecast_app.app_utils.cache_utils import cache_with_ttl
@@ -25,25 +20,25 @@ logger = logging.getLogger('django')
 class APIClient:
     """
     API Client for external service communication.
-    
+
     Handles HTTP requests to FastAPI backend with proper error handling,
     timeouts, and retry logic.
-    
+
     Usage:
         client = APIClient(base_url='http://localhost:8888/')
         data = client.get_manager_view_data('2025-02', 'amisys-onshore')
     """
     def __init__(
-        self, 
-        base_url: str, 
-        default_headers: Optional[Dict[str, str]]=None, 
+        self,
+        base_url: str,
+        default_headers: Optional[Dict[str, str]]=None,
         timeout: int = 30,
         max_retries: int = 3
     ):
 
         """
         Initialize API Client.
-        
+
         Args:
             base_url: Base URL for API endpoints
             timeout: Request timeout in seconds (default: 30)
@@ -73,7 +68,7 @@ class APIClient:
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
-        
+
         logger.info(f"APIClient initialized with base_url: {self.base_url}")
 
     def _make_request(
@@ -82,26 +77,29 @@ class APIClient:
         endpoint: str,
         params: Optional[Dict] = None,
         data: Optional[Dict] = None,
+        timeout: Optional[int] = None,
         **kwargs
     ) -> Dict:
         """
         Internal method to make HTTP requests with error handling.
-        
+
         Args:
             method: HTTP method (GET, POST, etc.)
             endpoint: API endpoint path (e.g., '/manager-view/data')
             params: URL query parameters
             data: Request body data (for POST/PUT)
+            timeout: Request timeout in seconds (uses self.timeout if not provided)
             **kwargs: Additional arguments passed to requests
-            
+
         Returns:
             Response data as dictionary
-            
+
         Raises:
             requests.exceptions.RequestException: On request failure
         """
         url = f"{self.base_url}{endpoint}"
-        
+        request_timeout = timeout if timeout is not None else self.timeout
+
         try:
             response = self.session.request(
                 method=method,
@@ -109,17 +107,17 @@ class APIClient:
                 params=params,
                 json=data,
                 headers=self.headers,
-                timeout=self.timeout,
+                timeout=request_timeout,
                 **kwargs
             )
             response.raise_for_status()
-            
+
             logger.debug(f"API {method} {url} - Status: {response.status_code}")
-            
+
             return response.json()
-            
+
         except requests.exceptions.Timeout:
-            logger.error(f"Request timeout after {self.timeout}s: {method} {url}")
+            logger.error(f"Request timeout after {request_timeout}s: {method} {url}")
             raise
         except requests.exceptions.ConnectionError:
             logger.error(f"Connection error: {method} {url}")
@@ -186,15 +184,15 @@ class APIClient:
         except ValueError as e:
             logger.error(f"JSON decode error: {e}")
             return None
-    
+
     @cache_with_ttl(ttl=ManagerViewConfig.FILTERS_TTL, key_prefix='manager_view:filters')
     def get_manager_view_filters(self) -> Dict[str, List[Dict[str, str]]]:
         """
         Get filter options for manager view (report months and categories).
-        
+
         Returns:
             Dictionary with 'report_months' and 'categories' lists
-            
+
         Example:
             {
                 'report_months': [
@@ -208,14 +206,7 @@ class APIClient:
             }
         """
         return self._make_request('GET', '/api/manager-view/filters')
-        
-        # MOCK: Using mock data for now
-        logger.info("Using mock data for manager view filters")
-        return {
-            'report_months': get_report_months(),
-            'categories': get_categories()
-        }
-    
+
     def get_manager_view_data(
         self,
         report_month: str,
@@ -223,14 +214,14 @@ class APIClient:
     ) -> Dict:
         """
         Get manager view data for specified report month and optional category.
-        
+
         Args:
             report_month: Report month in YYYY-MM format (e.g., '2025-02')
             category: Optional category filter (e.g., 'amisys-onshore')
-            
+
         Returns:
             Dictionary containing hierarchical capacity data
-            
+
         Example:
             {
                 'report_month': '2025-02',
@@ -238,7 +229,7 @@ class APIClient:
                 'categories': [...],
                 'category_name': 'Amisys Onshore' or 'All Categories'
             }
-            
+
         Raises:
             ValueError: If report_month or category is invalid
             requests.exceptions.RequestException: On API request failure
@@ -247,18 +238,6 @@ class APIClient:
         if category:
             params['category'] = category
         return self._make_request('GET', '/api/manager-view/data', params=params)
-        
-        # MOCK: Using mock data for now
-        logger.info(
-            f"Using mock data for manager view - "
-            f"report_month: {report_month}, category: {category or 'all'}"
-        )
-        
-        try:
-            return get_manager_data(report_month, category)
-        except ValueError as e:
-            logger.error(f"Invalid parameters for manager view: {str(e)}")
-            raise
 
     @cache_with_ttl(ttl=ForecastCacheConfig.DATA_TTL, key_prefix='roster')
     def get_all_roster(self, roster_type, search=None, searchable_field='', global_filter=None, limit=100, month: int = None, year: int = None):
@@ -278,13 +257,13 @@ class APIClient:
             if month and year:
                 params['month'] = self.month_mapper.get(month, "Invalid Month")
                 params['year'] = year
-            
+
             params = {k: v for k, v in params.items() if v not in [None, '', []]}
-            
+
             response = self.get(url, params=params)
             if not response:
                 break
-            
+
             records = response.get('records', [])
             total = response.get('total', 0)
 
@@ -304,7 +283,7 @@ class APIClient:
             normalized_records.append(normalized)
 
         return normalized_records
-    
+
     @cache_with_ttl(ttl=ForecastCacheConfig.DATA_TTL, key_prefix='forecast')
     def get_all_forecast_records(
         self,
@@ -398,7 +377,7 @@ class APIClient:
 
     def upload_forecast_file(self, file_content: bytes, filename: str, user: str):
         return self._upload_file('/upload/forecast', file_content, filename, user)
-    
+
     def upload_altered_forecast_file(self, file_content: bytes, filename: str, user: str):
         return self._upload_file('/upload/altered_forecast', file_content, filename, user)
 
@@ -457,8 +436,6 @@ class APIClient:
         }
 
         return self.get("/record_history/all", params=params)
-
-    
     
     def get_roster_page(self, skip=0, limit=10, search=None, searchable_field='', global_filter=None):
         params = {
@@ -551,7 +528,7 @@ class APIClient:
         }
 
         logger.debug(f"[Schema Fetch] Calling {endpoint} with params: {params}")
-        
+
         response = self.get(endpoint, params=params)
 
         if response is None:
@@ -595,7 +572,7 @@ class APIClient:
                 params['case_type'] = case_type
 
         logger.debug(f"[Schema Fetch] Calling {endpoint} with params: {params}")
-        
+
         response = self.get(endpoint, params=params)
 
         if response is None:
@@ -604,7 +581,7 @@ class APIClient:
 
         logger.debug(f"[Schema Fetch Success] Response: {response}")
         return response
-    
+
     def get_month_and_year_for_dropdown_options(self):
         """
         Fetch available months and years for dropdowns.
@@ -640,16 +617,6 @@ class APIClient:
         """
         return self._make_request('GET', '/forecast/filter-years')
 
-        # MOCK: Using mock data for now
-        logger.info("Using mock data for forecast filter years")
-        return {
-            'years': [
-                {'value': '2025', 'display': '2025'},
-                {'value': '2024', 'display': '2024'},
-                {'value': '2023', 'display': '2023'}
-            ]
-        }
-
     @cache_with_ttl(ttl=ForecastCacheConfig.CASCADE_TTL, key_prefix='cascade:months')
     def get_forecast_months_for_year(self, year: int) -> List[Dict[str, str]]:
         """
@@ -669,25 +636,6 @@ class APIClient:
             ]
         """
         return self._make_request('GET', f'/forecast/months/{year}')
-
-        # MOCK: Using mock data for now
-        logger.info(f"Using mock data for forecast months - year: {year}")
-
-        # Return all months for now (real API would return only months with data)
-        return [
-            {'value': '1', 'display': 'January'},
-            {'value': '2', 'display': 'February'},
-            {'value': '3', 'display': 'March'},
-            {'value': '4', 'display': 'April'},
-            {'value': '5', 'display': 'May'},
-            {'value': '6', 'display': 'June'},
-            {'value': '7', 'display': 'July'},
-            {'value': '8', 'display': 'August'},
-            {'value': '9', 'display': 'September'},
-            {'value': '10', 'display': 'October'},
-            {'value': '11', 'display': 'November'},
-            {'value': '12', 'display': 'December'}
-        ]
 
     @cache_with_ttl(ttl=ForecastCacheConfig.CASCADE_TTL, key_prefix='cascade:platforms')
     def get_forecast_platforms(self, year: int, month: int) -> List[Dict[str, str]]:
@@ -709,15 +657,6 @@ class APIClient:
         """
         params = {'year': year, 'month': month}
         return self._make_request('GET', '/forecast/platforms', params=params)
-
-        # MOCK: Using mock data for now
-        logger.info(f"Using mock data for forecast platforms - year: {year}, month: {month}")
-
-        return [
-            {'value': 'Amisys', 'display': 'Amisys'},
-            {'value': 'Facets', 'display': 'Facets'},
-            {'value': 'Xcelys', 'display': 'Xcelys'}
-        ]
 
     @cache_with_ttl(ttl=ForecastCacheConfig.CASCADE_TTL, key_prefix='cascade:markets')
     def get_forecast_markets(
@@ -745,19 +684,6 @@ class APIClient:
         """
         params = {'year': year, 'month': month, 'platform': platform}
         return self._make_request('GET', '/forecast/markets', params=params)
-
-        # MOCK: Using mock data for now
-        logger.info(
-            f"Using mock data for forecast markets - "
-            f"year: {year}, month: {month}, platform: {platform}"
-        )
-
-        # Return different markets based on platform for realistic cascading
-        return [
-            {'value': 'Medicaid', 'display': 'Medicaid'},
-            {'value': 'Medicare', 'display': 'Medicare'},
-            {'value': 'Marketplace', 'display': 'Marketplace'}
-        ]
 
     @cache_with_ttl(ttl=ForecastCacheConfig.CASCADE_TTL, key_prefix='cascade:localities')
     def get_forecast_localities(
@@ -788,20 +714,6 @@ class APIClient:
         """
         params = {'year': year, 'month': month, 'platform': platform, 'market': market}
         return self._make_request('GET', '/forecast/localities', params=params)
-
-        # MOCK: Using mock data for now
-        logger.info(
-            f"Using mock data for forecast localities - "
-            f"year: {year}, month: {month}, platform: {platform}, market: {market}"
-        )
-
-        return [
-            {'value': '', 'display': '-- All Localities --'},
-            {'value': 'DOMESTIC', 'display': 'Domestic'},
-            {'value': 'GLOBAL', 'display': 'Global'},
-            {'value': '(DOMESTIC)', 'display': '(Domestic)'},
-            {'value': '(GLOBAL)', 'display': '(Global)'},
-        ]
 
     @cache_with_ttl(ttl=ForecastCacheConfig.CASCADE_TTL, key_prefix='cascade:worktypes')
     def get_forecast_worktypes(
@@ -840,28 +752,6 @@ class APIClient:
         if locality:
             params['locality'] = locality
         return self._make_request('GET', '/forecast/worktypes', params=params)
-
-        # MOCK: Using mock data for now
-        logger.info(
-            f"Using mock data for forecast worktypes - "
-            f"year: {year}, month: {month}, platform: {platform}, "
-            f"market: {market}, locality: {locality or 'all'}"
-        )
-
-        return [
-            {'value': 'select', 'display': 'Select'},
-            {'value': 'ADJ-Basic/NON MMP', 'display':'ADJ-Basic NON MMP'},
-            {'value': 'ADJ-COB NON MMP', 'display': 'ADJ-COB NON MMP'},
-            {'value': 'APP-BASIC/NON MMP', 'display':'APP-BASIC NON MMP'},
-            {'value': 'APP-COB NON MMP', 'display': 'APP-COB NON MMP'},
-            {'value': 'COR-Basic/NON MMP', 'display':'COR-Basic NON MMP'},
-            {'value': 'COR-COB NON MMP', 'display': 'COR-COB NON MMP'},
-            {'value': 'FTC-Basic/Non MMP', 'display':'FTC-Basic Non MMP'},
-            {'value': 'FTC-COB NON MMP', 'display':'FTC-COB NON MMP'},
-            {'value': 'OMN-Basic/NON MMP', 'display':'OMN-Basic NON MMP'},
-            {'value': 'OMN-COB NON MMP', 'display': 'OMN-COB NON MMP'},
-        ]
-
 
     # ============================================================================
     # Execution Monitoring Methods
@@ -1143,45 +1033,63 @@ class APIClient:
             >>> len(reports['data'])
             15
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/allocation-reports"
-        # response = self._make_request('GET', endpoint)
+        endpoint = "/api/allocation-reports"
+        response = self._make_request('GET', endpoint)
+        return response
 
-        # MOCK: Using mock data for now
-        logger.info("[Edit View] Using mock data for allocation reports")
-
-        mock_reports = {
-            'success': True,
-            'data': [
-                {'value': '2025-04', 'display': 'April 2025'},
-                {'value': '2025-03', 'display': 'March 2025'},
-                {'value': '2025-02', 'display': 'February 2025'},
-                {'value': '2025-01', 'display': 'January 2025'},
-                {'value': '2024-12', 'display': 'December 2024'},
-                {'value': '2024-11', 'display': 'November 2024'},
-            ],
-            'total': 6
-        }
-
-        logger.info(f"[Edit View] Retrieved {mock_reports['total']} allocation reports (MOCK)")
-        return mock_reports
-
+    @cache_with_ttl(ttl=EditViewConfig.PREVIEW_CACHE_TTL, key_prefix='edit_view:preview')
     def get_bench_allocation_preview(self, month: str, year: int) -> Dict:
         """
         Calculate bench allocation preview (modified records only).
+
+        IMPORTANT: Backend MUST follow the standardized format in PREVIEW_RESPONSE_STANDARD.md
+
+        Standard Response Format (CURRENT - with nested months):
+        {
+            'success': True,
+            'months': {                              // Top-level month index mapping
+                'month1': 'Jun-25',
+                'month2': 'Jul-25',
+                'month3': 'Aug-25',
+                'month4': 'Sep-25',
+                'month5': 'Oct-25',
+                'month6': 'Nov-25'
+            },
+            'total_modified': 15,
+            'modified_records': [
+                {
+                    'main_lob': 'Medicaid',
+                    'state': 'MO',
+                    'case_type': 'Appeals',
+                    'target_cph': 100,                // Integer values
+                    'target_cph_change': 5,
+                    'modified_fields': ['target_cph', 'Jun-25.forecast', 'Jun-25.fte_req', ...],
+                    'months': {                       // Month data NESTED under 'months' object
+                        'Jun-25': {
+                            'forecast': 12500,        // Integer values
+                            'fte_req': 11,
+                            'fte_avail': 8,
+                            'capacity': 400,
+                            'forecast_change': 0,     // Always included
+                            'fte_req_change': 2,
+                            'fte_avail_change': 1,
+                            'capacity_change': 50
+                        }
+                    }
+                }
+            ],
+            'summary': {'total_fte_change': 45, 'total_capacity_change': 2250},
+            'message': None
+        }
+
+        NOTE: When sending to update endpoint, months are flattened (see update_bench_allocation)
 
         Args:
             month: Month name (e.g., 'April')
             year: Year (e.g., 2025)
 
         Returns:
-            Dictionary with modified records:
-            {
-                'success': True,
-                'modified_records': [...],
-                'total_modified': 15,
-                'message': None or error message
-            }
+            Dictionary with modified records following standardized format
 
         Example:
             >>> client = get_api_client()
@@ -1189,232 +1097,361 @@ class APIClient:
             >>> preview['total_modified']
             15
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/bench-allocation/preview"
-        # data = {'month': month, 'year': year}
-        # from config import EditViewConfig
-        # timeout = EditViewConfig.PREVIEW_TIMEOUT_SECONDS
-        # response = self._make_request('POST', endpoint, data=data, timeout=timeout)
-
-        # MOCK: Using mock data for now
-        logger.info(f"[Edit View] Using mock data for preview - {month} {year}")
-
-        mock_preview = {
-            'success': True,
-            'modified_records': [
-                {
-                    'main_lob': 'Amisys Medicaid DOMESTIC',
-                    'state': 'LA',
-                    'case_type': 'Claims Processing',
-                    'case_id': 'CL-12345',
-                    'target_cph': 50,
-                    'jun_25_forecast': 1000,
-                    'jun_25_fte_req': 20.5,
-                    'jun_25_fte_avail': 18.0,
-                    'jun_25_capacity': 900,
-                    '_modified_fields': {
-                        'jun_25_fte_avail': {'old_value': 15.0, 'new_value': 18.0},
-                        'jun_25_capacity': {'old_value': 750, 'new_value': 900}
-                    }
-                },
-                {
-                    'main_lob': 'Facets Medicare OFFSHORE',
-                    'state': 'TX',
-                    'case_type': 'Enrollment',
-                    'case_id': 'EN-67890',
-                    'target_cph': 65,
-                    'jun_25_forecast': 2000,
-                    'jun_25_fte_req': 30.8,
-                    'jun_25_fte_avail': 28.0,
-                    'jun_25_capacity': 1820,
-                    '_modified_fields': {
-                        'jun_25_fte_avail': {'old_value': 25.0, 'new_value': 28.0},
-                        'jun_25_capacity': {'old_value': 1625, 'new_value': 1820}
-                    }
-                }
-            ],
-            'total_modified': 2,
-            'message': None
-        }
-
-        logger.info(f"[Edit View] Preview calculated - {mock_preview['total_modified']} modified records (MOCK)")
-        return mock_preview
+        endpoint = "/api/bench-allocation/preview"
+        data = {'month': month, 'year': year}
+        response = self._make_request('POST', endpoint, data=data)
+        return response
 
     def update_bench_allocation(
         self,
         month: str,
         year: int,
+        months: dict,
         modified_records: list,
         user_notes: str
     ) -> Dict:
         """
         Save bench allocation changes (NO CACHE - write operation).
 
+        IMPORTANT: This method transforms records before sending to backend.
+        - Input: Records with nested 'months' object (from preview response)
+        - Output: Records with month data flattened directly on record (backend format)
+        - Transformation: record.months['Jun-25'] -> record['Jun-25']
+
         Args:
             month: Month name (e.g., 'April')
             year: Year (e.g., 2025)
-            modified_records: List of modified record dictionaries
+            months: Month index mapping (month1-month6 to labels). Required for backend processing.
+            modified_records: List of modified record dictionaries (with nested 'months' structure)
             user_notes: User-provided description
 
         Returns:
             Success response:
             {
                 'success': True,
-                'message': 'Allocation updated successfully',
-                'records_updated': 15
+                'message': 'Bench allocation updated successfully',
+                'records_updated': 15,
+                'history_log_id': '550e8400-e29b-41d4-a716-446655440000'
             }
 
         Example:
             >>> client = get_api_client()
+            >>> months_map = {'month1': 'Jun-25', 'month2': 'Jul-25', ...}
+            >>> records_with_nested_months = [{'main_lob': 'Amisys', 'months': {'Jun-25': {...}}}]
             >>> response = client.update_bench_allocation(
-            ...     'April', 2025, [...], 'Allocated bench capacity'
+            ...     'April', 2025, months_map, records_with_nested_months, 'Allocated bench capacity'
+            ... )
+            >>> response['success']
+            True
+            >>> response['history_log_id']
+            '550e8400-e29b-41d4-a716-446655440000'
+        """
+        # Transform records: Flatten nested 'months' object to direct month keys
+        # Frontend sends: {'months': {'Jun-25': {...}, 'Jul-25': {...}}}
+        # Backend expects: {'Jun-25': {...}, 'Jul-25': {...}}
+        flattened_records = []
+        for record in modified_records:
+            flattened_record = {k: v for k, v in record.items() if k != 'months'}
+
+            # Extract month data from nested 'months' object and place directly on record
+            if 'months' in record and isinstance(record['months'], dict):
+                for month_key, month_data in record['months'].items():
+                    flattened_record[month_key] = month_data
+
+            flattened_records.append(flattened_record)
+
+        endpoint = "/api/bench-allocation/update"
+        data = {
+            'month': month,
+            'year': year,
+            'months': months,
+            'modified_records': flattened_records,
+            'user_notes': user_notes
+        }
+        response = self._make_request('POST', endpoint, data=data)
+        return response
+
+    # ============================================================
+    # TARGET CPH UPDATE METHODS
+    # ============================================================
+
+    @cache_with_ttl(ttl=900, key_prefix='cph_data')  # 15 minutes
+    def get_target_cph_data(self, month: str, year: int) -> Dict:
+        """
+        Get CPH records for editing in Target CPH tab.
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+
+        Returns:
+            Dictionary with CPH records:
+            {
+                'success': True,
+                'data': [
+                    {
+                        'id': 'cph_1',
+                        'lob': 'Amisys Medicaid DOMESTIC',
+                        'case_type': 'Claims Processing',
+                        'target_cph': 50.0,
+                        'modified_target_cph': 50.0
+                    },
+                    ...
+                ],
+                'total': 12
+            }
+
+        Example:
+            >>> client = get_api_client()
+            >>> data = client.get_target_cph_data('April', 2025)
+            >>> data['total']
+            12
+        """
+        endpoint = "/api/edit-view/target-cph/data/"
+        params = {'month': month, 'year': year}
+        response = self._make_request('GET', endpoint, params=params)
+        return response
+
+    @cache_with_ttl(ttl=300, key_prefix='cph_preview')  # 5 minutes
+    def get_target_cph_preview(
+        self,
+        month: str,
+        year: int,
+        modified_records: list
+    ) -> Dict:
+        """
+        Calculate forecast impact of CPH changes (preview).
+
+        IMPORTANT: Backend MUST follow the SAME standardized format as bench allocation
+        (see PREVIEW_RESPONSE_STANDARD.md)
+
+        Standard Response Format (CURRENT - IDENTICAL to bench allocation with nested months):
+        {
+            'success': True,
+            'months': {                              // Top-level month index mapping
+                'month1': 'Jun-25',
+                'month2': 'Jul-25',
+                'month3': 'Aug-25',
+                'month4': 'Sep-25',
+                'month5': 'Oct-25',
+                'month6': 'Nov-25'
+            },
+            'total_modified': 15,
+            'modified_records': [
+                {
+                    'main_lob': 'Medicaid',
+                    'state': 'MO',
+                    'case_type': 'Appeals',
+                    'case_id': 'CASE-123',           // Include for CPH preview (differs from bench)
+                    'target_cph': 50,                // Include for CPH preview
+                    'target_cph_change': 5,
+                    'modified_fields': ['target_cph', 'Jun-25.forecast', 'Jun-25.fte_req', ...],
+                    'months': {                      // Month data NESTED under 'months' object
+                        'Jun-25': {
+                            'forecast': 12500,       // Integer values
+                            'fte_req': 11,
+                            'fte_avail': 8,
+                            'capacity': 400,
+                            'forecast_change': 0,    // Always included
+                            'fte_req_change': 2,
+                            'fte_avail_change': 1,
+                            'capacity_change': 50
+                        }
+                    }
+                }
+            ],
+            'summary': {'total_fte_change': 45, 'total_capacity_change': 2250},
+            'message': None
+        }
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            modified_records: List of modified CPH records
+
+        Returns:
+            Dictionary with forecast impact using SAME structure as bench allocation
+
+        Example:
+            >>> client = get_api_client()
+            >>> modified = [{'id': 'cph_1', 'lob': '...', 'case_type': '...', 'target_cph': 50, 'modified_target_cph': 52}]
+            >>> preview = client.get_target_cph_preview('April', 2025, modified)
+            >>> preview['total_modified']
+            15
+        """
+        endpoint = "/api/edit-view/target-cph/preview/"
+        data = {'month': month, 'year': year, 'modified_records': modified_records}
+        response = self._make_request('POST', endpoint, data=data)
+        return response
+
+    def submit_target_cph_update(
+        self,
+        month: str,
+        year: int,
+        months: dict,
+        modified_records: list,
+        user_notes: str
+    ) -> Dict:
+        """
+        Save CPH changes (NO CACHE - write operation).
+
+        IMPORTANT: CPH update uses ModifiedForecastRecord format (same as bench allocation).
+        Each record includes:
+        - target_cph (float): NEW CPH value
+        - target_cph_change (float): Delta from original
+        - Nested months object with forecast impact data (integers)
+        - modified_fields array (includes "target_cph" + month fields)
+
+        Frontend sends nested structure, backend expects flat:
+        - Input: {'months': {'Jun-25': {...}}}
+        - Output: {'Jun-25': {...}}
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            months: Month index mapping (month1-month6 to labels)
+            modified_records: List of ModifiedForecastRecord dicts
+            user_notes: User-provided description
+
+        Returns:
+            Success response:
+            {
+                'success': True,
+                'message': 'CPH updated successfully',
+                'cph_changes_applied': 5,
+                'forecast_rows_affected': 15,
+                'history_log_id': 'uuid-string'
+            }
+
+        Example:
+            >>> client = get_api_client()
+            >>> months_map = {'month1': 'Jun-25', 'month2': 'Jul-25', ...}
+            >>> response = client.submit_target_cph_update(
+            ...     'April', 2025, months_map, [...], 'Increased CPH for high-volume LOBs'
             ... )
             >>> response['success']
             True
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/bench-allocation/update"
-        # data = {'month': month, 'year': year, 'modified_records': modified_records, 'user_notes': user_notes}
-        # from config import EditViewConfig
-        # timeout = EditViewConfig.UPDATE_TIMEOUT_SECONDS
-        # response = self._make_request('POST', endpoint, data=data, timeout=timeout)
+        # Transform records: Flatten nested 'months' object to direct month keys
+        # (SAME transformation as bench allocation)
+        # Frontend sends: {'months': {'Jun-25': {...}, 'Jul-25': {...}}}
+        # Backend expects: {'Jun-25': {...}, 'Jul-25': {...}}
+        flattened_records = []
+        for record in modified_records:
+            flattened_record = {k: v for k, v in record.items() if k != 'months'}
 
+            # Extract month data from nested 'months' object and place directly on record
+            if 'months' in record and isinstance(record['months'], dict):
+                for month_key, month_data in record['months'].items():
+                    flattened_record[month_key] = month_data
+
+            flattened_records.append(flattened_record)
+        # TODO: Replace with actual API call when endpoint is ready
+        endpoint = "/api/edit-view/target-cph/update/"
+        data = {'month': month, 'year': year, 'modified_records': flattened_records, 'user_notes': user_notes, 'months': months}
+        timeout = 60  # Update timeout
+        response = self._make_request('POST', endpoint, data=data, timeout=timeout)
+    
         # MOCK: Using mock data for now
         logger.info(
-            f"[Edit View] Using mock update for {month} {year} "
-            f"({len(modified_records)} records) - Notes: {user_notes[:50] if user_notes else 'None'}"
+            f"[CPH Update] Using mock update for {month} {year} "
+            f"({len(modified_records)} CPH changes) - Notes: {user_notes[:50] if user_notes else 'None'}"
         )
 
-        mock_update = {
-            'success': True,
-            'message': 'Allocation updated successfully',
-            'records_updated': len(modified_records)
-        }
+        # Simulate successful update
+        # mock_update = {
+        #     'success': True,
+        #     'message': 'CPH updated successfully',
+        #     'records_updated': len(modified_records),
+        #     'cph_changes_applied': len(modified_records),
+        #     'forecast_rows_affected': len(modified_records) * 3  # Simulate each CPH affects 3 forecast rows
+#       #     'history_log_id': '550e8400-e29b-41d4-a716-446655440000'
+        # }
 
-        logger.info(f"[Edit View] Update successful - {mock_update['records_updated']} records updated (MOCK)")
-        return mock_update
+        # logger.info(
+        #     f"[CPH Update] Update successful - {mock_update['records_updated']} CPH records updated, "
+        #     f"{mock_update['forecast_rows_affected']} forecast rows affected (MOCK)"
+        # )
+        # Clear CPH caches after successful update
+        try:
+            from centene_forecast_app.app_utils.cache_utils import delete_pattern
 
-    @cache_with_ttl(ttl=lambda: EditViewConfig.HISTORY_CACHE_TTL, key_prefix='edit_view:history')
+            # Clear CPH data cache (get_target_cph_data)
+            cph_data_cleared = delete_pattern('cph_data:*')
+
+            # Clear CPH preview cache (get_target_cph_preview)
+            cph_preview_cleared = delete_pattern('cph_preview:*')
+
+            logger.info(
+                f"[CPH Update] Cleared {cph_data_cleared} CPH data cache entries "
+                f"and {cph_preview_cleared} CPH preview cache entries"
+            )
+        except Exception as e:
+            logger.warning(f"[CPH Update] Failed to clear CPH caches: {e}")
+
+        return response
+
+    @cache_with_ttl(ttl= EditViewConfig.HISTORY_CACHE_TTL, key_prefix='edit_view:history')
     def get_history_log(
         self,
         month: str = None,
         year: int = None,
         page: int = 1,
-        limit: int = 25
+        limit: int = 25,
+        change_types: list = None
     ) -> Dict:
         """
-        Get history log entries with pagination.
+        Get history log entries with pagination and filtering.
 
         Args:
             month: Optional month filter (e.g., 'April')
             year: Optional year filter (e.g., 2025)
             page: Page number (default: 1)
             limit: Records per page (default: 25)
+            change_types: Optional list of change types to filter by
 
         Returns:
-            Dictionary with history entries:
+            Dictionary with history entries (flat pagination per API spec):
             {
                 'success': True,
-                'data': [...],
-                'pagination': {
-                    'total': 127,
-                    'page': 1,
-                    'limit': 25,
-                    'has_more': True
-                }
+                'data': [
+                    {
+                        'history_log_id': '550e8400-e29b-41d4-a716-446655440000',
+                        'change_type': 'Bench Allocation',
+                        'month': 'April',
+                        'year': 2025,
+                        'created_at': '2025-04-15T14:30:00',
+                        'user': 'system',
+                        'user_notes': 'Allocated excess bench capacity for Q2',
+                        'records_modified': 15,
+                        'summary_data': {...}
+                    }
+                ],
+                'total': 127,
+                'page': 1,
+                'limit': 25,
+                'has_more': True
             }
 
         Example:
             >>> client = get_api_client()
-            >>> history = client.get_history_log(month='April', year=2025, page=1)
+            >>> history = client.get_history_log(month='April', year=2025, page=1, change_types=['Bench Allocation'])
             >>> len(history['data'])
             25
+            >>> history['total']
+            127
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/history-log"
-        # params = {'page': page, 'limit': limit}
-        # if month: params['month'] = month
-        # if year: params['year'] = year
-        # params = {k: v for k, v in params.items() if v is not None}
-        # response = self._make_request('GET', endpoint, params=params)
-
-        # MOCK: Using mock data for now
-        logger.info(
-            f"[Edit View] Using mock history - month: {month}, year: {year}, page: {page}"
-        )
-
-        from datetime import datetime, timedelta
-
-        mock_history = {
-            'success': True,
-            'data': [
-                {
-                    'id': '550e8400-e29b-41d4-a716-446655440000',
-                    'change_type': 'Bench Allocation',
-                    'month': 'April',
-                    'year': 2025,
-                    'timestamp': (datetime.now() - timedelta(hours=2)).isoformat(),
-                    'user': 'john.doe',
-                    'description': 'Allocated excess bench capacity for Q2',
-                    'records_modified': 15,
-                    'specific_changes': {
-                        'changes': [
-                            {
-                                'lob': 'Amisys Medicaid Global',
-                                'category': 'FTC Basic',
-                                'state': 'LA',
-                                'field': 'FTE Avail',
-                                'old_value': 45,
-                                'new_value': 50
-                            },
-                            {
-                                'lob': 'Facets Medicare',
-                                'category': 'Claims Processing',
-                                'state': 'TX',
-                                'field': 'Capacity',
-                                'old_value': 1200,
-                                'new_value': 1500
-                            }
-                        ],
-                        'total_capacity_change': 300
-                    }
-                },
-                {
-                    'id': '660f9511-f39c-52e5-b827-557766551111',
-                    'change_type': 'Bench Allocation',
-                    'month': 'March',
-                    'year': 2025,
-                    'timestamp': (datetime.now() - timedelta(days=1)).isoformat(),
-                    'user': 'jane.smith',
-                    'description': 'Initial allocation for Q1',
-                    'records_modified': 23,
-                    'specific_changes': {
-                        'changes': [
-                            {
-                                'lob': 'Amisys Medicaid OFFSHORE',
-                                'category': 'Enrollment',
-                                'state': 'FL',
-                                'field': 'FTE Avail',
-                                'old_value': 30,
-                                'new_value': 35
-                            }
-                        ],
-                        'total_capacity_change': 500
-                    }
-                }
-            ],
-            'pagination': {
-                'total': 2,
-                'page': page,
-                'limit': limit,
-                'has_more': False
-            }
-        }
-
-        entries_count = len(mock_history['data'])
-        total = mock_history['pagination']['total']
-        logger.info(f"[Edit View] Retrieved {entries_count} of {total} history entries (MOCK)")
-        return mock_history
+        endpoint = "/api/history-log"
+        params = {'page': page, 'limit': limit}
+        if month:
+            params['month'] = month
+        if year:
+            params['year'] = year
+        if change_types:
+            params['change_types'] = change_types
+        params = {k: v for k, v in params.items() if v is not None}
+        response = self._make_request('GET', endpoint, params=params)
+        return response
 
     def download_history_excel(self, history_log_id: str) -> bytes:
         """
@@ -1436,33 +1473,55 @@ class APIClient:
             True
         """
         # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = f"/api/history-log/{history_log_id}/download"
-        # from config import EditViewConfig
-        # timeout = EditViewConfig.DOWNLOAD_TIMEOUT_SECONDS
-        # url = f"{self.base_url}{endpoint}"
-        # response = self.session.get(url, stream=True, timeout=timeout, headers=self.headers)
-        # response.raise_for_status()
-        # excel_bytes = response.content
+        endpoint = f"/api/history-log/{history_log_id}/download"
+        from core.config import EditViewConfig
+        timeout = EditViewConfig.DOWNLOAD_TIMEOUT_SECONDS
+        url = f"{self.base_url}{endpoint}"
+        response = self.session.get(url, stream=True, timeout=timeout, headers=self.headers)
+        response.raise_for_status()
+        excel_bytes = response.content
+        return excel_bytes
 
-        # MOCK: Using mock Excel bytes for now
-        logger.info(f"[Edit View] Using mock Excel download for history log: {history_log_id}")
+    @cache_with_ttl(ttl=EditViewConfig.CHANGE_TYPES_TTL, key_prefix='edit_view:change_types')
+    def get_available_change_types(self) -> Dict:
+        """
+        Get available change types with dynamic colors for history log.
 
-        # Create a minimal mock Excel file (empty workbook bytes)
-        mock_excel_bytes = b'PK\x03\x04' + b'\x00' * 100  # Minimal Excel file signature
+        Returns:
+            Dictionary with change type options:
+            {
+                'success': True,
+                'data': [
+                    {'value': 'Bench Allocation', 'display': 'Bench Allocation', 'color': '#0d6efd'},
+                    {'value': 'CPH Update', 'display': 'CPH Update', 'color': '#198754'},
+                    ...
+                ],
+                'total': 10
+            }
 
-        logger.info(f"[Edit View] Excel download successful - {len(mock_excel_bytes)} bytes (MOCK)")
-        return mock_excel_bytes
+        Example:
+            >>> client = get_api_client()
+            >>> change_types = client.get_available_change_types()
+            >>> len(change_types['data'])
+            10
+        """
+        # TODO: Replace with actual API call when endpoint is ready
+        # endpoint = "/api/edit-view/change-types"
+        # return self._make_request('GET', endpoint)
+
+        # MOCK: Using mock change types data for now
+        return get_available_change_types()
 
     def close(self):
         """Close the session and cleanup resources."""
         self.session.close()
         logger.info("APIClient session closed")
-    
+
     def __enter__(self):
         """Context manager entry."""
         return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
+
+    def __exit__(self, _exc_type, _exc_val, _exc_tb):
         """Context manager exit."""
         self.close()
 
@@ -1474,39 +1533,39 @@ _api_client_instance: Optional[APIClient] = None
 def get_api_client() -> APIClient:
     """
     Get or create singleton APIClient instance.
-    
+
     Returns:
         Configured APIClient instance
-        
+
     Usage:
         from apps.reports.repository import get_api_client
-        
+
         client = get_api_client()
         data = client.get_manager_view_data('2025-02')
     """
     global _api_client_instance
-    
+
     if _api_client_instance is None:
-        
+
         base_url = getattr(settings, 'API_BASE_URL' , "http://127.0.0.1:8888")
         timeout = 30
-        
+
         _api_client_instance = APIClient(
             base_url=base_url,
             timeout=timeout
         )
         logger.info("Created new APIClient singleton instance")
-    
+
     return _api_client_instance
 
 
 def reset_api_client():
     """
     Reset singleton instance (useful for testing).
-    
+
     Usage:
         from apps.reports.repository import reset_api_client
-        
+
         reset_api_client()  # Force recreation on next get_api_client() call
     """
     global _api_client_instance

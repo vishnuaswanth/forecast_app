@@ -117,7 +117,7 @@ class EditViewService:
         The backend expects month-wise data to be nested under a 'months' key.
 
         Args:
-            records: List of record objects with month keys at top level
+            records: List of record objects with month keys at top level or already nested
 
         Returns:
             Transformed records with month data wrapped in 'months' object
@@ -133,13 +133,14 @@ class EditViewService:
                 'case_type': record.get('case_type'),
                 'case_id': record.get('case_id'),
                 'target_cph': record.get('target_cph'),
-                '_modified_fields': record.get('_modified_fields', []),
-                'months': {}
+                'target_cph_change': record.get('target_cph_change', 0),
+                'modified_fields': record.get('modified_fields', []),
+                'months': record.get('months', {})
             }
 
-            # Move month keys into months object
+            # Move month keys into months object if they're at the top level
             for key, value in record.items():
-                if month_pattern.match(key):
+                if month_pattern.match(key) and isinstance(value, dict):
                     new_record['months'][key] = value
 
             transformed.append(new_record)
@@ -224,13 +225,14 @@ class EditViewService:
         month: Optional[str] = None,
         year: Optional[int] = None,
         page: int = 1,
-        limit: int = None
+        limit: int = None,
+        change_types: list = None
     ) -> dict:
         """
         Get history log entries with optional filtering.
 
         This method orchestrates history log retrieval:
-        1. Applies filters (month, year)
+        1. Applies filters (month, year, change_types)
         2. Handles pagination
         3. Returns formatted history entries
 
@@ -239,18 +241,17 @@ class EditViewService:
             year: Optional year filter (e.g., 2025)
             page: Page number (default: 1)
             limit: Records per page (default: from config)
+            change_types: Optional list of change types to filter by
 
         Returns:
-            Dict with history entries and pagination:
+            Dict with history entries and flat pagination:
             {
                 'success': True,
                 'data': [...],
-                'pagination': {
-                    'total': 127,
-                    'page': 1,
-                    'limit': 25,
-                    'has_more': True
-                }
+                'total': 127,
+                'page': 1,
+                'limit': 25,
+                'has_more': True
             }
 
         Raises:
@@ -266,14 +267,14 @@ class EditViewService:
 
         logger.info(
             f"[Edit View Service] Fetching history - "
-            f"month: {month}, year: {year}, page: {page}"
+            f"month: {month}, year: {year}, page: {page}, change_types: {change_types}"
         )
 
         try:
             client = get_api_client()
-            response = client.get_history_log(month, year, page, limit)
+            response = client.get_history_log(month, year, page, limit, change_types)
 
-            total = response.get('pagination', {}).get('total', 0)
+            total = response.get('total', 0)
             entries_count = len(response.get('data', []))
             logger.info(
                 f"[Edit View Service] Retrieved {entries_count} of {total} history entries"
@@ -356,7 +357,8 @@ def get_history_log(
     month: Optional[str] = None,
     year: Optional[int] = None,
     page: int = 1,
-    limit: int = None
+    limit: int = None,
+    change_types: list = None
 ) -> dict:
     """
     Convenience function to get history log.
@@ -366,6 +368,7 @@ def get_history_log(
         year: Optional year filter
         page: Page number
         limit: Records per page
+        change_types: Optional list of change types to filter by
 
     Returns:
         Dict with history entries
@@ -376,7 +379,7 @@ def get_history_log(
         >>> len(history['data']) > 0
         True
     """
-    return EditViewService.get_history_log(month, year, page, limit)
+    return EditViewService.get_history_log(month, year, page, limit, change_types)
 
 
 # Example usage:

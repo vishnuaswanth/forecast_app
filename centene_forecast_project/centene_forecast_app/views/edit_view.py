@@ -208,6 +208,7 @@ def bench_allocation_update_api(request):
         {
             'month': 'April',
             'year': 2025,
+            'months': {'month1': 'Jun-25', 'month2': 'Jul-25', ...},
             'modified_records': [...],
             'user_notes': 'Optional description'
         }
@@ -218,18 +219,20 @@ def bench_allocation_update_api(request):
             'success': True,
             'message': 'Allocation updated successfully',
             'records_updated': 15,
+            'history_log_id': 'uuid-123',
             'timestamp': '2024-12-06T...'
         }
 
     Example:
         POST /api/edit-view/bench-allocation/update/
-        Body: {"month": "April", "year": 2025, "modified_records": [...], "user_notes": "..."}
+        Body: {"month": "April", "year": 2025, "months": {...}, "modified_records": [...], "user_notes": "..."}
     """
     try:
         # Parse request body
         body = json.loads(request.body)
         month = body.get('month', '').strip()
         year = body.get('year')
+        months_mapping = body.get('months', {})  # Accept months mapping from request
         modified_records = body.get('modified_records', [])
         user_notes = body.get('user_notes', '').strip()
 
@@ -285,31 +288,32 @@ def history_log_api(request):
     Query Parameters:
         - month: Optional month filter (e.g., 'April')
         - year: Optional year filter (e.g., 2025)
+        - change_types: Optional array of change types to filter by (can be repeated)
         - page: Page number (default: 1)
         - limit: Records per page (default: from config)
 
     Returns:
-        JSON with history entries:
+        JSON with history entries (flat pagination):
         {
             'success': True,
             'data': [...],
-            'pagination': {
-                'total': 127,
-                'page': 1,
-                'limit': 25,
-                'has_more': True
-            },
+            'total': 127,
+            'page': 1,
+            'limit': 25,
+            'has_more': True,
             'timestamp': '2024-12-06T...'
         }
 
     Example:
         GET /api/edit-view/history-log/?month=April&year=2025&page=1&limit=25
+        GET /api/edit-view/history-log/?change_types=Bench%20Allocation&change_types=CPH%20Update
     """
     try:
         # Extract query parameters
         month = request.GET.get('month', '').strip() or None
         year_str = request.GET.get('year', '').strip()
         year = int(year_str) if year_str else None
+        change_types = request.GET.getlist('change_types')  # Support multiple change_types
         page_str = request.GET.get('page', '1').strip()
         page = int(page_str) if page_str else 1
         limit_str = request.GET.get('limit', str(EditViewConfig.HISTORY_PAGE_SIZE)).strip()
@@ -317,24 +321,25 @@ def history_log_api(request):
 
         logger.info(
             f"[Edit View API] History request - month: {month}, year: {year}, "
-            f"page: {page}, limit: {limit}"
+            f"change_types: {change_types}, page: {page}, limit: {limit}"
         )
 
         # Validate
         validated = validate_history_log_request(month, year, page, limit)
 
-        # Get history data
+        # Get history data with change_types filter
         data = get_history_log(
             validated['month'],
             validated['year'],
             validated['page'],
-            validated['limit']
+            validated['limit'],
+            change_types=change_types if change_types else None
         )
 
         # Serialize response
         response = serialize_history_log_response(data)
 
-        total = response['pagination'].get('total', 0)
+        total = response.get('total', 0)
         logger.info(
             f"[Edit View API] History fetched - {len(response['data'])} of {total} entries"
         )
