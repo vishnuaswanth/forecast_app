@@ -201,6 +201,12 @@ class ConversationContext(BaseModel):
         description="Last fetched roster data response"
     )
 
+    # Report configuration (working_days, work_hours, shrinkage per month/locality)
+    report_configuration: Optional[dict] = Field(
+        default=None,
+        description="Configuration for current report (working_days, work_hours, shrinkage by month and locality)"
+    )
+
     # Metadata
     last_updated: datetime = Field(default_factory=datetime.now)
     turn_count: int = Field(default=0, description="Number of conversation turns")

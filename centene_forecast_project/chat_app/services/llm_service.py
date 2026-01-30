@@ -266,7 +266,7 @@ class LLMService:
                 # Extract new CPH value from user text
                 try:
                     new_cph = await self.extract_cph_value(user_text, selected_row.get('target_cph', 0))
-                    return await self.generate_cph_preview(selected_row, new_cph, conversation_id)
+                    return await self.generate_cph_preview(selected_row, new_cph, conversation_id, context)
                 except ValueError as e:
                     return {
                         'category': classification.category.value,
@@ -832,7 +832,8 @@ Be specific about what's needed.
                 'ui_component': generate_error_ui(f"Failed to fetch data: {str(e)}")
             }
 
-        # Cache data in context
+        # Cache data in context (including report configuration for CPH calculations)
+        report_config = data.get('configuration', None)
         await self.context_manager.update_entities(
             conversation_id,
             last_forecast_data=data,
@@ -841,8 +842,12 @@ Be specific about what's needed.
             active_platforms=params.platforms or [],
             active_markets=params.markets or [],
             active_localities=params.localities or [],
-            active_states=params.states or []
+            active_states=params.states or [],
+            report_configuration=report_config
         )
+
+        if report_config:
+            logger.debug(f"[LLM Service] Stored report configuration in context: {list(report_config.keys()) if isinstance(report_config, dict) else 'N/A'}")
 
         # Check if we got 0 records - trigger combination diagnosis (NEW)
         if len(data.get('records', [])) == 0:
@@ -915,7 +920,7 @@ Be specific about what's needed.
                     'metadata': {'validation_summary': validation_summary.dict()}
                 }
 
-        # Cache data in context
+        # Cache data in context (including report configuration for CPH calculations)
         await self.context_manager.update_entities(
             conversation_id,
             last_forecast_data=data,
@@ -924,7 +929,8 @@ Be specific about what's needed.
             active_platforms=params.platforms or [],
             active_markets=params.markets or [],
             active_localities=params.localities or [],
-            active_states=params.states or []
+            active_states=params.states or [],
+            report_configuration=data.get('configuration', None)
         )
 
         # Generate UI based on user preference
@@ -1401,74 +1407,108 @@ Additional categories to recognize:
         self,
         row_data: dict,
         new_cph: float,
-        conversation_id: str
+        conversation_id: str,
+        context: 'ConversationContext' = None
     ) -> dict:
         """
         Calculate new values with modified CPH and generate preview.
 
-        Formulas:
-        - fte_required = forecast / target_cph
-        - capacity = fte_available * target_cph
+        Formulas (using configuration parameters):
+        - fte_required = ceil(forecast / (working_days * work_hours * (1 - shrinkage) * target_cph))
+        - capacity = fte_available * working_days * work_hours * (1 - shrinkage) * target_cph
         - gap = capacity - forecast
 
         Args:
             row_data: Selected forecast row data
             new_cph: New CPH value to apply
             conversation_id: Conversation identifier
+            context: Conversation context with report_configuration
 
         Returns:
             Dictionary with CPH preview UI and calculated values
         """
         import json
+        from chat_app.services.tools.calculation_tools import (
+            calculate_cph_impact,
+            determine_locality,
+            validate_cph_value
+        )
 
         correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
 
         logger.info(f"[LLM Service] Generating CPH preview: {row_data.get('target_cph')} -> {new_cph}")
 
+        # Validate the new CPH value
+        is_valid, error_msg = validate_cph_value(new_cph)
+        if not is_valid:
+            return {
+                'success': False,
+                'category': 'modify_cph',
+                'confidence': 1.0,
+                'message': error_msg,
+                'ui_component': generate_error_ui(error_msg),
+                'response_type': 'assistant_response',
+                'metadata': {'error': 'invalid_cph_value', 'correlation_id': correlation_id}
+            }
+
         old_cph = row_data.get('target_cph', 0)
 
-        # Determine domestic vs global
-        main_lob = row_data.get('main_lob', '').lower()
-        case_type = row_data.get('case_type', '').lower()
-        is_domestic = 'domestic' in main_lob or 'domestic' in case_type
-        config_type = 'DOMESTIC' if is_domestic else 'GLOBAL'
+        # Determine locality (Domestic vs Global)
+        main_lob = row_data.get('main_lob', '')
+        case_type = row_data.get('case_type', '')
+        locality = determine_locality(main_lob, case_type)
+        config_type = locality.upper()
+
+        # Get report configuration from context
+        report_configuration = None
+        if context and context.report_configuration:
+            report_configuration = context.report_configuration
+            logger.debug(f"[LLM Service] Using report configuration from context for {locality}")
+        else:
+            logger.warning("[LLM Service] No report configuration in context, using defaults")
+
+        # Calculate impact using proper business formulas
+        impact_data = calculate_cph_impact(row_data, new_cph, report_configuration)
 
         # Build preview data structure
         preview_data = {
-            'main_lob': row_data.get('main_lob'),
+            'main_lob': main_lob,
             'state': row_data.get('state'),
-            'case_type': row_data.get('case_type'),
+            'case_type': case_type,
             'old_cph': old_cph,
             'new_cph': new_cph,
             'config_type': config_type,
-            'months': {}
+            'locality': locality,
+            'months': impact_data
         }
 
         months_preview_html = ""
 
-        for month_name, month_data in row_data.get('months', {}).items():
-            forecast = month_data.get('forecast', 0)
-            fte_available = month_data.get('fte_available', 0)
+        for month_name, month_impact in impact_data.items():
+            old_values = month_impact['old']
+            new_values = month_impact['new']
+            config_used = month_impact.get('config', {})
 
-            # Old values
-            old_fte_req = month_data.get('fte_required', 0)
-            old_capacity = month_data.get('capacity', 0)
-            old_gap = month_data.get('gap', 0)
+            old_fte_req = old_values['fte_required']
+            old_capacity = old_values['capacity']
+            old_gap = old_values['gap']
 
-            # New calculated values
-            new_fte_req = round(forecast / new_cph, 1) if new_cph > 0 else 0
-            new_capacity = round(fte_available * new_cph)
-            new_gap = new_capacity - forecast
-
-            preview_data['months'][month_name] = {
-                'forecast': forecast,
-                'fte_available': fte_available,
-                'old': {'fte_required': old_fte_req, 'capacity': old_capacity, 'gap': old_gap},
-                'new': {'fte_required': new_fte_req, 'capacity': new_capacity, 'gap': new_gap}
-            }
+            new_fte_req = new_values['fte_required']
+            new_capacity = new_values['capacity']
+            new_gap = new_values['gap']
 
             # Gap color class
             new_gap_class = 'gap-positive' if new_gap >= 0 else 'gap-negative'
+
+            # Show config info if available
+            config_info = ""
+            if config_used:
+                config_info = f"""
+                <div class="cph-config-info" style="font-size: 10px; color: #888; margin-top: 4px;">
+                    {config_used.get('working_days', 22)}d × {config_used.get('work_hours', 8)}h ×
+                    {100 - int(config_used.get('shrinkage', 0.15) * 100)}% productivity
+                </div>
+                """
 
             months_preview_html += f"""
             <div class="cph-month-preview">
@@ -1491,12 +1531,14 @@ Additional categories to recognize:
                     <span class="cph-preview-arrow">→</span>
                     <span class="cph-preview-new {new_gap_class}">{new_gap:+d}</span>
                 </div>
+                {config_info}
             </div>
             """
 
         # Escape JSON for HTML attribute
         preview_data_json = json.dumps(preview_data).replace('"', '&quot;')
 
+        is_domestic = locality == 'Domestic'
         badge_class = 'bg-primary' if is_domestic else 'bg-secondary'
         ui_component = f"""
         <div class="cph-preview-card">
@@ -1511,7 +1553,7 @@ Additional categories to recognize:
                 <span class="cph-preview-new">{new_cph}</span>
             </div>
             <div class="cph-preview-subtitle">
-                <strong>{row_data.get('main_lob')}</strong> | {row_data.get('state')} | {row_data.get('case_type')}
+                <strong>{main_lob}</strong> | {row_data.get('state')} | {case_type}
             </div>
             <div class="cph-months-preview">
                 {months_preview_html}
@@ -1537,6 +1579,7 @@ Additional categories to recognize:
                 'old_cph': old_cph,
                 'new_cph': new_cph,
                 'config_type': config_type,
+                'locality': locality,
                 'correlation_id': correlation_id
             }
         }

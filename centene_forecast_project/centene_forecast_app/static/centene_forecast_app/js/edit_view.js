@@ -605,7 +605,7 @@
             const payload = {
                 month: STATE.currentSelectedReport.month,
                 year: STATE.currentSelectedReport.year,
-                modified_records: STATE.currentPreviewData.modified_records,
+                modified_records: transformRecordsForAPI(STATE.currentPreviewData.modified_records),
                 user_notes: DOM.userNotesInput.val().trim()
             };
 
@@ -1060,6 +1060,38 @@
             "'": '&#039;'
         };
         return String(text).replace(/[&<>"']/g, m => map[m]);
+    }
+
+    /**
+     * Transform records for API submission by wrapping month data in a 'months' object.
+     * The backend expects month-wise data to be nested under a 'months' key.
+     *
+     * @param {Array} records - Array of record objects with month keys at top level
+     * @returns {Array} - Transformed records with month data wrapped in 'months' object
+     */
+    function transformRecordsForAPI(records) {
+        const monthPattern = /^[A-Z][a-z]{2}-\d{2}$/; // e.g., "Jun-25"
+
+        return records.map(record => {
+            const transformed = {
+                main_lob: record.main_lob,
+                state: record.state,
+                case_type: record.case_type,
+                case_id: record.case_id,
+                target_cph: record.target_cph,
+                _modified_fields: record._modified_fields,
+                months: {}
+            };
+
+            // Move month keys into months object
+            for (const key in record) {
+                if (monthPattern.test(key)) {
+                    transformed.months[key] = record[key];
+                }
+            }
+
+            return transformed;
+        });
     }
 
     // ============================================================================
