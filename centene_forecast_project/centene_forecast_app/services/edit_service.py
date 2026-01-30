@@ -91,13 +91,16 @@ class EditViewService:
             client = get_api_client()
             response = client.get_bench_allocation_preview(month, year)
 
-            # Check for success
-            if not response.get('success', False):
-                error_msg = response.get('message', 'Unknown error')
+            # Check if response indicates an error (from backend or from repository error handling)
+            if not response.get('success', True):
+                error_msg = response.get('error') or response.get('message', 'Unknown error')
+                recommendation = response.get('recommendation')
+
                 logger.warning(
                     f"[Edit View Service] Preview calculation failed: {error_msg}"
+                    + (f" | Recommendation: {recommendation}" if recommendation else "")
                 )
-                return response
+                return response  # Return error response with all details
 
             total_modified = response.get('total_modified', 0)
             logger.info(
@@ -111,46 +114,10 @@ class EditViewService:
             raise
 
     @staticmethod
-    def _transform_records_for_api(records: list) -> list:
-        """
-        Transform records for API submission by wrapping month data in a 'months' object.
-        The backend expects month-wise data to be nested under a 'months' key.
-
-        Args:
-            records: List of record objects with month keys at top level or already nested
-
-        Returns:
-            Transformed records with month data wrapped in 'months' object
-        """
-        import re
-        month_pattern = re.compile(r'^[A-Z][a-z]{2}-\d{2}$')  # e.g., "Jun-25"
-
-        transformed = []
-        for record in records:
-            new_record = {
-                'main_lob': record.get('main_lob'),
-                'state': record.get('state'),
-                'case_type': record.get('case_type'),
-                'case_id': record.get('case_id'),
-                'target_cph': record.get('target_cph'),
-                'target_cph_change': record.get('target_cph_change', 0),
-                'modified_fields': record.get('modified_fields', []),
-                'months': record.get('months', {})
-            }
-
-            # Move month keys into months object if they're at the top level
-            for key, value in record.items():
-                if month_pattern.match(key) and isinstance(value, dict):
-                    new_record['months'][key] = value
-
-            transformed.append(new_record)
-
-        return transformed
-
-    @staticmethod
     def submit_bench_allocation_update(
         month: str,
         year: int,
+        months: dict,
         modified_records: list,
         user_notes: Optional[str] = None
     ) -> dict:
@@ -159,14 +126,14 @@ class EditViewService:
 
         This method orchestrates the update process:
         1. Validates that records exist
-        2. Transforms records to API format (wraps month data in 'months' object)
-        3. Calls backend API to save changes
-        4. Creates history log entry
-        5. Returns success/failure response
+        2. Calls backend API to save changes
+        3. Creates history log entry
+        4. Returns success/failure response
 
         Args:
             month: Month name (e.g., 'April')
             year: Year (e.g., 2025)
+            months: Month index mapping (month1-month6 to labels)
             modified_records: List of modified record dictionaries
             user_notes: Optional user description
 
@@ -183,8 +150,9 @@ class EditViewService:
 
         Example:
             >>> service = EditViewService()
+            >>> months_map = {'month1': 'Jun-25', ...}
             >>> response = service.submit_bench_allocation_update(
-            ...     'April', 2025, [...], 'Updated bench capacity'
+            ...     'April', 2025, months_map, [...], 'Updated bench capacity'
             ... )
             >>> response['success']
             True
@@ -196,18 +164,25 @@ class EditViewService:
         )
 
         try:
-            # Transform records to API format
-            transformed_records = EditViewService._transform_records_for_api(
-                modified_records
-            )
-
             client = get_api_client()
             response = client.update_bench_allocation(
                 month,
                 year,
-                transformed_records,
+                months,
+                modified_records,
                 user_notes or ''
             )
+
+            # Check if response indicates an error (from backend or from repository error handling)
+            if not response.get('success', True):
+                error_msg = response.get('error') or response.get('message', 'Unknown error')
+                recommendation = response.get('recommendation')
+
+                logger.warning(
+                    f"[Edit View Service] Update failed: {error_msg}"
+                    + (f" | Recommendation: {recommendation}" if recommendation else "")
+                )
+                return response  # Return error response with all details
 
             records_updated = response.get('records_updated', 0)
             logger.info(
@@ -226,7 +201,7 @@ class EditViewService:
         year: Optional[int] = None,
         page: int = 1,
         limit: int = None,
-        change_types: list = None
+        change_types: Optional[list] = None
     ) -> dict:
         """
         Get history log entries with optional filtering.
@@ -244,14 +219,16 @@ class EditViewService:
             change_types: Optional list of change types to filter by
 
         Returns:
-            Dict with history entries and flat pagination:
+            Dict with history entries and pagination:
             {
                 'success': True,
                 'data': [...],
-                'total': 127,
-                'page': 1,
-                'limit': 25,
-                'has_more': True
+                'pagination': {
+                    'total': 127,
+                    'page': 1,
+                    'limit': 25,
+                    'has_more': True
+                }
             }
 
         Raises:
@@ -259,7 +236,7 @@ class EditViewService:
 
         Example:
             >>> service = EditViewService()
-            >>> history = service.get_history_log(month='April', year=2025, page=1)
+            >>> history = service.get_history_log(month='April', year=2025, page=1, change_types=['Bench Allocation'])
             >>> len(history['data']) > 0
             True
         """
@@ -274,7 +251,7 @@ class EditViewService:
             client = get_api_client()
             response = client.get_history_log(month, year, page, limit, change_types)
 
-            total = response.get('total', 0)
+            total = response.get('pagination', {}).get('total', 0)
             entries_count = len(response.get('data', []))
             logger.info(
                 f"[Edit View Service] Retrieved {entries_count} of {total} history entries"
@@ -285,6 +262,95 @@ class EditViewService:
         except Exception as e:
             logger.error(f"[Edit View Service] History fetch failed: {e}")
             raise
+
+    @staticmethod
+    def get_available_change_types() -> dict:
+        """
+        Get available change types for filtering.
+
+        This method fetches all available change types from the API
+        to populate the filter dropdown dynamically.
+
+        Returns:
+            Dict with change types:
+            {
+                'success': True,
+                'data': [
+                    {'value': 'Bench Allocation', 'display': 'Bench Allocation'},
+                    {'value': 'CPH Update', 'display': 'CPH Update'},
+                    ...
+                ],
+                'total': 6
+            }
+
+        Raises:
+            Exception: On API failure
+
+        Example:
+            >>> service = EditViewService()
+            >>> change_types = service.get_available_change_types()
+            >>> len(change_types['data']) > 0
+            True
+        """
+        logger.info("[Edit View Service] Fetching available change types")
+
+        try:
+            client = get_api_client()
+            response = client.get_available_change_types()
+
+            total = response.get('total', 0)
+            logger.info(f"[Edit View Service] Retrieved {total} change types")
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[Edit View Service] Change types fetch failed: {e}")
+            raise
+
+    @staticmethod
+    def get_change_type_color(change_type: str, index: int = None) -> str:
+        """
+        Get color for a change type using predefined colors.
+
+        Args:
+            change_type: Type of change (e.g., 'Bench Allocation')
+            index: Optional index to use for color selection
+
+        Returns:
+            Hex color code
+
+        Example:
+            >>> service = EditViewService()
+            >>> color = service.get_change_type_color('Bench Allocation')
+            >>> color.startswith('#')
+            True
+        """
+        # Predefined colors for common change types (for consistency)
+        predefined_colors = {
+            'Bench Allocation': '#0d6efd',
+            'CPH Update': '#198754',
+            'Manual Update': '#ffc107',
+            'Capacity Update': '#6f42c1',
+            'FTE Update': '#fd7e14',
+            'Forecast Update': '#20c997'
+        }
+
+        # Return predefined color if exists
+        if change_type in predefined_colors:
+            return predefined_colors[change_type]
+
+        # Use index if provided, otherwise generate from string hash
+        if index is not None:
+            color_index = index % len(EditViewConfig.STANDARD_COLORS)
+        else:
+            # Simple hash function to generate consistent index
+            hash_value = 0
+            for char in change_type:
+                hash_value = ((hash_value << 5) - hash_value) + ord(char)
+                hash_value = hash_value & 0xFFFFFFFF  # Convert to 32-bit integer
+            color_index = abs(hash_value) % len(EditViewConfig.STANDARD_COLORS)
+
+        return EditViewConfig.STANDARD_COLORS[color_index]
 
 
 # Convenience functions for direct import
@@ -327,6 +393,7 @@ def calculate_bench_allocation_preview(month: str, year: int) -> dict:
 def submit_bench_allocation_update(
     month: str,
     year: int,
+    months: dict,
     modified_records: list,
     user_notes: Optional[str] = None
 ) -> dict:
@@ -336,6 +403,7 @@ def submit_bench_allocation_update(
     Args:
         month: Month name
         year: Year
+        months: Month index mapping (month1-month6 to labels)
         modified_records: List of modified records
         user_notes: Optional notes
 
@@ -344,12 +412,13 @@ def submit_bench_allocation_update(
 
     Example:
         >>> from edit_service import submit_bench_allocation_update
-        >>> response = submit_bench_allocation_update('April', 2025, [...], 'Notes')
+        >>> months_map = {'month1': 'Jun-25', 'month2': 'Jul-25', ...}
+        >>> response = submit_bench_allocation_update('April', 2025, months_map, [...], 'Notes')
         >>> response['success']
         True
     """
     return EditViewService.submit_bench_allocation_update(
-        month, year, modified_records, user_notes
+        month, year, months, modified_records, user_notes
     )
 
 
@@ -358,7 +427,7 @@ def get_history_log(
     year: Optional[int] = None,
     page: int = 1,
     limit: int = None,
-    change_types: list = None
+    change_types: Optional[list] = None
 ) -> dict:
     """
     Convenience function to get history log.
@@ -375,11 +444,210 @@ def get_history_log(
 
     Example:
         >>> from edit_service import get_history_log
-        >>> history = get_history_log(month='April', year=2025)
+        >>> history = get_history_log(month='April', year=2025, change_types=['Bench Allocation'])
         >>> len(history['data']) > 0
         True
     """
     return EditViewService.get_history_log(month, year, page, limit, change_types)
+
+
+def get_available_change_types() -> dict:
+    """
+    Convenience function to get available change types.
+
+    Returns:
+        Dict with change types
+
+    Example:
+        >>> from edit_service import get_available_change_types
+        >>> change_types = get_available_change_types()
+        >>> change_types['success']
+        True
+    """
+    return EditViewService.get_available_change_types()
+
+
+def get_change_type_color(change_type: str, index: int = None) -> str:
+    """
+    Convenience function to get change type color.
+
+    Args:
+        change_type: Type of change
+        index: Optional index for color selection
+
+    Returns:
+        Hex color code
+
+    Example:
+        >>> from edit_service import get_change_type_color
+        >>> color = get_change_type_color('New Change Type')
+        >>> color.startswith('#')
+        True
+    """
+    return EditViewService.get_change_type_color(change_type, index)
+
+
+# ============================================================
+# TARGET CPH SERVICE FUNCTIONS
+# ============================================================
+
+def get_target_cph_data(month: str, year: int) -> dict:
+    """
+    Orchestrate CPH data fetching.
+
+    Args:
+        month: Month name (e.g., 'April')
+        year: Year (e.g., 2025)
+
+    Returns:
+        Dict with CPH records
+
+    Example:
+        >>> from edit_service import get_target_cph_data
+        >>> data = get_target_cph_data('April', 2025)
+        >>> data['total']
+        12
+    """
+    logger.info(f"[CPH Service] Fetching CPH data for {month} {year}")
+
+    try:
+        client = get_api_client()
+        response = client.get_target_cph_data(month, year)
+
+        total = response.get('total', 0)
+        logger.info(f"[CPH Service] Retrieved {total} CPH records")
+
+        return response
+
+    except Exception as e:
+        logger.error(f"[CPH Service] Failed to fetch CPH data: {e}")
+        raise
+
+
+def calculate_target_cph_preview(
+    month: str,
+    year: int,
+    modified_records: list
+) -> dict:
+    """
+    Orchestrate CPH preview calculation.
+
+    Args:
+        month: Month name (e.g., 'April')
+        year: Year (e.g., 2025)
+        modified_records: List of modified CPH records
+
+    Returns:
+        Dict with preview data (forecast impact)
+
+    Example:
+        >>> from edit_service import calculate_target_cph_preview
+        >>> preview = calculate_target_cph_preview('April', 2025, [...])
+        >>> preview['total_modified']
+        15
+    """
+    logger.info(
+        f"[CPH Service] Calculating CPH preview for {month} {year} "
+        f"({len(modified_records)} CPH changes)"
+    )
+
+    try:
+        client = get_api_client()
+        response = client.get_target_cph_preview(month, year, modified_records)
+
+        # Check if response indicates an error (from backend or from repository error handling)
+        if not response.get('success', True):
+            error_msg = response.get('error') or response.get('message', 'Unknown error')
+            recommendation = response.get('recommendation')
+
+            logger.warning(
+                f"[CPH Service] Preview calculation failed: {error_msg}"
+                + (f" | Recommendation: {recommendation}" if recommendation else "")
+            )
+            return response  # Return error response with all details
+
+        total_modified = response.get('total_modified', 0)
+        logger.info(
+            f"[CPH Service] Preview calculated - {total_modified} forecast rows "
+            f"affected by {len(modified_records)} CPH changes"
+        )
+
+        return response
+
+    except Exception as e:
+        logger.error(f"[CPH Service] Preview calculation error: {e}")
+        raise
+
+
+def submit_target_cph_update(
+    month: str,
+    year: int,
+    months: dict,
+    modified_records: list,
+    user_notes: Optional[str] = None
+) -> dict:
+    """
+    Orchestrate CPH update submission.
+
+    IMPORTANT: Uses SAME ModifiedForecastRecord format as bench allocation.
+    Records include target_cph/target_cph_change fields plus nested months data.
+
+    Args:
+        month: Month name (e.g., 'April')
+        year: Year (e.g., 2025)
+        months: Month index mapping (month1-month6 to labels)
+        modified_records: List of ModifiedForecastRecord dicts
+        user_notes: Optional user notes
+
+    Returns:
+        Dict with update result
+
+    Example:
+        >>> from edit_service import submit_target_cph_update
+        >>> months_map = {'month1': 'Jun-25', 'month2': 'Jul-25', ...}
+        >>> response = submit_target_cph_update('April', 2025, months_map, [...], 'Updated CPH')
+        >>> response['success']
+        True
+    """
+    records_count = len(modified_records)
+    logger.info(
+        f"[CPH Service] Submitting CPH update for {month} {year} "
+        f"({records_count} CPH changes)"
+    )
+
+    try:
+        client = get_api_client()
+        response = client.submit_target_cph_update(
+            month,
+            year,
+            months,
+            modified_records,
+            user_notes or ''
+        )
+
+        # Check if response indicates an error (from backend or from repository error handling)
+        if not response.get('success', True):
+            error_msg = response.get('error') or response.get('message', 'Unknown error')
+            recommendation = response.get('recommendation')
+
+            logger.warning(
+                f"[CPH Service] Update failed: {error_msg}"
+                + (f" | Recommendation: {recommendation}" if recommendation else "")
+            )
+            return response  # Return error response with all details
+
+        cph_changes = response.get('cph_changes_applied', 0)
+        forecast_rows = response.get('forecast_rows_affected', 0)
+        logger.info(
+            f"[CPH Service] Update successful - {cph_changes} CPH changes applied, "
+            f"{forecast_rows} forecast rows affected"
+        )
+
+        return response
+
+    except Exception as e:
+        logger.error(f"[CPH Service] Update failed: {e}")
+        raise
 
 
 # Example usage:

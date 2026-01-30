@@ -11,41 +11,41 @@ from typing import Optional
 class ManagerViewConfig:
     """
     Manager View Dashboard Configuration
-    
+
     Controls display and calculation logic for executive capacity planning reports.
     These values can be easily migrated to database models in the future for
     per-user or per-organization customization.
     """
-    
+
     # Display Configuration
     MONTHS_TO_DISPLAY: int = 6
     """
     Number of forecast months to display in the manager view table.
     Default: 6 months
     Range: 1-12 months
-    
-    Example: If report_month is "2025-02" (February 2025 report), 
+
+    Example: If report_month is "2025-02" (February 2025 report),
     displays Feb, Mar, Apr, May, Jun, Jul (6 months)
-    
+
     Note: Actual months displayed depend on data returned from API
     """
-    
+
     KPI_MONTH_INDEX: int = 1
     """
     Zero-based index of which displayed month to use for KPI summary cards.
     Default: 1 (second month in the displayed range)
-    
-    Example: If displaying [Feb, Mar, Apr, May, Jun, Jul], 
+
+    Example: If displaying [Feb, Mar, Apr, May, Jun, Jul],
     index 1 = March data shown in KPI cards
-    
+
     Range: 0 to (MONTHS_TO_DISPLAY - 1)
     """
-    
+
     MAX_HIERARCHY_DEPTH: int = 6
     """
     Maximum depth of category hierarchy tree.
     Default: 6 levels
-    
+
     Hierarchy structure example:
     Level 1: Amisys Onshore (top-level category)
       Level 2: Manual
@@ -54,7 +54,7 @@ class ManagerViewConfig:
             Level 5: [Optional sub-category]
                 Level 6: [Optional sub-category]
     """
-    
+
 
     # Dropdown configurations
     ENABLE_SEARCHABLE_DROPDOWNS: bool = True
@@ -69,9 +69,9 @@ class ManagerViewConfig:
     Options: 'asc' (oldest to newest), 'desc' (newest to oldest)
     Default: 'desc' (newest months first)
     """
-    
+
     CATEGORY_SORT_ORDER: str = 'asc'
-    """ 
+    """
     Sort order for Category dropdown.
     Options: 'asc' (A-Z), 'desc' (Z-A)
     Default: 'asc' (A-Z)
@@ -80,21 +80,21 @@ class ManagerViewConfig:
     # UI Configuration
     ENABLE_EXPAND_ALL: bool = True
     """Enable 'Expand All' / 'Collapse All' buttons in table header"""
-    
+
     ENABLE_CATEGORY_FILTER: bool = True
     """Enable category dropdown filter (if False, shows all categories always)"""
-    
+
     DEFAULT_TABLE_COLLAPSED: bool = True
     """
     Initial table state when page loads.
     True: Only level-1 categories visible
     False: All categories expanded
     """
-    
+
     # Performance Configuration
     CACHE_TIMEOUT_SECONDS: int = 300
     """Cache timeout for manager view data (5 minutes = 300 seconds)"""
-    
+
     ENABLE_DATA_CACHING: bool = True # Non functional
     """Enable/disable caching of manager view data. Default: False for development"""
 
@@ -112,7 +112,7 @@ class ManagerViewConfig:
 
     Actual data fetched for display in tables.
     """
-    
+
     # Validation Methods
     @classmethod
     def validate(cls) -> None:
@@ -123,75 +123,75 @@ class ManagerViewConfig:
         # Validate MONTHS_TO_DISPLAY
         if not isinstance(cls.MONTHS_TO_DISPLAY, int):
             raise ValueError(f"MONTHS_TO_DISPLAY must be an integer, got {type(cls.MONTHS_TO_DISPLAY)}")
-        
+
         if not (1 <= cls.MONTHS_TO_DISPLAY <= 12):
             raise ValueError(
                 f"MONTHS_TO_DISPLAY must be between 1 and 12, got {cls.MONTHS_TO_DISPLAY}"
             )
-        
+
         # Validate KPI_MONTH_INDEX
         if not isinstance(cls.KPI_MONTH_INDEX, int):
             raise ValueError(f"KPI_MONTH_INDEX must be an integer, got {type(cls.KPI_MONTH_INDEX)}")
-        
+
         if not (0 <= cls.KPI_MONTH_INDEX < cls.MONTHS_TO_DISPLAY):
             raise ValueError(
                 f"KPI_MONTH_INDEX must be between 0 and {cls.MONTHS_TO_DISPLAY - 1}, "
                 f"got {cls.KPI_MONTH_INDEX}"
             )
-        
+
         # Validate MAX_HIERARCHY_DEPTH
         if not isinstance(cls.MAX_HIERARCHY_DEPTH, int):
             raise ValueError(f"MAX_HIERARCHY_DEPTH must be an integer, got {type(cls.MAX_HIERARCHY_DEPTH)}")
-        
+
         if not (1 <= cls.MAX_HIERARCHY_DEPTH <= 10):
             raise ValueError(
                 f"MAX_HIERARCHY_DEPTH must be between 1 and 10, got {cls.MAX_HIERARCHY_DEPTH}"
             )
-    
+
     @classmethod
     def get_months_to_display(cls, user: Optional[object] = None) -> int:
         """
         Get number of months to display.
-        
+
         Future: Can be customized per user/organization from database.
-        
+
         Args:
             user: Optional user object for per-user configuration
-            
+
         Returns:
             Number of months to display
         """
         # TODO: Implement database lookup when feature is ready
         # if user and hasattr(user, 'manager_view_config'):
         #     return user.manager_view_config.months_to_display
-        
+
         return cls.MONTHS_TO_DISPLAY
-    
+
     @classmethod
     def get_kpi_month_index(cls, user: Optional[object] = None) -> int:
         """
         Get KPI month index.
-        
+
         Future: Can be customized per user/organization from database.
-        
+
         Args:
             user: Optional user object for per-user configuration
-            
+
         Returns:
             Zero-based index for KPI month
         """
         # TODO: Implement database lookup when feature is ready
         # if user and hasattr(user, 'manager_view_config'):
         #     return user.manager_view_config.kpi_month_index
-        
+
         return cls.KPI_MONTH_INDEX
-    
+
     @classmethod
     def get_config_dict(cls) -> dict:
         """
         Get all configuration as a dictionary.
         Useful for passing to templates or APIs.
-        
+
         Returns:
             Dictionary of all configuration values
         """
@@ -293,6 +293,7 @@ class ForecastCacheConfig:
             'enable_caching': cls.ENABLE_CACHING,
             'cache_backend': cls.CACHE_BACKEND,
         }
+
 
 class ExecutionMonitoringConfig:
     """
@@ -559,6 +560,22 @@ class EditViewConfig:
     Balances between user experience and performance.
     """
 
+    HISTORY_INITIAL_LOAD: int = 3
+    """
+    Number of history entries to load on initial page load or filter application.
+    Default: 3 entries
+
+    Used for lazy loading - determines the initial batch size.
+    """
+
+    HISTORY_LAZY_LOAD_SIZE: int = 3
+    """
+    Number of additional history entries to load when "Load More" is clicked.
+    Default: 3 entries
+
+    Used for lazy loading - determines subsequent batch sizes.
+    """
+
     MAX_HISTORY_ENTRIES: int = 1000
     """
     Maximum number of history entries to retain per execution.
@@ -575,6 +592,14 @@ class EditViewConfig:
     History data changes infrequently and can be cached.
     """
 
+    MAX_USER_NOTES_LENGTH: int = 500
+    """
+    Maximum length of user notes field for bench allocation approval/rejection.
+    Default: 500 characters
+
+    Prevents overly long notes and ensures database field compatibility.
+    """
+
     # Cache Configuration (for repository methods)
     ALLOCATION_REPORTS_TTL: int = 900
     """
@@ -582,6 +607,14 @@ class EditViewConfig:
     Default: 900 seconds (15 minutes)
 
     Allocation reports change infrequently, safe to cache longer.
+    """
+
+    CHANGE_TYPES_TTL: int = 3600
+    """
+    Cache timeout for available change types in seconds.
+    Default: 3600 seconds (1 hour)
+
+    Change types don't change often, safe to cache for longer periods.
     """
 
     PREVIEW_CACHE_TTL: int = 300
@@ -598,6 +631,31 @@ class EditViewConfig:
     Default: 60 seconds
 
     Large Excel files may take time to generate and download.
+    """
+
+    # Standard Colors Configuration
+    STANDARD_COLORS: list = [
+        '#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14',
+        '#20c997', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3',
+        '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a', '#cddc39',
+        '#ffeb3b', '#ffc107', '#ff9800', '#ff5722', '#795548', '#9e9e9e',
+        '#607d8b', '#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5',
+        '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a',
+        '#cddc39', '#ffeb3b', '#ff9800', '#ff5722', '#795548', '#9e9e9e',
+        '#607d8b', '#1976d2', '#388e3c', '#f57c00', '#d32f2f', '#7b1fa2',
+        '#512da8', '#303f9f'
+    ]
+    """
+    List of 50 predefined colors for change types.
+    Colors are selected for good contrast and visual distinction.
+    """
+
+    FALLBACK_COLOR: str = '#6c757d'
+    """
+    Fallback color for change types when all standard colors are exhausted.
+    Default: Bootstrap gray color
+
+    Should be a valid hex color code.
     """
 
     # UI Configuration
@@ -623,12 +681,6 @@ class EditViewConfig:
     Default: 'bench-allocation'
 
     Options: 'bench-allocation', 'cph-update', 'manual-update', 'history-log'
-    """
-
-    MAX_USER_NOTES_LENGTH: int = 500
-    """
-    Maximum length for user notes in bench allocation updates.
-    Default: 500 characters
     """
 
     # Validation Configuration
@@ -693,11 +745,52 @@ class EditViewConfig:
                 f"HISTORY_CACHE_TTL must be non-negative, got {cls.HISTORY_CACHE_TTL}"
             )
 
+        if not isinstance(cls.HISTORY_INITIAL_LOAD, int) or cls.HISTORY_INITIAL_LOAD < 1:
+            raise ValueError(
+                f"HISTORY_INITIAL_LOAD must be a positive integer, got {cls.HISTORY_INITIAL_LOAD}"
+            )
+
+        if not isinstance(cls.HISTORY_LAZY_LOAD_SIZE, int) or cls.HISTORY_LAZY_LOAD_SIZE < 1:
+            raise ValueError(
+                f"HISTORY_LAZY_LOAD_SIZE must be a positive integer, got {cls.HISTORY_LAZY_LOAD_SIZE}"
+            )
+
+        # Validate user notes length
+        if not isinstance(cls.MAX_USER_NOTES_LENGTH, int) or cls.MAX_USER_NOTES_LENGTH < 1:
+            raise ValueError(
+                f"MAX_USER_NOTES_LENGTH must be a positive integer, got {cls.MAX_USER_NOTES_LENGTH}"
+            )
+
         # Validate default tab
         valid_tabs = ['bench-allocation', 'cph-update', 'manual-update', 'history-log']
         if cls.DEFAULT_TAB not in valid_tabs:
             raise ValueError(
                 f"DEFAULT_TAB must be one of {valid_tabs}, got {cls.DEFAULT_TAB}"
+            )
+
+        # Validate standard colors
+        if not isinstance(cls.STANDARD_COLORS, list) or len(cls.STANDARD_COLORS) == 0:
+            raise ValueError(
+                f"STANDARD_COLORS must be a non-empty list, got {type(cls.STANDARD_COLORS)}"
+            )
+
+        # Validate each color format
+        for i, color in enumerate(cls.STANDARD_COLORS):
+            if not isinstance(color, str) or not color.startswith('#') or len(color) != 7:
+                raise ValueError(
+                    f"STANDARD_COLORS[{i}] must be a valid hex color (e.g., '#6c757d'), got {color}"
+                )
+
+        # Validate fallback color format (basic hex color validation)
+        if not isinstance(cls.FALLBACK_COLOR, str) or not cls.FALLBACK_COLOR.startswith('#') or len(cls.FALLBACK_COLOR) != 7:
+            raise ValueError(
+                f"FALLBACK_COLOR must be a valid hex color (e.g., '#6c757d'), got {cls.FALLBACK_COLOR}"
+            )
+
+        # Validate change types TTL
+        if not isinstance(cls.CHANGE_TYPES_TTL, int) or cls.CHANGE_TYPES_TTL < 0:
+            raise ValueError(
+                f"CHANGE_TYPES_TTL must be a non-negative integer, got {cls.CHANGE_TYPES_TTL}"
             )
 
     @classmethod
@@ -719,14 +812,21 @@ class EditViewConfig:
             'history_page_size': cls.HISTORY_PAGE_SIZE,
             'max_history_entries': cls.MAX_HISTORY_ENTRIES,
             'history_cache_ttl': cls.HISTORY_CACHE_TTL,
+            'history_initial_load': cls.HISTORY_INITIAL_LOAD,
+            'history_lazy_load_size': cls.HISTORY_LAZY_LOAD_SIZE,
+            'max_user_notes_length': cls.MAX_USER_NOTES_LENGTH,
             'allocation_reports_ttl': cls.ALLOCATION_REPORTS_TTL,
+            'change_types_ttl': cls.CHANGE_TYPES_TTL,
             'preview_cache_ttl': cls.PREVIEW_CACHE_TTL,
             'download_timeout_seconds': cls.DOWNLOAD_TIMEOUT_SECONDS,
+            'standard_colors': cls.STANDARD_COLORS,
+            'fallback_color': cls.FALLBACK_COLOR,
             'enable_preview_warnings': cls.ENABLE_PREVIEW_WARNINGS,
             'enable_preview_summary': cls.ENABLE_PREVIEW_SUMMARY,
             'default_tab': cls.DEFAULT_TAB,
             'validate_before_preview': cls.VALIDATE_BEFORE_PREVIEW,
             'validate_before_update': cls.VALIDATE_BEFORE_UPDATE,
+            'cph_config': TargetCPHConfig.get_config_dict(),
         }
 
 
@@ -737,9 +837,188 @@ except ValueError as e:
     raise RuntimeError(f"Invalid EditViewConfig: {e}")
 
 
+class TargetCPHConfig:
+    """
+    Target CPH Update Configuration
+
+    Controls pagination, validation, and caching behavior for the
+    Target CPH tab in Edit View.
+    """
+
+    # Pagination Configuration
+    RECORDS_PER_PAGE: int = 20
+    """
+    Number of CPH records to display per page in CPH table.
+    Default: 20 records per page
+
+    Balances between scrolling and pagination performance.
+    """
+
+    # Increment Configuration
+    DEFAULT_INCREMENT_UNIT: float = 1.0
+    """
+    Default CPH increment/decrement unit for ±buttons.
+    Default: 1.0 (whole number increments)
+
+    Fixed at 1.0 (no UI selector in Phase 1).
+    Can be 0.5 or 0.1 for finer control in future phases.
+    """
+
+    # Validation Configuration
+    MIN_CPH_VALUE: float = 0.0
+    """
+    Minimum allowed CPH value.
+    Default: 0.0 (allows zero CPH)
+
+    CPH must be non-negative but can be zero for certain cases.
+    """
+
+    MAX_CPH_VALUE: float = 200.0
+    """
+    Maximum allowed CPH value.
+    Default: 200.0
+
+    Prevents unrealistic CPH values per API specification.
+    """
+
+    CPH_DECIMAL_PLACES: int = 2
+    """
+    Number of decimal places to round CPH values.
+    Default: 2 decimal places (e.g., 125.45)
+
+    Ensures consistent formatting in UI and database.
+    """
+
+    # Preview Configuration
+    PREVIEW_PAGE_SIZE: int = 25
+    """
+    Number of preview records to display per page.
+    Default: 25 records per page
+
+    Matches bench allocation preview pagination for consistency.
+    """
+
+    # Cache Configuration
+    CPH_DATA_TTL: int = 900
+    """
+    Cache timeout for CPH data API in seconds.
+    Default: 900 seconds (15 minutes)
+
+    CPH data changes infrequently, safe to cache longer.
+    """
+
+    CPH_PREVIEW_TTL: int = 300
+    """
+    Cache timeout for CPH preview API in seconds.
+    Default: 300 seconds (5 minutes)
+
+    Preview calculations can be cached temporarily.
+    """
+
+    MAX_USER_NOTES_LENGTH: int = 500
+    """
+    Maximum length of user notes field.
+    Default: 500 characters
+
+    Matches bench allocation user notes limit.
+    """
+
+    # Validation Methods
+    @classmethod
+    def validate(cls) -> None:
+        """
+        Validate configuration values.
+        Raises ValueError if any configuration is invalid.
+        """
+        # Validate pagination
+        if not isinstance(cls.RECORDS_PER_PAGE, int) or cls.RECORDS_PER_PAGE < 1:
+            raise ValueError(
+                f"RECORDS_PER_PAGE must be a positive integer, got {cls.RECORDS_PER_PAGE}"
+            )
+
+        if not isinstance(cls.PREVIEW_PAGE_SIZE, int) or cls.PREVIEW_PAGE_SIZE < 1:
+            raise ValueError(
+                f"PREVIEW_PAGE_SIZE must be a positive integer, got {cls.PREVIEW_PAGE_SIZE}"
+            )
+
+        # Validate increment unit
+        if not isinstance(cls.DEFAULT_INCREMENT_UNIT, (int, float)) or cls.DEFAULT_INCREMENT_UNIT <= 0:
+            raise ValueError(
+                f"DEFAULT_INCREMENT_UNIT must be a positive number, got {cls.DEFAULT_INCREMENT_UNIT}"
+            )
+
+        # Validate CPH range
+        if not isinstance(cls.MIN_CPH_VALUE, (int, float)) or cls.MIN_CPH_VALUE < 0:
+            raise ValueError(
+                f"MIN_CPH_VALUE must be non-negative, got {cls.MIN_CPH_VALUE}"
+            )
+
+        if not isinstance(cls.MAX_CPH_VALUE, (int, float)) or cls.MAX_CPH_VALUE <= 0:
+            raise ValueError(
+                f"MAX_CPH_VALUE must be positive, got {cls.MAX_CPH_VALUE}"
+            )
+
+        if cls.MIN_CPH_VALUE >= cls.MAX_CPH_VALUE:
+            raise ValueError(
+                f"MIN_CPH_VALUE ({cls.MIN_CPH_VALUE}) must be less than "
+                f"MAX_CPH_VALUE ({cls.MAX_CPH_VALUE})"
+            )
+
+        # Validate decimal places
+        if not isinstance(cls.CPH_DECIMAL_PLACES, int) or cls.CPH_DECIMAL_PLACES < 0:
+            raise ValueError(
+                f"CPH_DECIMAL_PLACES must be non-negative integer, got {cls.CPH_DECIMAL_PLACES}"
+            )
+
+        # Validate cache TTLs
+        if not isinstance(cls.CPH_DATA_TTL, int) or cls.CPH_DATA_TTL < 0:
+            raise ValueError(
+                f"CPH_DATA_TTL must be non-negative, got {cls.CPH_DATA_TTL}"
+            )
+
+        if not isinstance(cls.CPH_PREVIEW_TTL, int) or cls.CPH_PREVIEW_TTL < 0:
+            raise ValueError(
+                f"CPH_PREVIEW_TTL must be non-negative, got {cls.CPH_PREVIEW_TTL}"
+            )
+
+        # Validate user notes length
+        if not isinstance(cls.MAX_USER_NOTES_LENGTH, int) or cls.MAX_USER_NOTES_LENGTH < 1:
+            raise ValueError(
+                f"MAX_USER_NOTES_LENGTH must be a positive integer, got {cls.MAX_USER_NOTES_LENGTH}"
+            )
+
+    @classmethod
+    def get_config_dict(cls) -> dict:
+        """
+        Get all configuration as a dictionary.
+        Useful for passing to templates or APIs.
+
+        Returns:
+            Dictionary of all configuration values
+        """
+        return {
+            'records_per_page': cls.RECORDS_PER_PAGE,
+            'default_increment_unit': cls.DEFAULT_INCREMENT_UNIT,
+            'min_cph_value': cls.MIN_CPH_VALUE,
+            'max_cph_value': cls.MAX_CPH_VALUE,
+            'cph_decimal_places': cls.CPH_DECIMAL_PLACES,
+            'preview_page_size': cls.PREVIEW_PAGE_SIZE,
+            'cph_data_ttl': cls.CPH_DATA_TTL,
+            'cph_preview_ttl': cls.CPH_PREVIEW_TTL,
+            'max_user_notes_length': cls.MAX_USER_NOTES_LENGTH,
+        }
+
+
+# Validate Target CPH configuration on module import
+try:
+    TargetCPHConfig.validate()
+except ValueError as e:
+    raise RuntimeError(f"Invalid TargetCPHConfig: {e}")
+
+
 # Example usage in code:
-# from core.config import ManagerViewConfig
-# 
+# from core.config import ManagerViewConfig, ExecutionMonitoringConfig, EditViewConfig
+#
 # months_count = ManagerViewConfig.get_months_to_display(request.user)
 # kpi_index = ManagerViewConfig.get_kpi_month_index(request.user)
 # exec_config = ExecutionMonitoringConfig.get_config_dict()

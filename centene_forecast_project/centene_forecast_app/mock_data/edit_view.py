@@ -419,7 +419,7 @@ def get_history_log(
     Returns:
         Dictionary with paginated history entries
     """
-    from mock_data.manager_view import get_history_log_mock_data
+    from centene_forecast_app.mock_data.manager_view import get_history_log_mock_data
 
     logger.info(
         f"[Edit View] Using mock history - month: {month}, year: {year}, "

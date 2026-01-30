@@ -35,8 +35,8 @@ from centene_forecast_app.serializers.edit_serializers import (
     serialize_history_log_response,
     serialize_error_response
 )
-from core.config import EditViewConfig
-from centene_forecast_app.repository import get_api_client
+from config import EditViewConfig
+from repository import get_api_client
 
 logger = logging.getLogger('django')
 
@@ -172,6 +172,18 @@ def bench_allocation_preview_api(request):
             validated['year']
         )
 
+        # Check if service returned an error response
+        if not data.get('success', True):
+            error_msg = data.get('error') or data.get('message', 'Failed to calculate preview')
+            recommendation = data.get('recommendation')
+            status_code = data.get('status_code', 400)
+
+            logger.warning(f"[Edit View API] Preview failed: {error_msg}")
+            return JsonResponse(
+                serialize_error_response(error_msg, status_code, recommendation),
+                status=status_code
+            )
+
         # Serialize response
         response = serialize_preview_response(data)
 
@@ -208,7 +220,6 @@ def bench_allocation_update_api(request):
         {
             'month': 'April',
             'year': 2025,
-            'months': {'month1': 'Jun-25', 'month2': 'Jul-25', ...},
             'modified_records': [...],
             'user_notes': 'Optional description'
         }
@@ -219,20 +230,19 @@ def bench_allocation_update_api(request):
             'success': True,
             'message': 'Allocation updated successfully',
             'records_updated': 15,
-            'history_log_id': 'uuid-123',
             'timestamp': '2024-12-06T...'
         }
 
     Example:
         POST /api/edit-view/bench-allocation/update/
-        Body: {"month": "April", "year": 2025, "months": {...}, "modified_records": [...], "user_notes": "..."}
+        Body: {"month": "April", "year": 2025, "modified_records": [...], "user_notes": "..."}
     """
     try:
         # Parse request body
         body = json.loads(request.body)
         month = body.get('month', '').strip()
         year = body.get('year')
-        months_mapping = body.get('months', {})  # Accept months mapping from request
+        months = body.get('months', {})
         modified_records = body.get('modified_records', [])
         user_notes = body.get('user_notes', '').strip()
 
@@ -243,16 +253,29 @@ def bench_allocation_update_api(request):
 
         # Validate
         validated = validate_bench_allocation_update_request(
-            month, year, modified_records, user_notes
+            month, year, months, modified_records, user_notes
         )
 
         # Submit update
         data = submit_bench_allocation_update(
             validated['month'],
             validated['year'],
+            validated['months'],
             validated['modified_records'],
             validated['user_notes']
         )
+
+        # Check if service returned an error response
+        if not data.get('success', True):
+            error_msg = data.get('error') or data.get('message', 'Failed to update allocation')
+            recommendation = data.get('recommendation')
+            status_code = data.get('status_code', 400)
+
+            logger.warning(f"[Edit View API] Update failed: {error_msg}")
+            return JsonResponse(
+                serialize_error_response(error_msg, status_code, recommendation),
+                status=status_code
+            )
 
         # Serialize response
         response = serialize_update_response(data)
@@ -288,58 +311,60 @@ def history_log_api(request):
     Query Parameters:
         - month: Optional month filter (e.g., 'April')
         - year: Optional year filter (e.g., 2025)
-        - change_types: Optional array of change types to filter by (can be repeated)
         - page: Page number (default: 1)
         - limit: Records per page (default: from config)
 
     Returns:
-        JSON with history entries (flat pagination):
+        JSON with history entries:
         {
             'success': True,
             'data': [...],
-            'total': 127,
-            'page': 1,
-            'limit': 25,
-            'has_more': True,
+            'pagination': {
+                'total': 127,
+                'page': 1,
+                'limit': 25,
+                'has_more': True
+            },
             'timestamp': '2024-12-06T...'
         }
 
     Example:
         GET /api/edit-view/history-log/?month=April&year=2025&page=1&limit=25
-        GET /api/edit-view/history-log/?change_types=Bench%20Allocation&change_types=CPH%20Update
     """
     try:
         # Extract query parameters
         month = request.GET.get('month', '').strip() or None
         year_str = request.GET.get('year', '').strip()
         year = int(year_str) if year_str else None
-        change_types = request.GET.getlist('change_types')  # Support multiple change_types
         page_str = request.GET.get('page', '1').strip()
         page = int(page_str) if page_str else 1
         limit_str = request.GET.get('limit', str(EditViewConfig.HISTORY_PAGE_SIZE)).strip()
         limit = int(limit_str) if limit_str else EditViewConfig.HISTORY_PAGE_SIZE
 
+        # Extract change_types (can have multiple values)
+        change_types = request.GET.getlist('change_types')  # Returns list of values
+
         logger.info(
             f"[Edit View API] History request - month: {month}, year: {year}, "
-            f"change_types: {change_types}, page: {page}, limit: {limit}"
+            f"page: {page}, limit: {limit}, change_types: {change_types}"
         )
 
         # Validate
-        validated = validate_history_log_request(month, year, page, limit)
+        validated = validate_history_log_request(month, year, page, limit, change_types)
 
-        # Get history data with change_types filter
+        # Get history data
         data = get_history_log(
             validated['month'],
             validated['year'],
             validated['page'],
             validated['limit'],
-            change_types=change_types if change_types else None
+            validated['change_types']
         )
 
         # Serialize response
         response = serialize_history_log_response(data)
 
-        total = response.get('total', 0)
+        total = response['pagination'].get('total', 0)
         logger.info(
             f"[Edit View API] History fetched - {len(response['data'])} of {total} entries"
         )
@@ -407,6 +432,344 @@ def download_history_excel_api(request, history_log_id):
         logger.error(f"[Edit View API] Excel download failed: {e}", exc_info=True)
         return JsonResponse(
             serialize_error_response("Failed to download Excel file", 500),
+            status=500
+        )
+
+
+@require_http_methods(["GET"])
+@csrf_exempt
+def available_change_types_api(request):
+    """
+    API: Get available change types with colors for history log.
+
+    Method: GET
+    Auth: None (read-only)
+
+    Returns:
+        JSON with change type options:
+        {
+            'success': True,
+            'data': [
+                {'value': 'Bench Allocation', 'display': 'Bench Allocation', 'color': '#0d6efd'},
+                {'value': 'CPH Update', 'display': 'CPH Update', 'color': '#198754'},
+                ...
+            ],
+            'total': 10
+        }
+
+    Example:
+        GET /api/edit-view/available-change-types/
+    """
+    logger.info("[Edit View API] Fetching available change types")
+
+    try:
+        # Get API client
+        client = get_api_client()
+
+        # Get change types data
+        data = client.get_available_change_types()
+
+        logger.info(f"[Edit View API] Change types fetched - {data.get('total', 0)} items")
+        return JsonResponse(data, status=200)
+
+    except Exception as e:
+        logger.error(f"[Edit View API] Failed to fetch change types: {e}", exc_info=True)
+        return JsonResponse(
+            serialize_error_response("Failed to fetch available change types", 500),
+            status=500
+        )
+
+
+# ============================================================
+# TARGET CPH API ENDPOINTS
+# ============================================================
+
+@require_http_methods(["GET"])
+@csrf_exempt
+def target_cph_data_api(request):
+    """
+    API: Get CPH records for editing in Target CPH tab.
+
+    Method: GET
+    Auth: None (read-only)
+
+    Query Parameters:
+        - month: Month name (e.g., 'April')
+        - year: Year (e.g., 2025)
+
+    Returns:
+        JSON with CPH records:
+        {
+            'success': True,
+            'data': [
+                {
+                    'id': 'cph_1',
+                    'lob': 'Amisys Medicaid DOMESTIC',
+                    'case_type': 'Claims Processing',
+                    'target_cph': 50.0,
+                    'modified_target_cph': 50.0
+                },
+                ...
+            ],
+            'total': 12,
+            'timestamp': '2024-12-06T...'
+        }
+
+    Example:
+        GET /api/edit-view/target-cph/data/?month=April&year=2025
+    """
+    from centene_forecast_app.services.edit_service import get_target_cph_data
+    from centene_forecast_app.serializers.edit_serializers import serialize_target_cph_data_response
+    from centene_forecast_app.validators.edit_validators import ValidationError, validate_bench_allocation_preview_request
+
+    logger.info("[CPH API] Fetching CPH data")
+
+    try:
+        # Extract query parameters
+        month = request.GET.get('month', '').strip()
+        year_str = request.GET.get('year', '').strip()
+
+        if not month or not year_str:
+            return JsonResponse(
+                serialize_error_response("Month and year are required", 400),
+                status=400
+            )
+
+        year = int(year_str)
+
+        # Validate month and year
+        validated = validate_bench_allocation_preview_request(month, year)
+
+        # Get CPH data from service
+        data = get_target_cph_data(validated['month'], validated['year'])
+
+        # Serialize response
+        response = serialize_target_cph_data_response(data)
+
+        logger.info(f"[CPH API] CPH data fetched - {response['total']} records")
+        return JsonResponse(response, status=200)
+
+    except ValidationError as e:
+        logger.warning(f"[CPH API] Validation error: {e}")
+        return JsonResponse(serialize_error_response(str(e), 400), status=400)
+
+    except ValueError as e:
+        logger.warning(f"[CPH API] Invalid parameter: {e}")
+        return JsonResponse(
+            serialize_error_response(f"Invalid parameter: {e}", 400),
+            status=400
+        )
+
+    except Exception as e:
+        logger.error(f"[CPH API] Failed to fetch CPH data: {e}", exc_info=True)
+        return JsonResponse(
+            serialize_error_response("Failed to fetch CPH data", 500),
+            status=500
+        )
+
+
+@require_http_methods(["POST"])
+@csrf_exempt
+def target_cph_preview_api(request):
+    """
+    API: Calculate CPH change preview (forecast impact).
+
+    Method: POST
+    Auth: None
+    Content-Type: application/json
+
+    Request JSON:
+        {
+            'month': 'April',
+            'year': 2025,
+            'modified_records': [
+                {
+                    'id': 'cph_1',
+                    'lob': 'Amisys Medicaid DOMESTIC',
+                    'case_type': 'Claims Processing',
+                    'target_cph': 50.0,
+                    'modified_target_cph': 52.0
+                },
+                ...
+            ]
+        }
+
+    Returns:
+        JSON with forecast impact (same structure as bench allocation):
+        {
+            'success': True,
+            'modified_records': [...],  # Forecast rows affected
+            'total_modified': 15,
+            'summary': {...},
+            'message': 'Preview shows forecast impact of X CPH changes',
+            'timestamp': '2024-12-06T...'
+        }
+
+    Example:
+        POST /api/edit-view/target-cph/preview/
+        Body: {"month": "April", "year": 2025, "modified_records": [...]}
+    """
+    from centene_forecast_app.services.edit_service import calculate_target_cph_preview
+    from centene_forecast_app.serializers.edit_serializers import serialize_target_cph_preview_response
+    from centene_forecast_app.validators.edit_validators import ValidationError, validate_target_cph_preview_request
+
+    try:
+        # Parse request body
+        body = json.loads(request.body)
+        month = body.get('month', '').strip()
+        year = body.get('year')
+        modified_records = body.get('modified_records', [])
+
+        logger.info(
+            f"[CPH API] Preview request - month: {month}, year: {year}, "
+            f"records: {len(modified_records)}"
+        )
+
+        # Validate
+        validated = validate_target_cph_preview_request(month, year, modified_records)
+
+        # Calculate preview
+        data = calculate_target_cph_preview(
+            validated['month'],
+            validated['year'],
+            validated['modified_records']
+        )
+
+        # Check if service returned an error response
+        if not data.get('success', True):
+            error_msg = data.get('error') or data.get('message', 'Failed to calculate CPH preview')
+            recommendation = data.get('recommendation')
+            status_code = data.get('status_code', 400)
+
+            logger.warning(f"[CPH API] Preview failed: {error_msg}")
+            return JsonResponse(
+                serialize_error_response(error_msg, status_code, recommendation),
+                status=status_code
+            )
+
+        # Serialize response
+        response = serialize_target_cph_preview_response(data)
+
+        logger.info(
+            f"[CPH API] Preview success - {response['total_modified']} forecast rows "
+            f"affected by {len(validated['modified_records'])} CPH changes"
+        )
+        return JsonResponse(response, status=200)
+
+    except ValidationError as e:
+        logger.warning(f"[CPH API] Validation error: {e}")
+        return JsonResponse(serialize_error_response(str(e), 400), status=400)
+
+    except json.JSONDecodeError:
+        logger.warning("[CPH API] Invalid JSON in request body")
+        return JsonResponse(serialize_error_response("Invalid JSON", 400), status=400)
+
+    except Exception as e:
+        logger.error(f"[CPH API] Preview failed: {e}", exc_info=True)
+        return JsonResponse(
+            serialize_error_response("Failed to calculate CPH preview", 500),
+            status=500
+        )
+
+
+@require_http_methods(["POST"])
+@csrf_exempt
+def target_cph_update_api(request):
+    """
+    API: Accept and save CPH changes.
+
+    Method: POST
+    Auth: None
+    Content-Type: application/json
+
+    Request JSON:
+        {
+            'month': 'April',
+            'year': 2025,
+            'modified_records': [...],  # Modified CPH records
+            'user_notes': 'Optional description'
+        }
+
+    Returns:
+        JSON with update result:
+        {
+            'success': True,
+            'message': 'CPH updated successfully',
+            'records_updated': 5,
+            'cph_changes_applied': 5,
+            'forecast_rows_affected': 15,
+            'timestamp': '2024-12-06T...'
+        }
+
+    Example:
+        POST /api/edit-view/target-cph/update/
+        Body: {"month": "April", "year": 2025, "modified_records": [...], "user_notes": "..."}
+    """
+    from centene_forecast_app.services.edit_service import submit_target_cph_update
+    from centene_forecast_app.serializers.edit_serializers import serialize_target_cph_update_response
+    from centene_forecast_app.validators.edit_validators import ValidationError, validate_target_cph_update_request
+
+    try:
+        # Parse request body
+        body = json.loads(request.body)
+        month = body.get('month', '').strip()
+        year = body.get('year')
+        months = body.get('months', {})
+        modified_records = body.get('modified_records', [])
+        user_notes = body.get('user_notes', '').strip()
+
+        logger.info(
+            f"[CPH API] Update request - {month} {year} "
+            f"({len(modified_records)} CPH changes)"
+        )
+
+        # Validate
+        validated = validate_target_cph_update_request(
+            month, year, months, modified_records, user_notes
+        )
+
+        # Submit update
+        data = submit_target_cph_update(
+            validated['month'],
+            validated['year'],
+            validated['months'],
+            validated['modified_records'],
+            validated['user_notes']
+        )
+
+        # Check if service returned an error response
+        if not data.get('success', True):
+            error_msg = data.get('error') or data.get('message', 'Failed to update CPH')
+            recommendation = data.get('recommendation')
+            status_code = data.get('status_code', 400)
+
+            logger.warning(f"[CPH API] Update failed: {error_msg}")
+            return JsonResponse(
+                serialize_error_response(error_msg, status_code, recommendation),
+                status=status_code
+            )
+
+        # Serialize response
+        response = serialize_target_cph_update_response(data)
+
+        logger.info(
+            f"[CPH API] Update success - {response['records_updated']} CPH records updated, "
+            f"{response['forecast_rows_affected']} forecast rows affected"
+        )
+        return JsonResponse(response, status=200)
+
+    except ValidationError as e:
+        logger.warning(f"[CPH API] Validation error: {e}")
+        return JsonResponse(serialize_error_response(str(e), 400), status=400)
+
+    except json.JSONDecodeError:
+        logger.warning("[CPH API] Invalid JSON in request body")
+        return JsonResponse(serialize_error_response("Invalid JSON", 400), status=400)
+
+    except Exception as e:
+        logger.error(f"[CPH API] Update failed: {e}", exc_info=True)
+        return JsonResponse(
+            serialize_error_response("Failed to update CPH", 500),
             status=500
         )
 
