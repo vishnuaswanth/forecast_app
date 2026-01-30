@@ -139,6 +139,32 @@
     padding: 8px 12px;
 }
 
+/* Table wrapper for horizontal scrolling with frozen columns */
+.edit-view-table-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+    max-height: 600px;
+    position: relative;
+}
+
+.edit-view-table-wrapper::-webkit-scrollbar {
+    height: 10px;
+}
+
+.edit-view-table-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 5px;
+}
+
+.edit-view-table-wrapper::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 5px;
+}
+
+.edit-view-table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
 /* ============================================================================
    PREVIEW TABLE
    ============================================================================ */
@@ -148,6 +174,8 @@
     margin-bottom: 0;
     width: max-content;
     min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 .edit-view-preview-table thead th {
@@ -174,25 +202,128 @@
     vertical-align: middle;
     font-size: 0.85rem;
     white-space: nowrap;
+    background-color: #fff;
 }
 
-/* Modified cell highlighting (yellow background) */
-.edit-view-modified-cell {
+/* ============================================================================
+   FROZEN COLUMNS (First 5 columns: Main LOB, State, Case Type, Case Type ID, Target CPH)
+   ============================================================================ */
+
+/* Frozen column base styles */
+.edit-view-preview-table thead th:nth-child(1),
+.edit-view-preview-table thead th:nth-child(2),
+.edit-view-preview-table thead th:nth-child(3),
+.edit-view-preview-table thead th:nth-child(4),
+.edit-view-preview-table thead th:nth-child(5),
+.edit-view-preview-table tbody td:nth-child(1),
+.edit-view-preview-table tbody td:nth-child(2),
+.edit-view-preview-table tbody td:nth-child(3),
+.edit-view-preview-table tbody td:nth-child(4),
+.edit-view-preview-table tbody td:nth-child(5) {
+    position: sticky;
+    background-color: #f8f9fa;
+    border-right: 1px solid #dee2e6;
+}
+
+/* Column 1: Main LOB */
+.edit-view-preview-table thead th:nth-child(1),
+.edit-view-preview-table tbody td:nth-child(1) {
+    left: 0;
+    z-index: 12;
+    min-width: 180px;
+}
+
+/* Column 2: State */
+.edit-view-preview-table thead th:nth-child(2),
+.edit-view-preview-table tbody td:nth-child(2) {
+    left: 180px;
+    z-index: 12;
+    min-width: 60px;
+}
+
+/* Column 3: Case Type */
+.edit-view-preview-table thead th:nth-child(3),
+.edit-view-preview-table tbody td:nth-child(3) {
+    left: 240px;
+    z-index: 12;
+    min-width: 140px;
+}
+
+/* Column 4: Case Type ID */
+.edit-view-preview-table thead th:nth-child(4),
+.edit-view-preview-table tbody td:nth-child(4) {
+    left: 380px;
+    z-index: 12;
+    min-width: 100px;
+}
+
+/* Column 5: Target CPH - last frozen column with shadow */
+.edit-view-preview-table thead th:nth-child(5),
+.edit-view-preview-table tbody td:nth-child(5) {
+    left: 480px;
+    z-index: 12;
+    min-width: 90px;
+    border-right: 2px solid #0d6efd;
+    box-shadow: 4px 0 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Header cells in frozen columns need higher z-index (sticky both horizontally and vertically) */
+.edit-view-preview-table thead th:nth-child(1),
+.edit-view-preview-table thead th:nth-child(2),
+.edit-view-preview-table thead th:nth-child(3),
+.edit-view-preview-table thead th:nth-child(4),
+.edit-view-preview-table thead th:nth-child(5) {
+    z-index: 15;
+}
+
+/* Body cells background for frozen columns */
+.edit-view-preview-table tbody td:nth-child(1),
+.edit-view-preview-table tbody td:nth-child(2),
+.edit-view-preview-table tbody td:nth-child(3),
+.edit-view-preview-table tbody td:nth-child(4),
+.edit-view-preview-table tbody td:nth-child(5) {
+    background-color: #fafbfc;
+}
+
+/* Alternate row styling for frozen columns */
+.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(1),
+.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(2),
+.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(3),
+.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(4),
+.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(5) {
+    background-color: #f0f2f5;
+}
+
+/* ============================================================================
+   MODIFIED CELL HIGHLIGHTING
+   ============================================================================ */
+
+/* Modified cell highlighting (yellow background) - higher specificity */
+.edit-view-preview-table td.edit-view-modified-cell,
+.edit-view-preview-table tbody td.edit-view-modified-cell {
     background-color: #fff3cd !important;
-    font-weight: 600;
-    color: #856404;
+    font-weight: 700;
+    color: #664d03;
     position: relative;
+    border: 2px solid #ffc107;
 }
 
-.edit-view-modified-cell::after {
+/* Yellow triangle indicator in corner */
+.edit-view-preview-table td.edit-view-modified-cell::after {
     content: '';
     position: absolute;
     top: 0;
     right: 0;
     width: 0;
     height: 0;
-    border-top: 8px solid #ffc107;
-    border-left: 8px solid transparent;
+    border-top: 10px solid #fd7e14;
+    border-left: 10px solid transparent;
+}
+
+/* Modified cells in frozen columns need to maintain visibility */
+.edit-view-preview-table tbody td:nth-child(5).edit-view-modified-cell {
+    background-color: #fff3cd !important;
+    z-index: 13;
 }
 
 /* ============================================================================
@@ -576,6 +707,36 @@
     .edit-view-preview-table tbody td {
         font-size: 0.75rem;
         padding: 8px 6px;
+    }
+
+    /* Adjust frozen column widths for smaller screens */
+    .edit-view-preview-table thead th:nth-child(1),
+    .edit-view-preview-table tbody td:nth-child(1) {
+        min-width: 150px;
+    }
+
+    .edit-view-preview-table thead th:nth-child(2),
+    .edit-view-preview-table tbody td:nth-child(2) {
+        left: 150px;
+        min-width: 50px;
+    }
+
+    .edit-view-preview-table thead th:nth-child(3),
+    .edit-view-preview-table tbody td:nth-child(3) {
+        left: 200px;
+        min-width: 120px;
+    }
+
+    .edit-view-preview-table thead th:nth-child(4),
+    .edit-view-preview-table tbody td:nth-child(4) {
+        left: 320px;
+        min-width: 90px;
+    }
+
+    .edit-view-preview-table thead th:nth-child(5),
+    .edit-view-preview-table tbody td:nth-child(5) {
+        left: 410px;
+        min-width: 80px;
     }
 }
 

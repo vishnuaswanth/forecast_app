@@ -444,8 +444,18 @@
             tr.append(`<td>${escapeHtml(record.case_id || '-')}</td>`);
 
             // Target CPH (check if modified)
-            const modifiedFields = record._modified_fields || [];
-            const targetCPHModified = modifiedFields.includes('target_cph');
+            // Handle _modified_fields as either array or object
+            const modifiedFields = record._modified_fields || {};
+            const isFieldModified = (fieldName) => {
+                if (Array.isArray(modifiedFields)) {
+                    return modifiedFields.includes(fieldName);
+                } else if (typeof modifiedFields === 'object') {
+                    return fieldName in modifiedFields || Object.keys(modifiedFields).some(key => key === fieldName);
+                }
+                return false;
+            };
+
+            const targetCPHModified = isFieldModified('target_cph');
             const cphClass = targetCPHModified ? 'edit-view-modified-cell' : '';
             tr.append(`<td class="${cphClass}">${formatNumber(record.target_cph)}</td>`);
 
@@ -455,22 +465,22 @@
                 const monthData = monthsSource[month] || {};
 
                 // Forecast
-                const forecastModified = modifiedFields.includes(`${month}.forecast`);
+                const forecastModified = isFieldModified(`${month}.forecast`);
                 const forecastClass = forecastModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${forecastClass}">${formatNumber(monthData.forecast)}</td>`);
 
                 // FTE Req
-                const fteReqModified = modifiedFields.includes(`${month}.fte_req`);
+                const fteReqModified = isFieldModified(`${month}.fte_req`);
                 const fteReqClass = fteReqModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${fteReqClass}">${formatNumber(monthData.fte_req)}</td>`);
 
                 // FTE Avail
-                const fteAvailModified = modifiedFields.includes(`${month}.fte_avail`);
+                const fteAvailModified = isFieldModified(`${month}.fte_avail`);
                 const fteAvailClass = fteAvailModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${fteAvailClass}">${formatNumber(monthData.fte_avail)}</td>`);
 
                 // Capacity
-                const capacityModified = modifiedFields.includes(`${month}.capacity`);
+                const capacityModified = isFieldModified(`${month}.capacity`);
                 const capacityClass = capacityModified ? 'edit-view-modified-cell' : '';
                 tr.append(`<td class="text-end ${capacityClass}">${formatNumber(monthData.capacity)}</td>`);
             });
