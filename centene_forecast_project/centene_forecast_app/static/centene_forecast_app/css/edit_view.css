@@ -9,6 +9,23 @@
  */
 
 /* ============================================================================
+   CSS VARIABLES
+   ============================================================================ */
+
+:root {
+    --edit-view-primary: #0d6efd;
+    --edit-view-success: #198754;
+    --edit-view-danger: #dc3545;
+    --edit-view-warning: #ffc107;
+    --edit-view-info: #0dcaf0;
+    --edit-view-light: #f8f9fa;
+    --edit-view-dark: #212529;
+    --edit-view-muted: #6c757d;
+    --edit-view-border: #dee2e6;
+    --edit-view-card-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* ============================================================================
    CONTAINER & LAYOUT
    ============================================================================ */
 
@@ -20,6 +37,38 @@
 
 .edit-view-header h2 {
     color: #012970;
+    font-weight: 600;
+}
+
+/* ============================================================================
+   GENERIC COMPONENTS - CARDS
+   ============================================================================ */
+
+/* Generic card container */
+.edit-view-card {
+    background: #ffffff;
+    border: 1px solid var(--edit-view-border);
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    position: relative;
+    margin-bottom: 1rem;
+}
+
+/* Generic card body */
+.edit-view-card-body {
+    padding: 1.5rem;
+}
+
+/* Generic card header */
+.edit-view-card-header {
+    background-color: var(--edit-view-light);
+    border-bottom: 1px solid var(--edit-view-border);
+    padding: 1rem 1.5rem;
+    border-radius: 8px 8px 0 0;
+}
+
+.edit-view-card-header h5 {
+    margin-bottom: 0;
     font-weight: 600;
 }
 
@@ -139,32 +188,6 @@
     padding: 8px 12px;
 }
 
-/* Table wrapper for horizontal scrolling with frozen columns */
-.edit-view-table-wrapper {
-    overflow-x: auto;
-    overflow-y: visible;
-    max-height: 600px;
-    position: relative;
-}
-
-.edit-view-table-wrapper::-webkit-scrollbar {
-    height: 10px;
-}
-
-.edit-view-table-wrapper::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 5px;
-}
-
-.edit-view-table-wrapper::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 5px;
-}
-
-.edit-view-table-wrapper::-webkit-scrollbar-thumb:hover {
-    background: #555;
-}
-
 /* ============================================================================
    PREVIEW TABLE
    ============================================================================ */
@@ -174,8 +197,6 @@
     margin-bottom: 0;
     width: max-content;
     min-width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
 }
 
 .edit-view-preview-table thead th {
@@ -202,128 +223,45 @@
     vertical-align: middle;
     font-size: 0.85rem;
     white-space: nowrap;
-    background-color: #fff;
 }
 
-/* ============================================================================
-   FROZEN COLUMNS (First 5 columns: Main LOB, State, Case Type, Case Type ID, Target CPH)
-   ============================================================================ */
-
-/* Frozen column base styles */
-.edit-view-preview-table thead th:nth-child(1),
-.edit-view-preview-table thead th:nth-child(2),
-.edit-view-preview-table thead th:nth-child(3),
-.edit-view-preview-table thead th:nth-child(4),
-.edit-view-preview-table thead th:nth-child(5),
-.edit-view-preview-table tbody td:nth-child(1),
-.edit-view-preview-table tbody td:nth-child(2),
-.edit-view-preview-table tbody td:nth-child(3),
-.edit-view-preview-table tbody td:nth-child(4),
-.edit-view-preview-table tbody td:nth-child(5) {
-    position: sticky;
-    background-color: #f8f9fa;
-    border-right: 1px solid #dee2e6;
-}
-
-/* Column 1: Main LOB */
-.edit-view-preview-table thead th:nth-child(1),
-.edit-view-preview-table tbody td:nth-child(1) {
-    left: 0;
-    z-index: 12;
-    min-width: 180px;
-}
-
-/* Column 2: State */
-.edit-view-preview-table thead th:nth-child(2),
-.edit-view-preview-table tbody td:nth-child(2) {
-    left: 180px;
-    z-index: 12;
-    min-width: 60px;
-}
-
-/* Column 3: Case Type */
-.edit-view-preview-table thead th:nth-child(3),
-.edit-view-preview-table tbody td:nth-child(3) {
-    left: 240px;
-    z-index: 12;
-    min-width: 140px;
-}
-
-/* Column 4: Case Type ID */
-.edit-view-preview-table thead th:nth-child(4),
-.edit-view-preview-table tbody td:nth-child(4) {
-    left: 380px;
-    z-index: 12;
-    min-width: 100px;
-}
-
-/* Column 5: Target CPH - last frozen column with shadow */
-.edit-view-preview-table thead th:nth-child(5),
-.edit-view-preview-table tbody td:nth-child(5) {
-    left: 480px;
-    z-index: 12;
-    min-width: 90px;
-    border-right: 2px solid #0d6efd;
-    box-shadow: 4px 0 8px rgba(0, 0, 0, 0.1);
-}
-
-/* Header cells in frozen columns need higher z-index (sticky both horizontally and vertically) */
-.edit-view-preview-table thead th:nth-child(1),
-.edit-view-preview-table thead th:nth-child(2),
-.edit-view-preview-table thead th:nth-child(3),
-.edit-view-preview-table thead th:nth-child(4),
-.edit-view-preview-table thead th:nth-child(5) {
-    z-index: 15;
-}
-
-/* Body cells background for frozen columns */
-.edit-view-preview-table tbody td:nth-child(1),
-.edit-view-preview-table tbody td:nth-child(2),
-.edit-view-preview-table tbody td:nth-child(3),
-.edit-view-preview-table tbody td:nth-child(4),
-.edit-view-preview-table tbody td:nth-child(5) {
-    background-color: #fafbfc;
-}
-
-/* Alternate row styling for frozen columns */
-.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(1),
-.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(2),
-.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(3),
-.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(4),
-.edit-view-preview-table tbody tr:nth-child(even) td:nth-child(5) {
-    background-color: #f0f2f5;
-}
-
-/* ============================================================================
-   MODIFIED CELL HIGHLIGHTING
-   ============================================================================ */
-
-/* Modified cell highlighting (yellow background) - higher specificity */
-.edit-view-preview-table td.edit-view-modified-cell,
-.edit-view-preview-table tbody td.edit-view-modified-cell {
+/* Modified cell highlighting (yellow background) */
+.edit-view-modified-cell {
     background-color: #fff3cd !important;
-    font-weight: 700;
-    color: #664d03;
+    font-weight: 600;
+    color: #856404;
     position: relative;
-    border: 2px solid #ffc107;
 }
 
-/* Yellow triangle indicator in corner */
-.edit-view-preview-table td.edit-view-modified-cell::after {
+.edit-view-modified-cell::after {
     content: '';
     position: absolute;
     top: 0;
     right: 0;
     width: 0;
     height: 0;
-    border-top: 10px solid #fd7e14;
-    border-left: 10px solid transparent;
+    border-top: 8px solid #ffc107;
+    border-left: 8px solid transparent;
 }
 
-/* Modified cells in frozen columns need to maintain visibility */
-.edit-view-preview-table tbody td:nth-child(5).edit-view-modified-cell {
-    background-color: #fff3cd !important;
-    z-index: 13;
+/* Totals row styling */
+.edit-view-totals-row {
+    background-color: #e9ecef !important;
+    border-top: 3px solid #495057 !important;
+    font-weight: 600;
+}
+
+.edit-view-totals-row td {
+    padding: 12px 8px !important;
+    background-color: #e9ecef !important;
+    color: #212529;
+    position: sticky;
+    bottom: 0;
+}
+
+.edit-view-totals-label {
+    font-size: 0.95rem;
+    color: #012970 !important;
 }
 
 /* ============================================================================
@@ -418,28 +356,18 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
-/* Change type specific colors */
-.edit-view-history-bench {
-    border-left-color: #0d6efd;
-}
-
-.edit-view-history-cph {
-    border-left-color: #198754;
-}
-
-.edit-view-history-manual {
-    border-left-color: #ffc107;
-}
-
 .edit-view-history-card h5 {
     color: #012970;
     font-weight: 600;
     margin-bottom: 8px;
 }
 
-.edit-view-history-card .badge {
+/* Dynamic change type badge */
+.edit-view-change-type-badge {
     font-size: 0.85rem;
     padding: 6px 10px;
+    border-radius: 4px;
+    font-weight: 600;
 }
 
 .edit-view-history-card p {
@@ -447,71 +375,152 @@
     color: #495057;
 }
 
-.edit-view-history-changes-list {
-    list-style: none;
-    padding-left: 0;
-    margin: 10px 0;
+
+/* ============================================================================
+   HISTORY SUMMARY TABLE
+   ============================================================================ */
+
+.edit-view-history-summary-section {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
 }
 
-.edit-view-history-changes-list li {
-    padding: 6px 0;
-    padding-left: 20px;
-    position: relative;
-    color: #495057;
+.edit-view-history-summary-section h6 {
+    color: #012970;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
 }
 
-.edit-view-history-changes-list li::before {
-    content: '•';
-    position: absolute;
-    left: 0;
-    color: #0d6efd;
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-/* Scrollable container for expanded changes */
-.edit-view-more-changes-container {
-    display: none; /* Hidden by default */
+.edit-view-history-summary-container {
+    overflow-x: auto;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background-color: white;
     max-height: 300px;
     overflow-y: auto;
-    margin-top: 5px;
-    border-top: 1px dashed #dee2e6;
-    padding-top: 5px;
-    /* Custom Scrollbar for better UX */
-    scrollbar-width: thin;
-    scrollbar-color: #adb5bd #f8f9fa;
 }
 
-.edit-view-more-changes-container::-webkit-scrollbar {
-    width: 6px;
+.edit-view-history-summary-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.8rem;
+    margin: 0;
+    min-width: 800px;
 }
 
-.edit-view-more-changes-container::-webkit-scrollbar-track {
-    background: #f8f9fa;
+.edit-view-history-summary-table th,
+.edit-view-history-summary-table td {
+    padding: 8px 10px;
+    border: 1px solid #dee2e6;
+    text-align: center;
+    vertical-align: middle;
 }
 
-.edit-view-more-changes-container::-webkit-scrollbar-thumb {
-    background-color: #adb5bd;
-    border-radius: 20px;
+.edit-view-history-summary-table thead th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
-/* Ensure the list inside the container looks right */
-.edit-view-more-changes-container .edit-view-history-changes-list {
-    margin-bottom: 0;
-    margin-top: 0;
+/* Fixed columns (Month, Year) */
+.edit-view-summary-fixed {
+    position: sticky;
+    left: 0;
+    background-color: #f8f9fa !important;
+    z-index: 30 !important;
+    min-width: 80px;
+    font-weight: 600;
 }
 
-/* Show More button */
-.edit-view-show-more-btn {
-    margin-top: 10px;
+.edit-view-summary-fixed:first-child {
+    left: 0;
+}
+
+.edit-view-summary-fixed:nth-child(2) {
+    left: 80px;
+}
+
+/* Add shadow to last fixed column */
+.edit-view-summary-fixed:nth-child(2) {
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+
+/* Scrollable columns */
+.edit-view-summary-scroll {
+    min-width: 100px;
+    background-color: white;
+    z-index: 10;
+}
+
+/* Month headers */
+.edit-view-history-summary-table .edit-view-month-header {
+    background-color: #e9ecef !important;
+    color: #012970;
+    font-weight: 600;
+    z-index: 5;
+}
+
+/* Old → New value styling */
+.edit-view-old-new-value {
+    font-weight: 600;
     font-size: 0.85rem;
-    padding: 6px 12px;
 }
 
-.edit-view-show-more-btn:hover {
-    background-color: #6c757d;
-    color: white;
+/* Value change indicators */
+.edit-view-value-increase {
+    background-color: #d4edda !important;
+    color: #155724;
 }
+
+.edit-view-value-decrease {
+    background-color: #f8d7da !important;
+    color: #721c24;
+}
+
+/* Responsive adjustments for summary table */
+@media (max-width: 1199px) {
+    .edit-view-history-summary-table {
+        font-size: 0.75rem;
+    }
+
+    .edit-view-history-summary-table th,
+    .edit-view-history-summary-table td {
+        padding: 6px 8px;
+    }
+
+    .edit-view-summary-fixed {
+        min-width: 70px;
+    }
+
+    .edit-view-summary-scroll {
+        min-width: 90px;
+    }
+}
+
+@media (max-width: 768px) {
+    .edit-view-history-summary-container {
+        max-height: 250px;
+    }
+
+    .edit-view-history-summary-table {
+        font-size: 0.7rem;
+        min-width: 600px;
+    }
+
+    .edit-view-summary-fixed {
+        min-width: 60px;
+    }
+
+    .edit-view-summary-scroll {
+        min-width: 80px;
+    }
+}
+
 
 /* Download Excel button */
 .edit-view-download-excel-btn {
@@ -525,10 +534,6 @@
     color: white;
 }
 
-/* Hidden changes (for Show More functionality) */
-.edit-view-extra-change {
-    display: none;
-}
 
 /* ============================================================================
    SELECT2 DROPDOWN CUSTOMIZATION
@@ -546,36 +551,67 @@
     border-radius: 0.375rem;
     font-size: 0.95rem;
     background-color: #fff;
+    box-sizing: border-box;
 }
 
 .select2-container--bootstrap-5 .select2-selection--single {
-    padding: 0.375rem 2.25rem 0.375rem 0.75rem;
-    height: 38px;
-    display: flex;
-    align-items: center;
+    height: 38px !important;
+    padding: 0.375rem 0.75rem !important;
+    display: flex !important;
+    align-items: center !important;
+    box-sizing: border-box !important;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    padding: 0 !important;
+    line-height: 1.5 !important;
+    margin: 0 !important;
 }
 
 .select2-container--bootstrap-5 .select2-selection--multiple {
-    min-height: 38px;
-    padding: 0.2rem 0.75rem;
+    min-height: 38px !important;
+    padding: 0.25rem 0.75rem !important;
+    box-sizing: border-box !important;
+}
+
+.select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__rendered {
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 0.25rem !important;
+    min-height: 26px !important;
 }
 
 .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
-    color: white;
-    padding: 4px 8px;
-    margin: 4px 4px 0 0;
-    border-radius: 4px;
+    background-color: #e3f2fd;
+    border-color: #bbdefb;
+    color: #1565c0;
+    padding: 0.2rem 0.4rem;
+    margin: 0;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    display: inline-flex;
+    align-items: center;
+    white-space: normal;
+    word-wrap: break-word;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove {
-    color: white;
-    margin-right: 6px;
+    color: #1565c0;
+    margin-right: 4px;
+    font-size: 0.7rem;
 }
 
 .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove:hover {
     color: #dc3545;
+    background-color: rgba(220, 53, 69, 0.1);
+    border-radius: 50%;
 }
 
 /* Select2 dropdown panel */
@@ -675,18 +711,26 @@
 
 /* Select2 clear button */
 .select2-container--bootstrap-5 .select2-selection__clear {
-    position: absolute;
-    right: 2.25rem;
+    position: absolute !important;
+    right: 0.5rem;
     top: 50%;
     transform: translateY(-50%);
     color: #6c757d;
-    font-size: 1.2rem;
+    font-size: 1rem;
     cursor: pointer;
     z-index: 1;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
 }
 
 .select2-container--bootstrap-5 .select2-selection__clear:hover {
     color: #dc3545;
+    background-color: rgba(220, 53, 69, 0.1);
 }
 
 /* ============================================================================
@@ -707,36 +751,6 @@
     .edit-view-preview-table tbody td {
         font-size: 0.75rem;
         padding: 8px 6px;
-    }
-
-    /* Adjust frozen column widths for smaller screens */
-    .edit-view-preview-table thead th:nth-child(1),
-    .edit-view-preview-table tbody td:nth-child(1) {
-        min-width: 150px;
-    }
-
-    .edit-view-preview-table thead th:nth-child(2),
-    .edit-view-preview-table tbody td:nth-child(2) {
-        left: 150px;
-        min-width: 50px;
-    }
-
-    .edit-view-preview-table thead th:nth-child(3),
-    .edit-view-preview-table tbody td:nth-child(3) {
-        left: 200px;
-        min-width: 120px;
-    }
-
-    .edit-view-preview-table thead th:nth-child(4),
-    .edit-view-preview-table tbody td:nth-child(4) {
-        left: 320px;
-        min-width: 90px;
-    }
-
-    .edit-view-preview-table thead th:nth-child(5),
-    .edit-view-preview-table tbody td:nth-child(5) {
-        left: 410px;
-        min-width: 80px;
     }
 }
 
@@ -807,15 +821,6 @@
         font-size: 0.65rem;
     }
 
-    .edit-view-extra-change {
-        display: list-item !important;
-    }
-    
-    .edit-view-more-changes-container {
-        display: block !important;
-        max-height: none !important;
-        overflow: visible !important;
-    }
 }
 
 /* ============================================================================
@@ -848,6 +853,387 @@
 }
 
 /* ============================================================================
+   BUTTONS
+   ============================================================================ */
+
+/* Base button */
+.edit-view-btn {
+    display: inline-block;
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+    user-select: none;
+    border: 1px solid transparent;
+    padding: 0.625rem 1.5rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.edit-view-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.edit-view-btn:active {
+    transform: translateY(0);
+}
+
+.edit-view-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Primary button */
+.edit-view-btn-primary {
+    background-color: var(--edit-view-primary);
+    border-color: var(--edit-view-primary);
+    color: #ffffff;
+}
+
+.edit-view-btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+    color: #ffffff;
+}
+
+/* Success button */
+.edit-view-btn-success {
+    background-color: var(--edit-view-success);
+    border-color: var(--edit-view-success);
+    color: #ffffff;
+}
+
+.edit-view-btn-success:hover {
+    background-color: #157347;
+    border-color: #146c43;
+    color: #ffffff;
+}
+
+/* Outline secondary button */
+.edit-view-btn-outline-secondary {
+    background-color: transparent;
+    border-color: var(--edit-view-muted);
+    color: var(--edit-view-muted);
+}
+
+.edit-view-btn-outline-secondary:hover {
+    background-color: var(--edit-view-muted);
+    color: #ffffff;
+}
+
+/* Outline primary button */
+.edit-view-btn-outline-primary {
+    background-color: transparent;
+    border-color: var(--edit-view-primary);
+    color: var(--edit-view-primary);
+}
+
+.edit-view-btn-outline-primary:hover {
+    background-color: var(--edit-view-primary);
+    color: #ffffff;
+}
+
+/* Small button */
+.edit-view-btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.85rem;
+}
+
+/* ============================================================================
+   BADGES
+   ============================================================================ */
+
+/* Base badge */
+.edit-view-badge {
+    display: inline-block;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 4px;
+}
+
+/* Badge variants */
+.edit-view-badge-info {
+    background-color: var(--edit-view-info);
+    color: #000000;
+}
+
+.edit-view-badge-primary {
+    background-color: var(--edit-view-primary);
+    color: #ffffff;
+}
+
+.edit-view-badge-success {
+    background-color: var(--edit-view-success);
+    color: #ffffff;
+}
+
+.edit-view-badge-warning {
+    background-color: var(--edit-view-warning);
+    color: #000000;
+}
+
+/* ============================================================================
+   ALERTS
+   ============================================================================ */
+
+/* Base alert */
+.edit-view-alert {
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 0.95rem;
+}
+
+/* Alert variants */
+.edit-view-alert-info {
+    background-color: #e7f3ff;
+    border-color: #b3d9ff;
+    color: #004085;
+}
+
+.edit-view-alert-danger {
+    background-color: #f8d7da;
+    border-color: #f5c2c7;
+    color: #842029;
+}
+
+.edit-view-alert-success {
+    background-color: #d1e7dd;
+    border-color: #badbcc;
+    color: #0f5132;
+}
+
+/* ============================================================================
+   FORMS
+   ============================================================================ */
+
+/* Form labels */
+.edit-view-form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.95rem;
+}
+
+/* Form selects */
+.edit-view-form-select {
+    display: block;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    appearance: none;
+}
+
+.edit-view-form-select:focus {
+    border-color: var(--edit-view-primary);
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Form inputs (text, textarea) */
+.edit-view-form-input {
+    display: block;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    background-clip: padding-box;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.edit-view-form-input:focus {
+    border-color: var(--edit-view-primary);
+    outline: 0;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+/* Form helper text */
+.edit-view-form-text {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--edit-view-muted);
+}
+
+/* ============================================================================
+   PAGINATION
+   ============================================================================ */
+
+/* Pagination container */
+.edit-view-pagination {
+    display: flex;
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+.edit-view-pagination-sm {
+    font-size: 0.875rem;
+}
+
+/* Page items */
+.edit-view-page-item {
+    margin: 0 0.125rem;
+}
+
+/* Page links */
+.edit-view-page-link {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    color: var(--edit-view-primary);
+    text-decoration: none;
+    background-color: #fff;
+    border: 1px solid var(--edit-view-border);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.edit-view-page-link:hover {
+    background-color: #e9ecef;
+    border-color: var(--edit-view-border);
+    color: #0a58ca;
+}
+
+/* Active page */
+.edit-view-page-item-active .edit-view-page-link {
+    background-color: var(--edit-view-primary);
+    border-color: var(--edit-view-primary);
+    color: #fff;
+    font-weight: 600;
+}
+
+.edit-view-page-item-active .edit-view-page-link:hover {
+    background-color: var(--edit-view-primary);
+    border-color: var(--edit-view-primary);
+    color: #fff;
+}
+
+/* Disabled page */
+.edit-view-page-item-disabled .edit-view-page-link {
+    background-color: var(--edit-view-light);
+    border-color: var(--edit-view-border);
+    color: var(--edit-view-muted);
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ============================================================================
+   SPINNERS
+   ============================================================================ */
+
+/* Spinner */
+.edit-view-spinner {
+    display: inline-block;
+    width: 3rem;
+    height: 3rem;
+    vertical-align: text-bottom;
+    border: 0.25em solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: edit-view-spinner-rotate 0.75s linear infinite;
+}
+
+.edit-view-spinner-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 0.15em;
+}
+
+@keyframes edit-view-spinner-rotate {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* ============================================================================
+   NAVIGATION/TABS
+   ============================================================================ */
+
+/* Nav container */
+.edit-view-nav {
+    display: flex;
+    flex-wrap: wrap;
+    padding-left: 0;
+    margin-bottom: 0;
+    list-style: none;
+}
+
+/* Nav item */
+.edit-view-nav-item {
+    margin-bottom: -1px;
+}
+
+/* Nav link */
+.edit-view-nav-link {
+    display: block;
+    padding: 12px 24px;
+    color: var(--edit-view-muted);
+    font-weight: 500;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.edit-view-nav-link:hover {
+    color: var(--edit-view-primary);
+    background-color: #e9ecef;
+}
+
+/* Active nav link */
+.edit-view-nav-link-active {
+    color: var(--edit-view-primary);
+    background-color: white;
+    border-bottom: 3px solid var(--edit-view-primary);
+    font-weight: 600;
+}
+
+/* Tab panes */
+.edit-view-tab-pane {
+    display: none;
+}
+
+.edit-view-tab-pane-active {
+    display: block;
+}
+
+/* Fade transition */
+.edit-view-tab-pane-fade {
+    opacity: 0;
+    transition: opacity 0.15s linear;
+}
+
+.edit-view-tab-pane-fade.edit-view-tab-pane-show {
+    opacity: 1;
+}
+
+/* ============================================================================
    UTILITY CLASSES
    ============================================================================ */
 
@@ -877,4 +1263,851 @@
 
 .edit-view-border-warning {
     border-color: #ffc107 !important;
+}
+
+/* ============================================================================
+   UTILITY CLASSES - SPACING
+   ============================================================================ */
+
+/* Margin Bottom */
+.edit-view-mb-0 { margin-bottom: 0; }
+.edit-view-mb-1 { margin-bottom: 0.25rem; }
+.edit-view-mb-2 { margin-bottom: 0.5rem; }
+.edit-view-mb-3 { margin-bottom: 1rem; }
+.edit-view-mb-4 { margin-bottom: 1.5rem; }
+
+/* Margin Top */
+.edit-view-mt-0 { margin-top: 0; }
+.edit-view-mt-2 { margin-top: 0.5rem; }
+.edit-view-mt-3 { margin-top: 1rem; }
+
+/* Margin End (Right) */
+.edit-view-me-1 { margin-right: 0.25rem; }
+.edit-view-me-2 { margin-right: 0.5rem; }
+
+/* Width */
+.edit-view-w-100 { width: 100%; }
+
+/* ============================================================================
+   UTILITY CLASSES - LAYOUT (FLEXBOX)
+   ============================================================================ */
+
+/* Display */
+.edit-view-flex { display: flex; }
+.edit-view-flex-wrap { flex-wrap: wrap; }
+
+/* Justify Content */
+.edit-view-justify-between { justify-content: space-between; }
+.edit-view-justify-center { justify-content: center; }
+.edit-view-justify-end { justify-content: flex-end; }
+
+/* Align Items */
+.edit-view-align-center { align-items: center; }
+.edit-view-align-start { align-items: flex-start; }
+.edit-view-align-end { align-items: flex-end; }
+
+/* Gap */
+.edit-view-gap-3 { gap: 1rem; }
+
+/* ============================================================================
+   UTILITY CLASSES - TEXT
+   ============================================================================ */
+
+/* Text Alignment */
+.edit-view-text-center { text-align: center; }
+.edit-view-text-end { text-align: right; }
+
+/* Text Colors */
+.edit-view-text-muted { color: var(--edit-view-muted); }
+.edit-view-text-dark { color: var(--edit-view-dark); }
+.edit-view-text-primary { color: var(--edit-view-primary); }
+
+/* Screen Reader Only */
+.edit-view-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* ============================================================================
+   GRID SYSTEM
+   ============================================================================ */
+
+/* Row */
+.edit-view-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-right: -0.5rem;
+    margin-left: -0.5rem;
+}
+
+/* Columns */
+.edit-view-col-2,
+.edit-view-col-3,
+.edit-view-col-4,
+.edit-view-col-6 {
+    flex: 0 0 auto;
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+}
+
+.edit-view-col-2 {
+    flex: 0 0 16.666667%;
+    max-width: 16.666667%;
+}
+
+.edit-view-col-3 {
+    flex: 0 0 25%;
+    max-width: 25%;
+}
+
+.edit-view-col-4 {
+    flex: 0 0 33.333333%;
+    max-width: 33.333333%;
+}
+
+.edit-view-col-6 {
+    flex: 0 0 50%;
+    max-width: 50%;
+}
+
+.edit-view-col-8 {
+    flex: 0 0 66.666667%;
+    max-width: 66.666667%;
+}
+
+/* Responsive columns (below 768px, stack vertically) */
+@media (max-width: 767px) {
+    .edit-view-col-2,
+    .edit-view-col-3,
+    .edit-view-col-4,
+    .edit-view-col-6,
+    .edit-view-col-8 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+}
+
+/* ============================================================================
+   TABLE ENHANCEMENTS
+   ============================================================================ */
+
+/* Table responsive wrapper */
+.edit-view-table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Enhanced table styling (supplements existing .edit-view-preview-table) */
+.edit-view-preview-table {
+    border-collapse: collapse;
+}
+
+.edit-view-preview-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Borders included in base table styles */
+.edit-view-preview-table,
+.edit-view-preview-table th,
+.edit-view-preview-table td {
+    border: 1px solid var(--edit-view-border);
+}
+
+/* ============================================================================
+   PREVIEW FILTERS
+   ============================================================================ */
+
+.edit-view-preview-filters {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--edit-view-border);
+}
+
+/* ============================================================================
+   FIXED COLUMNS TABLE
+   ============================================================================ */
+
+.edit-view-table-container {
+    overflow-x: auto;
+    position: relative;
+    border: 1px solid var(--edit-view-border);
+}
+
+.edit-view-preview-table-fixed {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+/* Sticky header rows (scrollable columns) */
+.edit-view-preview-table-fixed thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: #f8f9fa;
+    border-bottom: 2px solid var(--edit-view-border);
+}
+
+/* Sticky first 4 columns (Main LOB, State, Case Type, Target CPH) */
+.edit-view-preview-table-fixed tbody td:nth-child(1),
+.edit-view-preview-table-fixed tbody td:nth-child(2),
+.edit-view-preview-table-fixed tbody td:nth-child(3),
+.edit-view-preview-table-fixed tbody td:nth-child(4) {
+    position: sticky;
+    background-color: #ffffff;
+    z-index: 5;
+}
+
+/* Fixed column headers - only apply to first row (main headers), not sub-headers */
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(1),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(2),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(3),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(4) {
+    position: sticky;
+    top: 0;
+    background-color: #f8f9fa;
+    z-index: 30;
+}
+
+.edit-view-preview-table-fixed tbody td:nth-child(1),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(1) {
+    left: 0;
+}
+
+.edit-view-preview-table-fixed tbody td:nth-child(2),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(2) {
+    left: 200px;
+}
+
+.edit-view-preview-table-fixed tbody td:nth-child(3),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(3) {
+    left: 280px;
+}
+
+.edit-view-preview-table-fixed tbody td:nth-child(4),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(4) {
+    left: 460px;
+}
+
+/* Shadow for sticky columns */
+.edit-view-preview-table-fixed tbody td:nth-child(4),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(4) {
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+
+/* Month header styling */
+.edit-view-month-header {
+    background-color: #e9ecef !important;
+    font-weight: 600;
+    color: #012970;
+    z-index: 10 !important;
+    position: sticky;
+    top: 0;
+}
+
+/* Fixed column widths for consistency - only apply to first row and body */
+.edit-view-preview-table-fixed tbody td:nth-child(1),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(1) {
+    min-width: 200px;
+    max-width: 200px;
+}
+
+.edit-view-preview-table-fixed tbody td:nth-child(2),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(2) {
+    min-width: 80px;
+    max-width: 80px;
+}
+
+.edit-view-preview-table-fixed tbody td:nth-child(3),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(3) {
+    min-width: 180px;
+    max-width: 180px;
+}
+
+.edit-view-preview-table-fixed tbody td:nth-child(4),
+.edit-view-preview-table-fixed thead tr:first-child th:nth-child(4) {
+    min-width: 100px;
+    max-width: 100px;
+}
+
+/* ============================================================================
+   CHANGE HIGHLIGHTING
+   ============================================================================ */
+
+/* Increased value - pastel green */
+.edit-view-cell-increased {
+    background-color: #d4edda !important;
+    position: relative;
+}
+
+/* Decreased value - pastel red */
+.edit-view-cell-decreased {
+    background-color: #f8d7da !important;
+    position: relative;
+}
+
+/* Change badge */
+.edit-view-change-badge {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+    font-weight: 600;
+}
+
+.edit-view-change-badge-positive {
+    background-color: #28a745;
+    color: white;
+}
+
+.edit-view-change-badge-negative {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* ============================================================================
+   OVERALL CHANGES & LEGEND
+   ============================================================================ */
+
+.edit-view-overall-changes {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--edit-view-border);
+}
+
+.edit-view-summary-card,
+.edit-view-legend-card {
+    background-color: white;
+    padding: 1rem;
+    border-radius: 6px;
+    border: 1px solid var(--edit-view-border);
+}
+
+.edit-view-summary-card h6,
+.edit-view-legend-card h6 {
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    color: #012970;
+}
+
+.edit-view-summary-card p {
+    margin-bottom: 0.5rem;
+}
+
+.edit-view-legend-card ul {
+    list-style: none;
+    padding-left: 0;
+    margin-bottom: 0;
+}
+
+.edit-view-legend-card ul li {
+    padding: 4px 0;
+    color: #495057;
+}
+
+/* Month-wise Changes Summary */
+.edit-view-month-changes-container {
+    max-height: 300px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #adb5bd #f8f9fa;
+}
+
+.edit-view-month-changes-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.edit-view-month-changes-container::-webkit-scrollbar-track {
+    background: #f8f9fa;
+}
+
+.edit-view-month-changes-container::-webkit-scrollbar-thumb {
+    background-color: #adb5bd;
+    border-radius: 20px;
+}
+
+.edit-view-month-summary-card {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 0.75rem;
+}
+
+.edit-view-month-summary-header {
+    color: #012970;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 0.25rem;
+}
+
+.edit-view-month-summary-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.edit-view-change-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.edit-view-change-label {
+    color: #495057;
+    font-weight: 500;
+}
+
+.edit-view-change-value {
+    font-weight: 600;
+}
+
+/* Responsive adjustments for month summary */
+@media (max-width: 1199px) {
+    .edit-view-month-summary-details {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .edit-view-change-item {
+        width: 100%;
+    }
+}
+
+/* ============================================================================
+   SELECT2 STYLING
+   ============================================================================ */
+
+/* Hide dropdown arrow for all Select2 dropdowns */
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__arrow,
+.select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__arrow {
+    display: none;
+}
+
+/* Ensure consistent vertical alignment across all Select2 dropdowns */
+.select2-container--bootstrap-5 .select2-selection {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Remove any conflicting margin/padding that might cause misalignment */
+.select2-container--bootstrap-5 .select2-selection * {
+    box-sizing: border-box;
+}
+
+/* Fix Select2 placeholder alignment for multiple select */
+.select2-container--bootstrap-5 .select2-selection--multiple .select2-search--inline {
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
+.select2-container--bootstrap-5 .select2-selection--multiple .select2-search--inline .select2-search__field {
+    margin: 0;
+    padding: 0;
+    height: 26px;
+    line-height: 26px;
+    border: none;
+    background: transparent;
+    min-width: 100px;
+}
+
+/* Placeholder text styling */
+.select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__placeholder {
+    color: #6c757d;
+    margin: 0;
+    padding: 0;
+    line-height: 26px;
+    display: flex;
+    align-items: center;
+}
+
+/* Fix Select2 placeholder alignment for single select */
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    padding: 0;
+    line-height: 26px;
+    color: #212529;
+    display: flex;
+    align-items: center;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__placeholder {
+    color: #6c757d;
+    line-height: 26px;
+}
+
+/* Subtle background for selected/highlighted options */
+.select2-container--bootstrap-5 .select2-results__option--highlighted,
+.select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: #f3e5f5 !important;
+    color: #4a148c !important;
+}
+
+/* Hover state for options */
+.select2-container--bootstrap-5 .select2-results__option:hover {
+    background-color: #f3e5f5 !important;
+    color: #4a148c !important;
+}
+
+/* Currently selected option (highlighted in dropdown) */
+.select2-container--bootstrap-5 .select2-results__option[aria-selected=true] {
+    background-color: #e1bee7 !important;
+    color: #4a148c !important;
+    font-weight: 500;
+}
+
+/* Select All option styling */
+.select2-results__option.select-all-option {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+    color: #495057;
+}
+
+.select2-results__option.select-all-option:hover {
+    background-color: #e9ecef !important;
+    color: #212529 !important;
+}
+
+/* ============================================================================
+   TARGET CPH STYLES
+   ============================================================================ */
+
+/* CPH Table */
+.edit-view-cph-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.edit-view-cph-table thead th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    padding: 0.75rem 0.5rem;
+    border-bottom: 2px solid #dee2e6;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.edit-view-cph-table tbody td {
+    padding: 0.75rem 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: middle;
+}
+
+.edit-view-cph-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.edit-view-cph-row-modified {
+    background-color: #fff3cd !important;
+}
+
+.edit-view-cph-row-modified:hover {
+    background-color: #ffe69c !important;
+}
+
+/* CPH Column Widths */
+.edit-view-cph-lob-col {
+    width: 30%;
+    min-width: 200px;
+}
+
+.edit-view-cph-case-type-col {
+    width: 25%;
+    min-width: 150px;
+}
+
+.edit-view-cph-target-col {
+    width: 15%;
+    min-width: 100px;
+    text-align: right;
+}
+
+.edit-view-cph-modified-col {
+    width: 30%;
+    min-width: 200px;
+}
+
+/* CPH Input Cell */
+.edit-view-cph-input-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.edit-view-cph-btn-group {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    width: 100%;
+}
+
+/* CPH Modified Input */
+.cph-modified-input {
+    flex: 1;
+    padding: 0.375rem 0.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    text-align: right;
+    transition: all 0.2s ease;
+}
+
+.cph-modified-input:focus {
+    outline: none;
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.cph-modified-input.edit-view-input-modified {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    font-weight: 500;
+}
+
+.cph-modified-input.edit-view-input-invalid {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+}
+
+/* CPH Increment/Decrement Buttons */
+.cph-increment-btn,
+.cph-decrement-btn {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #dee2e6;
+    background-color: #ffffff;
+    color: #6c757d;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.cph-increment-btn:hover {
+    background-color: #198754;
+    border-color: #198754;
+    color: #ffffff;
+    transform: scale(1.05);
+}
+
+.cph-increment-btn:active {
+    transform: scale(0.95);
+}
+
+.cph-decrement-btn:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #ffffff;
+    transform: scale(1.05);
+}
+
+.cph-decrement-btn:active {
+    transform: scale(0.95);
+}
+
+.cph-increment-btn i,
+.cph-decrement-btn i {
+    font-size: 0.75rem;
+}
+
+/* CPH Filters */
+.edit-view-cph-filters {
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 0.375rem;
+    margin-bottom: 1rem;
+}
+
+/* CPH Pagination */
+.edit-view-cph-pagination .edit-view-pagination {
+    margin: 0;
+}
+
+/* CPH Preview Specific Styles */
+.edit-view-cph-preview-pagination .edit-view-pagination {
+    margin: 0;
+}
+
+/* Modified Count Badge */
+#cph-modified-count-badge {
+    background-color: #ffc107;
+    color: #000;
+    font-weight: 600;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.25rem;
+}
+
+#cph-modified-count-badge:empty {
+    display: none;
+}
+
+/* CPH Preview Modified Count Badge */
+#cph-preview-modified-count-badge {
+    background-color: #17a2b8;
+    color: #ffffff;
+    font-weight: 600;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.25rem;
+}
+
+/* CPH Actions Container */
+#cph-actions-container {
+    border-top: 2px solid #dee2e6;
+}
+
+#cph-action-summary-count,
+#cph-forecast-rows-count {
+    font-weight: 600;
+    color: #0d6efd;
+}
+
+/* Responsive Design for CPH Tab */
+@media (max-width: 1200px) {
+    .edit-view-cph-input-cell {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+
+    .edit-view-cph-btn-group {
+        flex-direction: row;
+        justify-content: space-between;
+    }
+
+    .cph-modified-input {
+        order: -1;
+        margin-bottom: 0.25rem;
+    }
+
+    .cph-increment-btn,
+    .cph-decrement-btn {
+        width: 48%;
+    }
+}
+
+@media (max-width: 768px) {
+    .edit-view-cph-table {
+        font-size: 0.8rem;
+    }
+
+    .edit-view-cph-table thead th,
+    .edit-view-cph-table tbody td {
+        padding: 0.5rem 0.25rem;
+    }
+
+    .edit-view-cph-lob-col {
+        min-width: 150px;
+    }
+
+    .edit-view-cph-case-type-col {
+        min-width: 120px;
+    }
+
+    .edit-view-cph-modified-col {
+        min-width: 180px;
+    }
+
+    .cph-increment-btn,
+    .cph-decrement-btn {
+        width: 28px;
+        height: 28px;
+    }
+
+    .cph-modified-input {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.375rem;
+    }
+}
+
+/* CPH Data Container */
+#cph-data-container .edit-view-card-header {
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+    padding: 1rem 1.25rem;
+}
+
+/* CPH Preview Container */
+#cph-preview-container .edit-view-preview-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+    padding: 1rem 1.25rem;
+    border-radius: 0.375rem 0.375rem 0 0;
+}
+
+#cph-preview-container .edit-view-preview-header h5,
+#cph-preview-container .edit-view-preview-header p {
+    color: #ffffff;
+}
+
+/* Submit Button States */
+#submit-cph-changes-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#submit-cph-changes-btn:not(:disabled):hover {
+    background-color: #157347;
+    border-color: #146c43;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* CPH Notes Character Count */
+#cph-notes-char-count {
+    font-weight: 500;
+    color: #6c757d;
+}
+
+/* Smooth Transitions */
+.edit-view-cph-table tbody tr,
+.cph-modified-input,
+.cph-increment-btn,
+.cph-decrement-btn {
+    transition: all 0.2s ease;
+}
+
+/* Loading State for CPH Data */
+#cph-data-loading .edit-view-spinner {
+    width: 3rem;
+    height: 3rem;
+    border-width: 0.3em;
+}
+
+/* Success State Highlight */
+.edit-view-cph-success-highlight {
+    animation: successPulse 0.6s ease-in-out;
+}
+
+@keyframes successPulse {
+    0% {
+        background-color: #d4edda;
+        transform: scale(1);
+    }
+    50% {
+        background-color: #c3e6cb;
+        transform: scale(1.02);
+    }
+    100% {
+        background-color: transparent;
+        transform: scale(1);
+    }
 }

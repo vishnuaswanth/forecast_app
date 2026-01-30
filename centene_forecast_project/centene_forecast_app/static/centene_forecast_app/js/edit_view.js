@@ -27,24 +27,30 @@
     // CONFIGURATION & GLOBAL STATE
     // ============================================================================
 
+    // Configuration is passed from Django template via window.EDIT_VIEW_CONFIG
+    // Fallback values provided in case template doesn't set them (for development/testing)
     const CONFIG = window.EDIT_VIEW_CONFIG || {
         urls: {
-            allocationReports: '/api/edit-view/allocation-reports/',
-            benchAllocationPreview: '/api/edit-view/bench-allocation/preview/',
-            benchAllocationUpdate: '/api/edit-view/bench-allocation/update/',
-            historyLog: '/api/edit-view/history-log/',
-            downloadHistoryExcel: '/api/edit-view/history-log/{id}/download/'
+            allocationReports: '/forecast_app/api/edit-view/allocation-reports/',
+            benchAllocationPreview: '/forecast_app/api/edit-view/bench-allocation/preview/',
+            benchAllocationUpdate: '/forecast_app/api/edit-view/bench-allocation/update/',
+            historyLog: '/forecast_app/api/edit-view/history-log/',
+            downloadHistoryExcel: '/forecast_app/api/edit-view/history-log/{id}/download/'
         },
         settings: {
             previewPageSize: 25,
             historyPageSize: 5,
             historyInitialLoad: 20,
             historyLazyLoadSize: 10,
-            historyShowMoreThreshold: 3,
             maxUserNotesLength: 500,
             enableUserNotes: true
         }
     };
+
+    // Validate that CONFIG was properly loaded from Django
+    if (!window.EDIT_VIEW_CONFIG) {
+        console.warn('Edit View: window.EDIT_VIEW_CONFIG not found. Using fallback configuration. URLs may not work correctly.');
+    }
 
     const STATE = {
         // Preview data
@@ -52,16 +58,27 @@
         currentSelectedReport: null, // {month: "April", year: 2025}
         previewCurrentPage: 1,
         previewTotalPages: 0,
+        allPreviewRecords: [],        // All fetched records
+        filteredPreviewRecords: [],   // After LOB/Case Type filters
+        previewFilters: {
+            lobs: [],                 // Selected LOB values
+            caseTypes: []             // Selected Case Type values
+        },
 
         // History data
         currentHistoryData: null,
         historyCurrentPage: 1,
         historyTotalPages: 0,
+        loadedHistoryCount: 0,      // Track loaded entries for lazy loading
+        totalHistoryCount: 0,       // Total available entries
         historyFilters: {
             month: null,
             year: null,
             changeTypes: []
         },
+
+        // Change types with colors
+        availableChangeTypes: null,  // Populated by loadAvailableChangeTypes()
 
         // Loading states
         isLoadingPreview: false,
@@ -70,7 +87,181 @@
 
         // Cache (optional - can add later)
         cache: new Map(),
-        cacheTTL: 300000  // 5 minutes
+        cacheTTL: 300000,  // 5 minutes
+
+        // Target CPH state
+        cph: {
+            currentSelectedReport: null,      // {month: "April", year: 2025}
+            allCphRecords: [],                // All CPH records from API
+            filteredCphRecords: [],           // After LOB/Case Type filters
+            modifiedCphRecords: new Map(),    // Map<id, modified_record> - only changed
+            currentPage: 1,
+            totalPages: 0,
+            filters: {
+                lobs: [],
+                caseTypes: []
+            },
+
+            // Preview state
+            previewData: null,
+            previewCurrentPage: 1,
+            previewTotalPages: 0,
+            allPreviewRecords: [],
+            filteredPreviewRecords: [],
+            previewFilters: {
+                lobs: [],
+                caseTypes: []
+            }
+        }
+    };
+
+    // ============================================================================
+    // PREVIEW CONFIGURATIONS (GENERIC SYSTEM)
+    // ============================================================================
+
+    /**
+     * Configuration objects for preview systems
+     * Enables code reuse between Bench Allocation and Target CPH previews
+     */
+    const PREVIEW_CONFIGS = {
+        benchAllocation: {
+            // DOM element references
+            dom: {
+                loading: 'previewLoading',
+                error: 'previewError',
+                errorMessage: 'previewErrorMessage',
+                container: 'previewContainer',
+                tableHead: 'previewTableHead',
+                tableBody: 'previewTableBody',
+                pagination: 'previewPagination',
+                filters: 'previewFilters',
+                lobFilter: 'previewLobFilter',
+                caseTypeFilter: 'previewCaseTypeFilter',
+                clearFiltersBtn: 'clearPreviewFiltersBtn',
+                modifiedCountBadge: 'modifiedCountBadge',
+                summaryText: 'summaryText',
+                actionSummaryCount: 'actionSummaryCount',
+                overallChanges: 'overallChanges',
+                monthChangesContainer: 'month-changes-container'
+            },
+
+            // State path configuration
+            state: {
+                basePath: 'STATE',
+                allRecords: 'allPreviewRecords',
+                filteredRecords: 'filteredPreviewRecords',
+                currentPage: 'previewCurrentPage',
+                totalPages: 'previewTotalPages',
+                filters: 'previewFilters'
+            },
+
+            // Field name mapping (canonical → actual field names)
+            fields: {
+                forecast: 'forecast',
+                fteReq: 'fte_req',
+                fteAvail: 'fte_avail',
+                capacity: 'capacity'
+            },
+
+            // Fixed columns configuration
+            fixedColumns: [
+                { key: 'main_lob', label: 'Main LOB', editable: false },
+                { key: 'state', label: 'State', editable: false },
+                { key: 'case_type', label: 'Case Type', editable: false },
+                { key: 'target_cph', label: 'Target CPH', editable: true, align: 'text-center' }
+            ],
+
+            // Month columns configuration
+            monthColumns: [
+                { key: 'forecast', label: 'CF', editable: false },
+                { key: 'fteReq', label: 'FTE Req', editable: true },
+                { key: 'fteAvail', label: 'FTE Avail', editable: true },
+                { key: 'capacity', label: 'Cap', editable: true }
+            ],
+
+            // Feature flags
+            features: {
+                showTotalsRow: true,
+                showMonthwiseSummary: true,
+                summaryStyle: 'cards',
+                cascadingFilters: true
+            },
+
+            // Data access pattern
+            dataAccess: {
+                monthDataPath: 'direct'  // 'direct' = record[month]
+            }
+        },
+
+        targetCph: {
+            // DOM element references
+            dom: {
+                loading: 'cphPreviewLoading',
+                error: 'cphPreviewError',
+                errorMessage: 'cphPreviewErrorMessage',
+                container: 'cphPreviewContainer',
+                tableHead: 'cphPreviewTableHead',
+                tableBody: 'cphPreviewTableBody',
+                pagination: 'cphPreviewPagination',
+                filters: 'cphPreviewFilters',
+                lobFilter: 'cphPreviewLobFilter',
+                caseTypeFilter: 'cphPreviewCaseTypeFilter',
+                clearFiltersBtn: 'clearCphPreviewFiltersBtn',
+                modifiedCountBadge: 'cphPreviewModifiedCountBadge',
+                summaryText: 'cphSummaryText',
+                actionSummaryCount: 'cphActionSummaryCount',
+                overallChanges: 'cphOverallChanges',
+                monthChangesContainer: 'cph-month-changes-container'
+            },
+
+            // State path configuration
+            state: {
+                basePath: 'STATE.cph',
+                allRecords: 'allPreviewRecords',
+                filteredRecords: 'filteredPreviewRecords',
+                currentPage: 'previewCurrentPage',
+                totalPages: 'previewTotalPages',
+                filters: 'previewFilters'
+            },
+
+            // Field name mapping (canonical → actual field names)
+            // NOTE: Using same field names as bench allocation for consistency
+            fields: {
+                forecast: 'forecast',
+                fteReq: 'fte_req',
+                fteAvail: 'fte_avail',
+                capacity: 'capacity'
+            },
+
+            // Fixed columns configuration - SAME AS BENCH ALLOCATION
+            fixedColumns: [
+                { key: 'main_lob', label: 'Main LOB', editable: false },
+                { key: 'state', label: 'State', editable: false },
+                { key: 'case_type', label: 'Case Type', editable: false },
+                { key: 'target_cph', label: 'Target CPH', editable: true, align: 'text-center' }
+            ],
+
+            // Month columns configuration - SAME AS BENCH ALLOCATION
+            monthColumns: [
+                { key: 'forecast', label: 'CF', editable: false },
+                { key: 'fteReq', label: 'FTE Req', editable: true },
+                { key: 'fteAvail', label: 'FTE Avail', editable: true },
+                { key: 'capacity', label: 'Cap', editable: true }
+            ],
+
+            // Feature flags - SAME AS BENCH ALLOCATION
+            features: {
+                showTotalsRow: true,           // CHANGED: Enable totals row
+                showMonthwiseSummary: true,
+                summaryStyle: 'cards',         // CHANGED: Use card-based summary
+                cascadingFilters: true
+            },
+
+            // Data access pattern
+            dataAccess: {
+                monthDataPath: 'direct'  // FIX: Changed from 'nested' to 'direct'
+            }
+        }
     };
 
     const DOM = {};
@@ -87,18 +278,34 @@
         }
     }
 
-    function initializeApp() {
+    async function initializeApp() {
         console.log('Edit View: Initializing v1.0.0...');
 
         cacheDOMElements();
         initializeSelect2();
         attachEventListeners();
-        loadAllocationReports();
+
+        // Show spinner while loading dropdown data
+        showElement(DOM.initialDataLoading);
+
+        try {
+            // Load dropdown data in parallel
+            await Promise.all([
+                loadAllocationReports(),
+                loadAvailableChangeTypes()
+            ]);
+        } finally {
+            // Hide spinner after all data is loaded (success or failure)
+            hideElement(DOM.initialDataLoading);
+        }
 
         console.log('Edit View: Initialization complete');
     }
 
     function cacheDOMElements() {
+        // Initial data loading spinner
+        DOM.initialDataLoading = $('#initial-data-loading');
+
         // Bench Allocation tab elements
         DOM.allocationReportSelect = $('#allocation-report-select');
         DOM.runAllocationBtn = $('#run-allocation-btn');
@@ -112,6 +319,15 @@
         DOM.modifiedCountBadge = $('#modified-count-badge');
         DOM.previewSummary = $('#preview-summary');
         DOM.summaryText = $('#summary-text');
+
+        // Preview filters
+        DOM.previewLobFilter = $('#preview-lob-filter');
+        DOM.previewCaseTypeFilter = $('#preview-case-type-filter');
+        DOM.clearPreviewFiltersBtn = $('#clear-preview-filters-btn');
+        DOM.previewFilters = $('#preview-filters');
+        DOM.overallChanges = $('#overall-changes');
+        DOM.totalFteChange = $('#total-fte-change');
+        DOM.totalCapacityChange = $('#total-capacity-change');
 
         // Actions section
         DOM.actionsContainer = $('#actions-container');
@@ -130,11 +346,60 @@
         DOM.historyErrorMessage = $('#history-error-message');
         DOM.historyCardsContainer = $('#history-cards-container');
         DOM.historyNoResults = $('#history-no-results');
-        DOM.historyPagination = $('#history-pagination');
+        DOM.historyLoadMoreContainer = $('#history-load-more-container');
 
         // Tab buttons
         DOM.benchAllocationTabBtn = $('#bench-allocation-tab-btn');
+        DOM.targetCphTabBtn = $('#target-cph-tab-btn');
         DOM.historyLogTabBtn = $('#history-log-tab-btn');
+
+        // Target CPH tab elements
+        DOM.cphReportSelect = $('#cph-report-select');
+        DOM.loadCphDataBtn = $('#load-cph-data-btn');
+        DOM.cphDataLoading = $('#cph-data-loading');
+        DOM.cphDataError = $('#cph-data-error');
+        DOM.cphDataErrorMessage = $('#cph-data-error-message');
+        DOM.cphDataContainer = $('#cph-data-container');
+        DOM.cphTable = $('#cph-table');
+        DOM.cphTableBody = $('#cph-table-body');
+        DOM.cphPagination = $('#cph-pagination');
+        DOM.cphModifiedCountBadge = $('#cph-modified-count-badge');
+        DOM.submitCphChangesBtn = $('#submit-cph-changes-btn');
+
+        // CPH filters
+        DOM.cphFilters = $('#cph-filters');
+        DOM.cphLobFilter = $('#cph-lob-filter');
+        DOM.cphCaseTypeFilter = $('#cph-case-type-filter');
+        DOM.clearCphFiltersBtn = $('#clear-cph-filters-btn');
+
+        // CPH preview elements
+        DOM.cphPreviewLoading = $('#cph-preview-loading');
+        DOM.cphPreviewError = $('#cph-preview-error');
+        DOM.cphPreviewErrorMessage = $('#cph-preview-error-message');
+        DOM.cphPreviewContainer = $('#cph-preview-container');
+        DOM.cphPreviewTableHead = $('#cph-preview-table-head');
+        DOM.cphPreviewTableBody = $('#cph-preview-table-body');
+        DOM.cphPreviewPagination = $('#cph-preview-pagination');
+        DOM.cphPreviewModifiedCountBadge = $('#cph-preview-modified-count-badge');
+        DOM.cphPreviewSummary = $('#cph-preview-summary');
+        DOM.cphSummaryText = $('#cph-summary-text');
+        DOM.cphOverallChanges = $('#cph-overall-changes');
+        DOM.cphMonthChangesContainer = $('#cph-month-changes-container');
+
+        // CPH preview filters
+        DOM.cphPreviewFilters = $('#cph-preview-filters');
+        DOM.cphPreviewLobFilter = $('#cph-preview-lob-filter');
+        DOM.cphPreviewCaseTypeFilter = $('#cph-preview-case-type-filter');
+        DOM.clearCphPreviewFiltersBtn = $('#clear-cph-preview-filters-btn');
+
+        // CPH actions section
+        DOM.cphActionsContainer = $('#cph-actions-container');
+        DOM.cphUserNotesInput = $('#cph-user-notes-input');
+        DOM.cphNotesCharCount = $('#cph-notes-char-count');
+        DOM.cphActionSummaryCount = $('#cph-action-summary-count');
+        DOM.cphForecastRowsCount = $('#cph-forecast-rows-count');
+        DOM.cphRejectBtn = $('#cph-reject-btn');
+        DOM.cphAcceptBtn = $('#cph-accept-btn');
     }
 
     function initializeSelect2() {
@@ -165,6 +430,37 @@
             });
         });
 
+        // Multi-select with checkboxes
+        $('.edit-view-select2-multi-checkbox').each(function() {
+            $(this).select2({
+                theme: 'bootstrap-5',
+                placeholder: $(this).attr('data-placeholder') || 'Select options...',
+                allowClear: true,
+                closeOnSelect: false,
+                width: '100%'
+            });
+        });
+
+        // Add Select All functionality
+        $(document).on('select2:open', '.edit-view-select2-multi-checkbox', function() {
+            const container = $('.select2-results__options');
+
+            if (container.find('.select-all-option').length === 0) {
+                container.prepend(
+                    '<li class="select2-results__option select-all-option" role="option">Select All</li>'
+                );
+            }
+        });
+
+        $(document).on('click', '.select-all-option', function(e) {
+            e.stopPropagation();
+            const select = $('.select2-hidden-accessible:focus');
+            const allValues = select.find('option').map(function() {
+                return $(this).val();
+            }).get();
+            select.val(allValues).trigger('change');
+        });
+
         console.log('Edit View: Select2 initialized');
     }
 
@@ -174,6 +470,52 @@
         DOM.rejectBtn.on('click', handleReject);
         DOM.acceptBtn.on('click', handleAccept);
         DOM.userNotesInput.on('input', handleNotesInput);
+
+        // Preview filters with cascading behavior
+        DOM.previewLobFilter.on('select2:close', function() {
+            updateCascadingFilters('lob');
+            applyPreviewFilters();
+        });
+
+        DOM.previewCaseTypeFilter.on('select2:close', function() {
+            updateCascadingFilters('caseType');
+            applyPreviewFilters();
+        });
+
+        DOM.clearPreviewFiltersBtn.on('click', clearPreviewFilters);
+
+        // Target CPH tab
+        DOM.loadCphDataBtn.on('click', handleLoadCphData);
+        DOM.submitCphChangesBtn.on('click', handleSubmitCphChanges);
+        DOM.cphRejectBtn.on('click', handleCphReject);
+        DOM.cphAcceptBtn.on('click', handleCphAccept);
+        DOM.cphUserNotesInput.on('input', handleCphNotesInput);
+
+        // CPH filters with cascading behavior
+        DOM.cphLobFilter.on('select2:close', function() {
+            updateCphCascadingFilters('lob');
+            applyCphFilters();
+        });
+
+        DOM.cphCaseTypeFilter.on('select2:close', function() {
+            updateCphCascadingFilters('caseType');
+            applyCphFilters();
+        });
+
+        DOM.clearCphFiltersBtn.on('click', clearCphFilters);
+
+        // CPH preview filters
+        DOM.cphPreviewLobFilter.on('select2:close', function() {
+            updateCphPreviewCascadingFilters('lob');
+            applyCphPreviewFilters();
+        });
+
+        DOM.cphPreviewCaseTypeFilter.on('select2:close', function() {
+            updateCphPreviewCascadingFilters('caseType');
+            applyCphPreviewFilters();
+        });
+
+        DOM.clearCphPreviewFiltersBtn.on('click', clearCphPreviewFilters);
 
         // History Log tab
         DOM.applyHistoryFiltersBtn.on('click', handleApplyHistoryFilters);
@@ -187,12 +529,110 @@
         });
 
         // Event delegation for dynamically created elements
-        $(document).on('click', '.preview-pagination .page-link', handlePreviewPageClick);
-        $(document).on('click', '.history-pagination .page-link', handleHistoryPageClick);
-        $(document).on('click', '.edit-view-show-more-btn', handleShowMoreClick);
+        $(document).on('click', '.edit-view-preview-pagination .edit-view-page-link', handlePreviewPageClick);
+        $(document).on('click', '#history-load-more-btn', handleHistoryLoadMore);
         $(document).on('click', '.edit-view-download-excel-btn', handleExcelDownload);
+        $(document).on('click', '.edit-view-cph-pagination .edit-view-page-link', handleCphPageClick);
+        $(document).on('click', '.cph-increment-btn', handleCphIncrement);
+        $(document).on('click', '.cph-decrement-btn', handleCphDecrement);
+        $(document).on('input', '.cph-modified-input', handleCphInputChange);
+        $(document).on('click', '.edit-view-cph-preview-pagination .edit-view-page-link', handleCphPreviewPageClick);
 
         console.log('Edit View: Event listeners attached');
+    }
+
+    // ============================================================================
+    // ERROR HANDLING UTILITIES
+    // ============================================================================
+
+    /**
+     * Extract error message from various response formats
+     * @param {Response} response - Fetch API response object
+     * @returns {Promise<Object|string>} Extracted error message or object with error and recommendation
+     */
+    async function extractErrorMessage(response) {
+        try {
+            const data = await response.json();
+
+            // Handle detail object with error and recommendation (bench allocation preview)
+            if (data.detail && typeof data.detail === 'object' && !Array.isArray(data.detail)) {
+                if (data.detail.error || data.detail.recommendation) {
+                    return {
+                        error: data.detail.error || 'An error occurred',
+                        recommendation: data.detail.recommendation || null
+                    };
+                }
+            }
+
+            // Try different error message fields
+            if (data.error) return data.error;
+            if (data.message) return data.message;
+            if (data.detail && typeof data.detail === 'string') return data.detail;
+
+            // Handle validation errors (array format)
+            if (data.errors && Array.isArray(data.errors)) {
+                return data.errors.map(e => e.message || e.msg || e).join('; ');
+            }
+
+            // Handle FastAPI validation errors (array format)
+            if (data.detail && Array.isArray(data.detail)) {
+                return data.detail.map(e => {
+                    const field = e.loc ? e.loc.join('.') : 'Field';
+                    return `${field}: ${e.msg}`;
+                }).join('; ');
+            }
+
+            return `Request failed with status ${response.status}`;
+        } catch (parseError) {
+            // If JSON parsing fails, return generic error
+            return `Request failed with status ${response.status}`;
+        }
+    }
+
+    /**
+     * Show error in alert element
+     * @param {jQuery} errorElement - The error alert element
+     * @param {jQuery} messageElement - The error message element
+     * @param {string} message - Error message to display
+     */
+    function showInlineError(errorElement, messageElement, message) {
+        messageElement.text(message);
+        showElement(errorElement);
+    }
+
+    /**
+     * Show error using SweetAlert
+     * @param {string} title - Alert title
+     * @param {string} message - Error message
+     * @param {string} context - Additional context (optional)
+     */
+    function showErrorDialog(title, message, context = null) {
+        const htmlContent = context
+            ? `<p>${message}</p><p class="text-muted small mt-2">${context}</p>`
+            : `<p>${message}</p>`;
+
+        Swal.fire({
+            icon: 'error',
+            title: title,
+            html: htmlContent,
+            confirmButtonColor: '#dc3545',
+            confirmButtonText: 'OK'
+        });
+    }
+
+    /**
+     * Show warning using SweetAlert
+     * @param {string} title - Alert title
+     * @param {string} message - Warning message
+     */
+    function showWarningDialog(title, message) {
+        Swal.fire({
+            icon: 'warning',
+            title: title,
+            html: `<p>${message}</p>`,
+            confirmButtonColor: '#ffc107',
+            confirmButtonText: 'OK'
+        });
     }
 
     // ============================================================================
@@ -213,24 +653,34 @@
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-                throw new Error(errorData.error || `HTTP ${response.status}`);
+                const errorMsg = await extractErrorMessage(response);
+                throw new Error(errorMsg);
             }
 
             const data = await response.json();
 
-            if (!data.success || !data.data || data.data.length === 0) {
+            if (!data.success) {
+                throw new Error(data.message || 'Failed to load allocation reports');
+            }
+
+            if (!data.data || data.data.length === 0) {
                 console.warn('Edit View: No allocation reports available');
+                showWarningDialog(
+                    'No Reports Available',
+                    'There are no allocation reports available at this time. Please contact your administrator.'
+                );
                 return;
             }
 
             // Populate dropdown
             DOM.allocationReportSelect.empty().append('<option value="">-- Select Report Month --</option>');
+            DOM.cphReportSelect.empty().append('<option value="">-- Select Report Month --</option>');
             DOM.historyReportSelect.empty().append('<option value="">-- All Reports --</option>');
 
             data.data.forEach(report => {
                 const option = $('<option>').val(report.value).text(report.display);
                 DOM.allocationReportSelect.append(option.clone());
+                DOM.cphReportSelect.append(option.clone());
                 DOM.historyReportSelect.append(option.clone());
             });
 
@@ -238,7 +688,63 @@
 
         } catch (error) {
             console.error('Edit View: Error loading allocation reports', error);
-            showErrorAlert('Failed to load allocation reports: ' + error.message);
+            showErrorDialog(
+                'Failed to Load Reports',
+                'Unable to load allocation report options. Please refresh the page and try again.',
+                `Error: ${error.message}`
+            );
+        }
+    }
+
+    // ============================================================================
+    // AVAILABLE CHANGE TYPES (FOR HISTORY LOG FILTER)
+    // ============================================================================
+
+    async function loadAvailableChangeTypes() {
+        console.log('Edit View: Loading available change types...');
+
+        try {
+            const response = await fetch(CONFIG.urls.availableChangeTypes, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+                throw new Error(errorData.error || `HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (!data.success || !data.data || data.data.length === 0) {
+                console.warn('Edit View: No change types available');
+                return;
+            }
+
+            // Store change types in STATE for later use by getDynamicChangeTypeColor
+            STATE.availableChangeTypes = data.data;
+
+            // Populate history log change type filter dropdown
+            DOM.historyChangeTypeSelect.empty();
+
+            data.data.forEach(changeType => {
+                const option = $('<option>')
+                    .val(changeType.value)
+                    .text(changeType.display)
+                    .attr('data-color', changeType.color);
+                DOM.historyChangeTypeSelect.append(option);
+            });
+
+            console.log(`Edit View: Loaded ${data.total} change types`);
+
+        } catch (error) {
+            console.error('Edit View: Error loading change types', error);
+            // Non-critical error - just log it, don't show alert
+            console.warn('Change type colors will use fallback logic');
         }
     }
 
@@ -300,14 +806,34 @@
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-                throw new Error(errorData.error || `HTTP ${response.status}`);
+                const errorMsg = await extractErrorMessage(response);
+
+                // Check if errorMsg is an object with error and recommendation
+                if (typeof errorMsg === 'object' && errorMsg.error) {
+                    const errorObj = {
+                        message: errorMsg.error,
+                        recommendation: errorMsg.recommendation
+                    };
+                    throw errorObj;
+                }
+
+                throw new Error(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
                 throw new Error(data.message || 'Preview calculation failed');
+            }
+
+            // Check if there are any modified records
+            if (!data.modified_records || data.modified_records.length === 0) {
+                showInlineError(
+                    DOM.previewError,
+                    DOM.previewErrorMessage,
+                    'No bench allocation changes detected. All resources are already optimally allocated.'
+                );
+                return;
             }
 
             // Store preview data
@@ -324,13 +850,817 @@
 
         } catch (error) {
             console.error('Edit View: Error loading preview', error);
-            DOM.previewErrorMessage.text(error.message || 'Failed to load preview');
-            showElement(DOM.previewError);
+
+            // Check if error has recommendation (from API detail object)
+            if (error.message && error.recommendation) {
+                const errorMessage = `<strong>${error.message}</strong><br><br><em>Recommendation:</em> ${error.recommendation}`;
+                DOM.previewErrorMessage.html(errorMessage);
+                showElement(DOM.previewError);
+            } else {
+                showInlineError(
+                    DOM.previewError,
+                    DOM.previewErrorMessage,
+                    error.message || 'Failed to load preview. Please try again.'
+                );
+            }
 
         } finally {
             STATE.isLoadingPreview = false;
             hideElement(DOM.previewLoading);
         }
+    }
+
+    // ============================================================================
+    // PREVIEW FILTERS
+    // ============================================================================
+
+    function populatePreviewFilters(records) {
+        // Extract unique LOBs and Case Types from all records
+        const uniqueLobs = [...new Set(records.map(r => r.main_lob))].sort();
+        const uniqueCaseTypes = [...new Set(records.map(r => r.case_type))].sort();
+
+        // Populate LOB filter
+        DOM.previewLobFilter.empty();
+        uniqueLobs.forEach(lob => {
+            DOM.previewLobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
+        });
+
+        // Populate Case Type filter
+        DOM.previewCaseTypeFilter.empty();
+        uniqueCaseTypes.forEach(caseType => {
+            DOM.previewCaseTypeFilter.append(`<option value="${escapeHtml(caseType)}">${escapeHtml(caseType)}</option>`);
+        });
+
+        // Initialize Select2 on filters
+        initializeFilterSelect2();
+
+        // Show filters
+        showElement(DOM.previewFilters);
+
+        console.log(`Edit View: Filters populated - ${uniqueLobs.length} LOBs, ${uniqueCaseTypes.length} Case Types`);
+    }
+
+    function initializeFilterSelect2() {
+        // Destroy existing Select2 instances if present
+        if (DOM.previewLobFilter.data('select2')) {
+            DOM.previewLobFilter.select2('destroy');
+        }
+        if (DOM.previewCaseTypeFilter.data('select2')) {
+            DOM.previewCaseTypeFilter.select2('destroy');
+        }
+
+        // Initialize LOB filter
+        DOM.previewLobFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All LOBs',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+
+        // Initialize Case Type filter
+        DOM.previewCaseTypeFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All Case Types',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+    }
+
+    function updateCascadingFilters(changedFilter) {
+        updateGenericCascadingFilters(changedFilter, PREVIEW_CONFIGS.benchAllocation);
+    }
+
+    function applyPreviewFilters() {
+        const config = PREVIEW_CONFIGS.benchAllocation;
+        applyGenericFilters(config);
+        renderPreviewTableWithFilteredData();
+    }
+
+    function renderPreviewTableWithFilteredData() {
+        const config = PREVIEW_CONFIGS.benchAllocation;
+
+        // Create a mock data object for rendering
+        const data = {
+            modified_records: STATE.allPreviewRecords,
+            total_modified: STATE.allPreviewRecords.length
+        };
+
+        // Render using generic system
+        renderGenericPreviewTable(data, config);
+
+        // Update badges
+        const totalOriginal = STATE.allPreviewRecords.length;
+        const totalFiltered = STATE.filteredPreviewRecords.length;
+        DOM.modifiedCountBadge.text(`${totalOriginal} ${totalOriginal === 1 ? 'record' : 'records'} modified`);
+        DOM.summaryText.text(`${totalOriginal} ${totalOriginal === 1 ? 'record' : 'records'} modified (${totalFiltered} shown)`);
+        DOM.actionSummaryCount.text(totalOriginal);
+    }
+
+    function calculateMonthwiseSummaryFromRecords(records) {
+        // Calculate month-wise summary statistics from all records (not filtered)
+        const monthwiseSummary = {};
+
+        records.forEach(record => {
+            const months = extractMonthsFromRecord(record);
+            months.forEach(month => {
+                if (!monthwiseSummary[month]) {
+                    monthwiseSummary[month] = {
+                        fte_req_change: 0,
+                        fte_avail_change: 0,
+                        capacity_change: 0
+                    };
+                }
+
+                const monthData = (record.months && record.months[month]) || record[month] || {};
+                monthwiseSummary[month].fte_req_change += (monthData.fte_req_change || 0);
+                monthwiseSummary[month].fte_avail_change += (monthData.fte_avail_change || 0);
+                monthwiseSummary[month].capacity_change += (monthData.capacity_change || 0);
+            });
+        });
+
+        return monthwiseSummary;
+    }
+
+    function updateMonthwiseChanges(monthwiseSummary) {
+        const container = $('#month-changes-container');
+        container.empty();
+
+        // Sort months chronologically
+        const sortedMonths = Object.keys(monthwiseSummary).sort((a, b) => {
+            const [monthA, yearA] = a.split('-');
+            const [monthB, yearB] = b.split('-');
+            const dateA = new Date(`20${yearA}-${getMonthNumber(monthA)}-01`);
+            const dateB = new Date(`20${yearB}-${getMonthNumber(monthB)}-01`);
+            return dateA - dateB;
+        });
+
+        sortedMonths.forEach(month => {
+            const changes = monthwiseSummary[month];
+            const monthCard = $('<div>').addClass('edit-view-month-summary-card edit-view-mb-2');
+            
+            const fteReqSign = changes.fte_req_change > 0 ? '+' : '';
+            const fteAvailSign = changes.fte_avail_change > 0 ? '+' : '';
+            const capacitySign = changes.capacity_change > 0 ? '+' : '';
+
+            const fteReqClass = changes.fte_req_change > 0 ? 'edit-view-text-success' : 
+                               changes.fte_req_change < 0 ? 'edit-view-text-danger' : '';
+            const fteAvailClass = changes.fte_avail_change > 0 ? 'edit-view-text-success' : 
+                                 changes.fte_avail_change < 0 ? 'edit-view-text-danger' : '';
+            const capacityClass = changes.capacity_change > 0 ? 'edit-view-text-success' : 
+                                 changes.capacity_change < 0 ? 'edit-view-text-danger' : '';
+
+            monthCard.html(`
+                <div class="edit-view-month-summary-header">
+                    <strong>${month}</strong>
+                </div>
+                <div class="edit-view-month-summary-details">
+                    <div class="edit-view-change-item">
+                        <span class="edit-view-change-label">FTE Req:</span>
+                        <span class="edit-view-change-value ${fteReqClass}">
+                            <strong>${fteReqSign}${formatNumber(changes.fte_req_change)}</strong>
+                        </span>
+                    </div>
+                    <div class="edit-view-change-item">
+                        <span class="edit-view-change-label">FTE Avail:</span>
+                        <span class="edit-view-change-value ${fteAvailClass}">
+                            <strong>${fteAvailSign}${formatNumber(changes.fte_avail_change)}</strong>
+                        </span>
+                    </div>
+                    <div class="edit-view-change-item">
+                        <span class="edit-view-change-label">Capacity:</span>
+                        <span class="edit-view-change-value ${capacityClass}">
+                            <strong>${capacitySign}${formatNumber(changes.capacity_change)}</strong>
+                        </span>
+                    </div>
+                </div>
+            `);
+
+            container.append(monthCard);
+        });
+
+        showElement(DOM.overallChanges);
+    }
+
+    function clearPreviewFilters() {
+        const config = PREVIEW_CONFIGS.benchAllocation;
+
+        DOM.previewLobFilter.val(null).trigger('change');
+        DOM.previewCaseTypeFilter.val(null).trigger('change');
+        STATE.previewFilters = { lobs: [], caseTypes: [] };
+
+        // Repopulate filters with all options
+        populateGenericFilters(STATE.allPreviewRecords, config);
+
+        // Apply empty filters
+        applyPreviewFilters();
+
+        console.log('Edit View: Filters cleared');
+    }
+
+    // ============================================================================
+    // GENERIC PREVIEW SYSTEM - UTILITY FUNCTIONS
+    // ============================================================================
+
+    /**
+     * Get nested state value using dot notation path
+     * @param {string} basePath - Base path like 'STATE' or 'STATE.cph'
+     * @param {string} property - Property name like 'allPreviewRecords'
+     * @returns {*} The value at that path
+     */
+    function getStateValue(basePath, property) {
+        const parts = basePath.split('.');
+        let current = STATE;  // Start with STATE object, not window
+
+        // Skip first part if it's 'STATE' since we already start there
+        const startIndex = parts[0] === 'STATE' ? 1 : 0;
+
+        for (let i = startIndex; i < parts.length; i++) {
+            current = current[parts[i]];
+            if (current === undefined) return undefined;
+        }
+
+        return current[property];
+    }
+
+    /**
+     * Set nested state value using dot notation path
+     */
+    function setStateValue(basePath, property, value) {
+        const parts = basePath.split('.');
+        let current = STATE;  // Start with STATE object, not window
+
+        // Skip first part if it's 'STATE' since we already start there
+        const startIndex = parts[0] === 'STATE' ? 1 : 0;
+
+        for (let i = startIndex; i < parts.length; i++) {
+            current = current[parts[i]];
+        }
+
+        current[property] = value;
+    }
+
+    /**
+     * Get month data from record based on access pattern
+     * @param {Object} record - Data record
+     * @param {string} month - Month key (e.g., "Jun-25")
+     * @param {Object} config - Preview configuration
+     * @returns {Object} Month data object
+     */
+    function getMonthData(record, month, config) {
+        if (config.dataAccess.monthDataPath === 'nested') {
+            return record.data?.[month] || {};
+        }
+        // Direct access - check new nested structure first, fallback to old direct access
+        return (record.months && record.months[month]) || record[month] || {};
+    }
+
+    /**
+     * Get field value using field mapping
+     * @param {Object} monthData - Month data object
+     * @param {string} fieldKey - Canonical field key (forecast, fteReq, etc.)
+     * @param {Object} config - Preview configuration
+     * @returns {number} Field value
+     */
+    function getFieldValue(monthData, fieldKey, config) {
+        const actualFieldName = config.fields[fieldKey];
+        return monthData[actualFieldName];
+    }
+
+    /**
+     * Get field change value using field mapping
+     */
+    function getFieldChange(monthData, fieldKey, config) {
+        const actualFieldName = config.fields[fieldKey];
+        return monthData[`${actualFieldName}_change`];
+    }
+
+    // ============================================================================
+    // GENERIC PREVIEW SYSTEM - RENDERING FUNCTIONS
+    // ============================================================================
+
+    /**
+     * Render preview table with pagination and filters
+     * @param {Object} data - API response data
+     * @param {Object} config - Preview configuration
+     */
+    function renderGenericPreviewTable(data, config) {
+        const stateBase = config.state.basePath;
+
+        // Get state values
+        const filteredRecords = getStateValue(stateBase, config.state.filteredRecords);
+        const currentPage = getStateValue(stateBase, config.state.currentPage);
+        const pageSize = CONFIG.settings.previewPageSize;
+
+        // Calculate pagination
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageRecords = filteredRecords.slice(startIdx, endIdx);
+
+        // Early return if no records
+        if (!pageRecords || pageRecords.length === 0) {
+            DOM[config.dom.tableBody].html('<tr><td colspan="100" class="text-center">No records match the current filters</td></tr>');
+            hideElement(DOM[config.dom.pagination]);
+            return;
+        }
+
+        // Extract months from first record
+        const months = extractMonthsFromRecord(pageRecords[0]);
+
+        // Render all components
+        renderGenericHeaders(months, config);
+        renderGenericRows(pageRecords, months, config);
+
+        if (config.features.showTotalsRow) {
+            renderGenericTotals(filteredRecords, months, config);
+        }
+
+        renderGenericPagination(config);
+
+        // Update summary
+        const allRecords = getStateValue(stateBase, config.state.allRecords);
+        if (config.features.showMonthwiseSummary) {
+            const summary = calculateGenericMonthwiseSummary(allRecords, config);
+            updateGenericMonthwiseChanges(summary, config);
+        }
+    }
+
+    /**
+     * Render table headers (2 rows: main headers + sub-headers)
+     */
+    function renderGenericHeaders(months, config) {
+        const tableHead = DOM[config.dom.tableHead];
+        tableHead.empty();
+
+        // Row 1: Main headers
+        const headerRow1 = $('<tr>');
+
+        // Fixed columns
+        config.fixedColumns.forEach(col => {
+            headerRow1.append(
+                `<th rowspan="2" class="text-center" style="vertical-align: middle;">${col.label}</th>`
+            );
+        });
+
+        // Month headers
+        const monthColspan = config.monthColumns.length;
+        months.forEach(month => {
+            headerRow1.append(
+                `<th colspan="${monthColspan}" class="text-center edit-view-month-header">${month}</th>`
+            );
+        });
+
+        // Row 2: Sub-headers
+        const headerRow2 = $('<tr>');
+        months.forEach(() => {
+            config.monthColumns.forEach(col => {
+                headerRow2.append(
+                    `<th class="text-center edit-view-month-header">${col.label}</th>`
+                );
+            });
+        });
+
+        tableHead.append(headerRow1).append(headerRow2);
+    }
+
+    /**
+     * Render data rows with change highlighting
+     */
+    function renderGenericRows(records, months, config) {
+        const tableBody = DOM[config.dom.tableBody];
+        tableBody.empty();
+
+        records.forEach(record => {
+            const tr = $('<tr>');
+            const modifiedFields = record.modified_fields || [];
+
+            // Render fixed columns
+            config.fixedColumns.forEach(col => {
+                if (col.editable) {
+                    // Handle editable fixed columns (e.g., target_cph)
+                    const isModified = modifiedFields.includes(col.key);
+                    const change = record[`${col.key}_change`] || 0;
+                    tr.append(renderCell(record[col.key], change, isModified, col.align || 'text-center'));
+                } else {
+                    tr.append(`<td>${escapeHtml(record[col.key] || '-')}</td>`);
+                }
+            });
+
+            // Render month columns
+            months.forEach(month => {
+                const monthData = getMonthData(record, month, config);
+
+                config.monthColumns.forEach(col => {
+                    const value = getFieldValue(monthData, col.key, config);
+
+                    if (col.editable) {
+                        const fieldName = config.fields[col.key];
+                        const isModified = modifiedFields.includes(`${month}.${fieldName}`);
+                        const change = getFieldChange(monthData, col.key, config);
+                        tr.append(renderCell(value, change, isModified));
+                    } else {
+                        tr.append(`<td class="text-end">${formatNumber(value)}</td>`);
+                    }
+                });
+            });
+
+            tableBody.append(tr);
+        });
+    }
+
+    /**
+     * Render totals row (if enabled)
+     */
+    function renderGenericTotals(records, months, config) {
+        const tableBody = DOM[config.dom.tableBody];
+        const totals = {};
+
+        // Initialize totals for each month
+        months.forEach(month => {
+            totals[month] = {};
+            config.monthColumns.forEach(col => {
+                const fieldName = config.fields[col.key];
+                totals[month][fieldName] = 0;
+                totals[month][`${fieldName}_change`] = 0;
+            });
+        });
+
+        // Calculate totals
+        records.forEach(record => {
+            months.forEach(month => {
+                const monthData = getMonthData(record, month, config);
+
+                config.monthColumns.forEach(col => {
+                    const fieldName = config.fields[col.key];
+                    totals[month][fieldName] += (getFieldValue(monthData, col.key, config) || 0);
+                    totals[month][`${fieldName}_change`] += (getFieldChange(monthData, col.key, config) || 0);
+                });
+            });
+        });
+
+        // Render totals row
+        const tr = $('<tr class="edit-view-totals-row">');
+        tr.append('<td class="edit-view-totals-label"><strong>Total</strong></td>');
+
+        // Empty cells for remaining fixed columns
+        for (let i = 1; i < config.fixedColumns.length; i++) {
+            tr.append('<td></td>');
+        }
+
+        // Month totals
+        months.forEach(month => {
+            const monthTotals = totals[month];
+
+            config.monthColumns.forEach(col => {
+                const fieldName = config.fields[col.key];
+                const value = monthTotals[fieldName];
+                const change = monthTotals[`${fieldName}_change`];
+
+                if (col.editable) {
+                    tr.append(renderTotalCell(value, change));
+                } else {
+                    tr.append(`<td class="text-end"><strong>${formatNumber(value)}</strong></td>`);
+                }
+            });
+        });
+
+        tableBody.append(tr);
+    }
+
+    /**
+     * Render pagination controls
+     */
+    function renderGenericPagination(config) {
+        const stateBase = config.state.basePath;
+        const currentPage = getStateValue(stateBase, config.state.currentPage);
+        const totalPages = getStateValue(stateBase, config.state.totalPages);
+        const paginationElement = DOM[config.dom.pagination];
+
+        if (totalPages <= 1) {
+            hideElement(paginationElement);
+            return;
+        }
+
+        showElement(paginationElement);
+        const paginationUl = paginationElement.find('ul.edit-view-pagination');
+        paginationUl.empty();
+
+        // Previous button
+        const prevDisabled = currentPage === 1 ? 'edit-view-page-item-disabled' : '';
+        const prevLi = $('<li>').addClass('edit-view-page-item').addClass(prevDisabled);
+        prevLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', currentPage - 1).text('Previous'));
+        paginationUl.append(prevLi);
+
+        // Page numbers (with ellipsis for large page counts)
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                const activeClass = i === currentPage ? 'edit-view-page-item-active' : '';
+                const pageLi = $('<li>').addClass('edit-view-page-item').addClass(activeClass);
+                pageLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', i).text(i));
+                paginationUl.append(pageLi);
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                const ellipsisLi = $('<li>').addClass('edit-view-page-item edit-view-page-item-disabled');
+                ellipsisLi.append($('<span>').addClass('edit-view-page-link').text('...'));
+                paginationUl.append(ellipsisLi);
+            }
+        }
+
+        // Next button
+        const nextDisabled = currentPage === totalPages ? 'edit-view-page-item-disabled' : '';
+        const nextLi = $('<li>').addClass('edit-view-page-item').addClass(nextDisabled);
+        nextLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', currentPage + 1).text('Next'));
+        paginationUl.append(nextLi);
+    }
+
+    // ============================================================================
+    // GENERIC PREVIEW SYSTEM - FILTER FUNCTIONS
+    // ============================================================================
+
+    /**
+     * Populate filter dropdowns from records
+     */
+    function populateGenericFilters(records, config) {
+        const uniqueLobs = [...new Set(records.map(r => r.main_lob))].sort();
+        const uniqueCaseTypes = [...new Set(records.map(r => r.case_type))].sort();
+
+        const lobFilter = DOM[config.dom.lobFilter];
+        const caseTypeFilter = DOM[config.dom.caseTypeFilter];
+
+        // Populate LOB filter
+        lobFilter.empty();
+        uniqueLobs.forEach(lob => {
+            lobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
+        });
+
+        // Populate Case Type filter
+        caseTypeFilter.empty();
+        uniqueCaseTypes.forEach(caseType => {
+            caseTypeFilter.append(`<option value="${escapeHtml(caseType)}">${escapeHtml(caseType)}</option>`);
+        });
+
+        // Initialize Select2 on filters
+        initializeGenericFilterSelect2(config);
+
+        // Show filters
+        showElement(DOM[config.dom.filters]);
+
+        console.log(`Edit View: Filters populated - ${uniqueLobs.length} LOBs, ${uniqueCaseTypes.length} Case Types`);
+    }
+
+    /**
+     * Initialize Select2 on filter dropdowns
+     */
+    function initializeGenericFilterSelect2(config) {
+        const lobFilter = DOM[config.dom.lobFilter];
+        const caseTypeFilter = DOM[config.dom.caseTypeFilter];
+
+        // Destroy existing Select2 instances if present
+        if (lobFilter.data('select2')) {
+            lobFilter.select2('destroy');
+        }
+        if (caseTypeFilter.data('select2')) {
+            caseTypeFilter.select2('destroy');
+        }
+
+        // Initialize LOB filter
+        lobFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All LOBs',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+
+        // Initialize Case Type filter
+        caseTypeFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All Case Types',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+    }
+
+    /**
+     * Apply filters to records
+     */
+    function applyGenericFilters(config) {
+        const stateBase = config.state.basePath;
+        const lobFilter = DOM[config.dom.lobFilter];
+        const caseTypeFilter = DOM[config.dom.caseTypeFilter];
+
+        const selectedLobs = lobFilter.val() || [];
+        const selectedCaseTypes = caseTypeFilter.val() || [];
+
+        // Update state filters
+        const filters = getStateValue(stateBase, config.state.filters);
+        filters.lobs = selectedLobs;
+        filters.caseTypes = selectedCaseTypes;
+
+        // Filter records
+        const allRecords = getStateValue(stateBase, config.state.allRecords);
+        const filteredRecords = allRecords.filter(record => {
+            const lobMatch = selectedLobs.length === 0 || selectedLobs.includes(record.main_lob);
+            const caseTypeMatch = selectedCaseTypes.length === 0 || selectedCaseTypes.includes(record.case_type);
+            return lobMatch && caseTypeMatch;
+        });
+
+        setStateValue(stateBase, config.state.filteredRecords, filteredRecords);
+
+        // Reset to page 1
+        setStateValue(stateBase, config.state.currentPage, 1);
+        const totalPages = Math.ceil(filteredRecords.length / CONFIG.settings.previewPageSize);
+        setStateValue(stateBase, config.state.totalPages, totalPages);
+
+        console.log(`Edit View: Filters applied - ${filteredRecords.length} records match`);
+    }
+
+    /**
+     * Update cascading filters (LOB → Case Type or vice versa)
+     */
+    function updateGenericCascadingFilters(changedFilter, config) {
+        const stateBase = config.state.basePath;
+        const allRecords = getStateValue(stateBase, config.state.allRecords);
+        const lobFilter = DOM[config.dom.lobFilter];
+        const caseTypeFilter = DOM[config.dom.caseTypeFilter];
+
+        if (changedFilter === 'lob') {
+            const selectedLobs = lobFilter.val() || [];
+
+            if (selectedLobs.length > 0) {
+                // Update available case types based on selected LOBs
+                const availableCaseTypes = [...new Set(
+                    allRecords
+                        .filter(r => selectedLobs.includes(r.main_lob))
+                        .map(r => r.case_type)
+                )].sort();
+
+                const currentSelection = caseTypeFilter.val() || [];
+                caseTypeFilter.empty();
+
+                availableCaseTypes.forEach(ct => {
+                    caseTypeFilter.append(`<option value="${escapeHtml(ct)}">${escapeHtml(ct)}</option>`);
+                });
+
+                // Restore valid selections
+                const validSelections = currentSelection.filter(ct => availableCaseTypes.includes(ct));
+                caseTypeFilter.val(validSelections).trigger('change');
+            } else {
+                // No LOB filter - show all case types
+                const allCaseTypes = [...new Set(allRecords.map(r => r.case_type))].sort();
+                caseTypeFilter.empty();
+                allCaseTypes.forEach(ct => {
+                    caseTypeFilter.append(`<option value="${escapeHtml(ct)}">${escapeHtml(ct)}</option>`);
+                });
+            }
+        } else if (changedFilter === 'caseType') {
+            const selectedCaseTypes = caseTypeFilter.val() || [];
+
+            if (selectedCaseTypes.length > 0) {
+                // Update available LOBs based on selected case types
+                const availableLobs = [...new Set(
+                    allRecords
+                        .filter(r => selectedCaseTypes.includes(r.case_type))
+                        .map(r => r.main_lob)
+                )].sort();
+
+                const currentSelection = lobFilter.val() || [];
+                lobFilter.empty();
+
+                availableLobs.forEach(lob => {
+                    lobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
+                });
+
+                // Restore valid selections
+                const validSelections = currentSelection.filter(lob => availableLobs.includes(lob));
+                lobFilter.val(validSelections).trigger('change');
+            } else {
+                // No case type filter - show all LOBs
+                const allLobs = [...new Set(allRecords.map(r => r.main_lob))].sort();
+                lobFilter.empty();
+                allLobs.forEach(lob => {
+                    lobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
+                });
+            }
+        }
+    }
+
+    // ============================================================================
+    // GENERIC PREVIEW SYSTEM - SUMMARY FUNCTIONS
+    // ============================================================================
+
+    /**
+     * Calculate month-wise summary statistics
+     */
+    function calculateGenericMonthwiseSummary(records, config) {
+        const monthwiseSummary = {};
+
+        records.forEach(record => {
+            const months = extractMonthsFromRecord(record);
+
+            months.forEach(month => {
+                if (!monthwiseSummary[month]) {
+                    monthwiseSummary[month] = {};
+
+                    // Initialize all tracked fields
+                    config.monthColumns.forEach(col => {
+                        const fieldName = config.fields[col.key];
+                        monthwiseSummary[month][`${fieldName}_total`] = 0;
+                        if (col.editable) {
+                            monthwiseSummary[month][`${fieldName}_change`] = 0;
+                        }
+                    });
+                }
+
+                const monthData = getMonthData(record, month, config);
+
+                config.monthColumns.forEach(col => {
+                    const fieldName = config.fields[col.key];
+                    const value = getFieldValue(monthData, col.key, config);
+                    const change = getFieldChange(monthData, col.key, config);
+
+                    monthwiseSummary[month][`${fieldName}_total`] =
+                        (monthwiseSummary[month][`${fieldName}_total`] || 0) + (value || 0);
+
+                    if (col.editable) {
+                        monthwiseSummary[month][`${fieldName}_change`] =
+                            (monthwiseSummary[month][`${fieldName}_change`] || 0) + (change || 0);
+                    }
+                });
+            });
+        });
+
+        return monthwiseSummary;
+    }
+
+    /**
+     * Update month-wise summary display (cards or inline)
+     */
+    function updateGenericMonthwiseChanges(summary, config) {
+        const container = $('#' + config.dom.monthChangesContainer);
+        container.empty();
+
+        // Sort months chronologically
+        const sortedMonths = Object.keys(summary).sort((a, b) => {
+            const [monthA, yearA] = a.split('-');
+            const [monthB, yearB] = b.split('-');
+            const dateA = new Date(`20${yearA}-${getMonthNumber(monthA)}-01`);
+            const dateB = new Date(`20${yearB}-${getMonthNumber(monthB)}-01`);
+            return dateA - dateB;
+        });
+
+        if (config.features.summaryStyle === 'cards') {
+            // Card-based summary (bench allocation style)
+            sortedMonths.forEach(month => {
+                const monthData = summary[month];
+                const card = $('<div>').addClass('edit-view-month-summary-card edit-view-mb-2');
+
+                let cardHtml = `<div class="edit-view-month-summary-header"><strong>${month}</strong></div>`;
+                cardHtml += '<div class="edit-view-month-summary-details">';
+
+                config.monthColumns.forEach(col => {
+                    if (col.editable) {
+                        const fieldName = config.fields[col.key];
+                        const change = monthData[`${fieldName}_change`] || 0;
+                        const sign = change > 0 ? '+' : '';
+                        const className = change > 0 ? 'edit-view-text-success' :
+                                        change < 0 ? 'edit-view-text-danger' : '';
+
+                        cardHtml += `
+                            <div class="edit-view-change-item">
+                                <span class="edit-view-change-label">${col.label}:</span>
+                                <span class="edit-view-change-value ${className}">
+                                    <strong>${sign}${formatNumber(change)}</strong>
+                                </span>
+                            </div>
+                        `;
+                    }
+                });
+
+                cardHtml += '</div>';
+                card.html(cardHtml);
+                container.append(card);
+            });
+        } else {
+            // Inline summary (CPH style)
+            sortedMonths.forEach(month => {
+                const monthData = summary[month];
+                let summaryParts = [`<strong>${month}:</strong>`];
+
+                config.monthColumns.forEach(col => {
+                    const fieldName = config.fields[col.key];
+                    const total = monthData[`${fieldName}_total`] || 0;
+                    summaryParts.push(`<span>${col.label}: ${formatNumber(total)}</span>`);
+                });
+
+                const summaryDiv = $('<div>').addClass('edit-view-month-change-item');
+                summaryDiv.html(summaryParts.join(' | '));
+                container.append(summaryDiv);
+            });
+        }
+
+        showElement(DOM[config.dom.overallChanges]);
     }
 
     // ============================================================================
@@ -340,45 +1670,56 @@
     function renderPreviewTable(data) {
         if (!data || !data.modified_records || data.modified_records.length === 0) {
             console.warn('Edit View: No modified records to display');
+            hideElement(DOM.previewFilters);
+            hideElement(DOM.overallChanges);
             return;
         }
 
-        const records = data.modified_records;
-        const totalModified = data.total_modified;
+        const config = PREVIEW_CONFIGS.benchAllocation;
 
-        // Update badge and summary
-        DOM.modifiedCountBadge.text(`${totalModified} ${totalModified === 1 ? 'record' : 'records'} modified`);
-        DOM.summaryText.text(`${totalModified} ${totalModified === 1 ? 'record' : 'records'} modified`);
-        DOM.actionSummaryCount.text(totalModified);
+        // Store all records
+        STATE.allPreviewRecords = data.modified_records;
+        STATE.filteredPreviewRecords = data.modified_records;
+        STATE.previewTotalPages = Math.ceil(data.modified_records.length / CONFIG.settings.previewPageSize);
 
-        // Extract unique months from first record
-        const firstRecord = records[0];
-        const months = extractMonthsFromRecord(firstRecord);
+        // Populate filters using generic system
+        populateGenericFilters(data.modified_records, config);
 
-        // Render table headers
-        renderPreviewHeaders(months);
+        // Render using generic system
+        renderGenericPreviewTable(data, config);
 
-        // Paginate records
-        const startIndex = (STATE.previewCurrentPage - 1) * CONFIG.settings.previewPageSize;
-        const endIndex = startIndex + CONFIG.settings.previewPageSize;
-        const pageRecords = records.slice(startIndex, endIndex);
+        // Update badges - always show total from original data, not filtered
+        const totalOriginal = STATE.allPreviewRecords.length;
+        const totalFiltered = STATE.filteredPreviewRecords.length;
+        DOM.modifiedCountBadge.text(`${totalOriginal} ${totalOriginal === 1 ? 'record' : 'records'} modified`);
+        DOM.summaryText.text(`${totalOriginal} ${totalOriginal === 1 ? 'record' : 'records'} modified (${totalFiltered} shown)`);
+        DOM.actionSummaryCount.text(totalOriginal);
 
-        // Render table rows
-        renderPreviewRows(pageRecords, months);
-
-        // Render pagination
-        renderPreviewPagination();
+        // Show containers
+        showElement(DOM.previewFilters);
+        showElement(DOM.overallChanges);
     }
 
     function extractMonthsFromRecord(record) {
-        // Assuming structure: record has _modified_fields and month keys
-        // Example: record["Jun-25"] = {forecast: 12500, fte_req: 10.5, ...}
+        // NEW STRUCTURE: Months are nested under record.months object
+        // Example: record.months = {"Jun-25": {forecast: 12500, fte_req: 10, ...}, ...}
         const months = [];
-        const monthPattern = /^[A-Z][a-z]{2}-\d{2}$/; // e.g., "Jun-25"
 
-        for (const key in record) {
-            if (monthPattern.test(key)) {
-                months.push(key);
+        // Check if months is nested (new structure)
+        if (record.months && typeof record.months === 'object') {
+            // Extract keys from nested months object
+            for (const key in record.months) {
+                if (record.months.hasOwnProperty(key)) {
+                    months.push(key);
+                }
+            }
+        } else {
+            // Fallback: Old structure where months are directly on record
+            const monthPattern = /^[A-Z][a-z]{2}-\d{2}$/; // e.g., "Jun-25"
+            for (const key in record) {
+                if (monthPattern.test(key)) {
+                    months.push(key);
+                }
             }
         }
 
@@ -408,20 +1749,19 @@
         headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">Main LOB</th>');
         headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">State</th>');
         headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">Case Type</th>');
-        headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">Case Type ID</th>');
         headerRow1.append('<th rowspan="2" class="text-center" style="vertical-align: middle;">Target CPH</th>');
 
         months.forEach(month => {
             headerRow1.append(`<th colspan="4" class="text-center edit-view-month-header">${month}</th>`);
         });
 
-        // Row 2: Sub-headers
+        // Row 2: Sub-headers (using abbreviations)
         const headerRow2 = $('<tr>');
         months.forEach(() => {
-            headerRow2.append('<th class="text-center">Forecast</th>');
-            headerRow2.append('<th class="text-center">FTE Req</th>');
-            headerRow2.append('<th class="text-center">FTE Avail</th>');
-            headerRow2.append('<th class="text-center">Capacity</th>');
+            headerRow2.append('<th class="text-center edit-view-month-header">CF</th>');
+            headerRow2.append('<th class="text-center edit-view-month-header">FTE Req</th>');
+            headerRow2.append('<th class="text-center edit-view-month-header">FTE Avail</th>');
+            headerRow2.append('<th class="text-center edit-view-month-header">Cap</th>');
         });
 
         DOM.previewTableHead.append(headerRow1).append(headerRow2);
@@ -432,50 +1772,131 @@
 
         records.forEach(record => {
             const tr = $('<tr>');
+            const modifiedFields = record.modified_fields || [];
 
-            // Static columns
+            // Fixed columns
             tr.append(`<td>${escapeHtml(record.main_lob || '-')}</td>`);
             tr.append(`<td>${escapeHtml(record.state || '-')}</td>`);
             tr.append(`<td>${escapeHtml(record.case_type || '-')}</td>`);
-            tr.append(`<td>${escapeHtml(record.case_id || '-')}</td>`);
 
-            // Target CPH (check if modified)
-            const modifiedFields = record._modified_fields || [];
-            const targetCPHModified = modifiedFields.includes('target_cph');
-            const cphClass = targetCPHModified ? 'edit-view-modified-cell' : '';
-            tr.append(`<td class="${cphClass}">${formatNumber(record.target_cph)}</td>`);
+            // Target CPH (can be modified)
+            const targetCphModified = modifiedFields.includes('target_cph');
+            const targetCphChange = record.target_cph_change || 0;
+            tr.append(renderCell(record.target_cph, targetCphChange, targetCphModified, 'text-center'));
 
             // Month columns
             months.forEach(month => {
-                const monthData = record[month] || {};
+                const monthData = (record.months && record.months[month]) || record[month] || {};
 
-                // Forecast
-                const forecastModified = modifiedFields.includes(`${month}.forecast`);
-                const forecastClass = forecastModified ? 'edit-view-modified-cell' : '';
-                tr.append(`<td class="text-end ${forecastClass}">${formatNumber(monthData.forecast)}</td>`);
+                // CF - Client Forecast (not modified)
+                tr.append(`<td class="text-end">${formatNumber(monthData.forecast)}</td>`);
 
                 // FTE Req
                 const fteReqModified = modifiedFields.includes(`${month}.fte_req`);
-                const fteReqClass = fteReqModified ? 'edit-view-modified-cell' : '';
-                tr.append(`<td class="text-end ${fteReqClass}">${formatNumber(monthData.fte_req)}</td>`);
+                const fteReqChange = monthData.fte_req_change || 0;
+                tr.append(renderCell(monthData.fte_req, fteReqChange, fteReqModified));
 
                 // FTE Avail
                 const fteAvailModified = modifiedFields.includes(`${month}.fte_avail`);
-                const fteAvailClass = fteAvailModified ? 'edit-view-modified-cell' : '';
-                tr.append(`<td class="text-end ${fteAvailClass}">${formatNumber(monthData.fte_avail)}</td>`);
+                const fteAvailChange = monthData.fte_avail_change || 0;
+                tr.append(renderCell(monthData.fte_avail, fteAvailChange, fteAvailModified));
 
                 // Capacity
                 const capacityModified = modifiedFields.includes(`${month}.capacity`);
-                const capacityClass = capacityModified ? 'edit-view-modified-cell' : '';
-                tr.append(`<td class="text-end ${capacityClass}">${formatNumber(monthData.capacity)}</td>`);
+                const capacityChange = monthData.capacity_change || 0;
+                tr.append(renderCell(monthData.capacity, capacityChange, capacityModified));
             });
 
             DOM.previewTableBody.append(tr);
         });
     }
 
+    function renderCell(value, change, isModified, additionalClass = 'text-end') {
+        if (!isModified || change === 0) {
+            return `<td class="${additionalClass}">${formatNumber(value)}</td>`;
+        }
+
+        const cellClass = change > 0 ? 'edit-view-cell-increased' : 'edit-view-cell-decreased';
+        const badgeClass = change > 0 ? 'edit-view-change-badge-positive' : 'edit-view-change-badge-negative';
+        const sign = change > 0 ? '+' : '';
+        const badge = `<span class="edit-view-change-badge ${badgeClass}">${sign}${formatNumber(change)}</span>`;
+
+        return `<td class="${additionalClass} ${cellClass}">${formatNumber(value)} ${badge}</td>`;
+    }
+
+    function renderPreviewTotals(records, months) {
+        // Calculate totals for each month column
+        const totals = {};
+
+        months.forEach(month => {
+            totals[month] = {
+                forecast: 0,
+                fte_req: 0,
+                fte_avail: 0,
+                capacity: 0,
+                fte_req_change: 0,
+                fte_avail_change: 0,
+                capacity_change: 0
+            };
+        });
+
+        // Sum up all values from filtered records
+        records.forEach(record => {
+            months.forEach(month => {
+                const monthData = (record.months && record.months[month]) || record[month] || {};
+                totals[month].forecast += (monthData.forecast || 0);
+                totals[month].fte_req += (monthData.fte_req || 0);
+                totals[month].fte_avail += (monthData.fte_avail || 0);
+                totals[month].capacity += (monthData.capacity || 0);
+                totals[month].fte_req_change += (monthData.fte_req_change || 0);
+                totals[month].fte_avail_change += (monthData.fte_avail_change || 0);
+                totals[month].capacity_change += (monthData.capacity_change || 0);
+            });
+        });
+
+        // Render totals row
+        const tr = $('<tr class="edit-view-totals-row">');
+
+        // Fixed columns - show "Total" in first column, empty in others
+        tr.append('<td class="edit-view-totals-label"><strong>Total</strong></td>');
+        tr.append('<td></td>');
+        tr.append('<td></td>');
+        tr.append('<td></td>');
+
+        // Month columns - show totals with delta badges
+        months.forEach(month => {
+            const monthTotals = totals[month];
+
+            // CF - Client Forecast (no delta)
+            tr.append(`<td class="text-end"><strong>${formatNumber(monthTotals.forecast)}</strong></td>`);
+
+            // FTE Req with delta badge
+            tr.append(renderTotalCell(monthTotals.fte_req, monthTotals.fte_req_change));
+
+            // FTE Avail with delta badge
+            tr.append(renderTotalCell(monthTotals.fte_avail, monthTotals.fte_avail_change));
+
+            // Capacity with delta badge
+            tr.append(renderTotalCell(monthTotals.capacity, monthTotals.capacity_change));
+        });
+
+        DOM.previewTableBody.append(tr);
+    }
+
+    function renderTotalCell(value, change) {
+        if (!change || change === 0) {
+            return `<td class="text-end"><strong>${formatNumber(value)}</strong></td>`;
+        }
+
+        const badgeClass = change > 0 ? 'edit-view-change-badge-positive' : 'edit-view-change-badge-negative';
+        const sign = change > 0 ? '+' : '';
+        const badge = `<span class="edit-view-change-badge ${badgeClass}">${sign}${formatNumber(change)}</span>`;
+
+        return `<td class="text-end"><strong>${formatNumber(value)}</strong> ${badge}</td>`;
+    }
+
     function renderPreviewPagination() {
-        const paginationUl = DOM.previewPagination.find('ul.pagination');
+        const paginationUl = DOM.previewPagination.find('ul.edit-view-pagination');
         paginationUl.empty();
 
         if (STATE.previewTotalPages <= 1) {
@@ -486,20 +1907,20 @@
         showElement(DOM.previewPagination);
 
         // Previous button
-        const prevLi = $('<li>').addClass('page-item').addClass(STATE.previewCurrentPage === 1 ? 'disabled' : '');
-        prevLi.append($('<a>').addClass('page-link').attr('href', '#').attr('data-page', STATE.previewCurrentPage - 1).text('Previous'));
+        const prevLi = $('<li>').addClass('edit-view-page-item').addClass(STATE.previewCurrentPage === 1 ? 'edit-view-page-item-disabled' : '');
+        prevLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', STATE.previewCurrentPage - 1).text('Previous'));
         paginationUl.append(prevLi);
 
         // Page numbers
         for (let i = 1; i <= STATE.previewTotalPages; i++) {
-            const pageLi = $('<li>').addClass('page-item').addClass(i === STATE.previewCurrentPage ? 'active' : '');
-            pageLi.append($('<a>').addClass('page-link').attr('href', '#').attr('data-page', i).text(i));
+            const pageLi = $('<li>').addClass('edit-view-page-item').addClass(i === STATE.previewCurrentPage ? 'edit-view-page-item-active' : '');
+            pageLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', i).text(i));
             paginationUl.append(pageLi);
         }
 
         // Next button
-        const nextLi = $('<li>').addClass('page-item').addClass(STATE.previewCurrentPage === STATE.previewTotalPages ? 'disabled' : '');
-        nextLi.append($('<a>').addClass('page-link').attr('href', '#').attr('data-page', STATE.previewCurrentPage + 1).text('Next'));
+        const nextLi = $('<li>').addClass('edit-view-page-item').addClass(STATE.previewCurrentPage === STATE.previewTotalPages ? 'edit-view-page-item-disabled' : '');
+        nextLi.append($('<a>').addClass('edit-view-page-link').attr('href', '#').attr('data-page', STATE.previewCurrentPage + 1).text('Next'));
         paginationUl.append(nextLi);
     }
 
@@ -512,7 +1933,10 @@
         }
 
         STATE.previewCurrentPage = page;
-        renderPreviewTable(STATE.currentPreviewData);
+
+        // Just re-render the table with the new page, don't reset state
+        const config = PREVIEW_CONFIGS.benchAllocation;
+        renderGenericPreviewTable(STATE.currentPreviewData, config);
 
         // Scroll to top of preview table
         DOM.previewContainer[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -599,13 +2023,14 @@
         console.log('Edit View: Submitting bench allocation update...');
 
         STATE.isSubmitting = true;
-        DOM.acceptBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Updating...');
+        DOM.acceptBtn.prop('disabled', true).html('<span class="edit-view-spinner edit-view-spinner-sm edit-view-me-1"></span>Updating...');
 
         try {
             const payload = {
                 month: STATE.currentSelectedReport.month,
                 year: STATE.currentSelectedReport.year,
-                modified_records: transformRecordsForAPI(STATE.currentPreviewData.modified_records),
+                months: STATE.currentPreviewData.months,
+                modified_records: STATE.currentPreviewData.modified_records,
                 user_notes: DOM.userNotesInput.val().trim()
             };
 
@@ -620,8 +2045,8 @@
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-                throw new Error(errorData.error || `HTTP ${response.status}`);
+                const errorMsg = await extractErrorMessage(response);
+                throw new Error(errorMsg);
             }
 
             const data = await response.json();
@@ -657,16 +2082,17 @@
 
         } catch (error) {
             console.error('Edit View: Error submitting update', error);
-            await Swal.fire({
-                icon: 'error',
-                title: 'Update Failed',
-                text: error.message || 'Failed to update allocation. Please try again.',
-                confirmButtonColor: '#dc3545'
-            });
+
+            // Show detailed error message
+            showErrorDialog(
+                'Update Failed',
+                'The allocation update could not be completed. Please review the error details and try again.',
+                `Error: ${error.message}`
+            );
 
         } finally {
             STATE.isSubmitting = false;
-            DOM.acceptBtn.prop('disabled', false).html('<i class="fas fa-check me-1"></i>Accept & Update');
+            DOM.acceptBtn.prop('disabled', false).html('<i class="fas fa-check edit-view-me-1"></i>Accept & Update');
         }
     }
 
@@ -694,26 +2120,49 @@
 
         STATE.historyFilters = { month, year, changeTypes };
         STATE.historyCurrentPage = 1;
+        STATE.loadedHistoryCount = 0; // Reset lazy loading state
 
-        await loadHistoryLog();
+        await loadHistoryLog(false); // append = false (initial load)
     }
 
-    async function loadHistoryLog(page = 1) {
-        console.log(`Edit View: Loading history log (page ${page})...`);
+    async function loadHistoryLog(append = false) {
+        console.log(`Edit View: Loading history log (append: ${append})...`);
+
+        // Prevent duplicate requests
+        if (STATE.isLoadingHistory) {
+            console.log('Edit View: Already loading history, skipping duplicate request');
+            return;
+        }
 
         STATE.isLoadingHistory = true;
-        STATE.historyCurrentPage = page;
+
+        // Determine limit based on whether this is initial load or lazy load
+        const limit = append ?
+            CONFIG.settings.historyLazyLoadSize :
+            CONFIG.settings.historyInitialLoad;
+
+        // If appending, increment page; otherwise reset to page 1
+        if (append) {
+            STATE.historyCurrentPage++;
+        } else {
+            STATE.historyCurrentPage = 1;
+            STATE.loadedHistoryCount = 0;
+        }
 
         showElement(DOM.historyLoading);
         hideElement(DOM.historyError);
-        hideElement(DOM.historyNoResults);
-        hideElement(DOM.historyCardsContainer);
-        hideElement(DOM.historyPagination);
+
+        // Only hide containers on initial load (not when appending)
+        if (!append) {
+            hideElement(DOM.historyNoResults);
+            hideElement(DOM.historyCardsContainer);
+            hideElement(DOM.historyLoadMoreContainer);
+        }
 
         try {
             const params = new URLSearchParams({
-                page: page,
-                limit: CONFIG.settings.historyPageSize
+                page: STATE.historyCurrentPage,
+                limit: limit
             });
 
             if (STATE.historyFilters.month) {
@@ -722,7 +2171,12 @@
             if (STATE.historyFilters.year) {
                 params.append('year', STATE.historyFilters.year);
             }
-            // Note: Change type filtering would need backend support - skipping for now
+            // Add change type filters (multiple values)
+            if (STATE.historyFilters.changeTypes && STATE.historyFilters.changeTypes.length > 0) {
+                STATE.historyFilters.changeTypes.forEach(changeType => {
+                    params.append('change_types', changeType);
+                });
+            }
 
             const url = `${CONFIG.urls.historyLog}?${params.toString()}`;
 
@@ -736,39 +2190,46 @@
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-                throw new Error(errorData.error || `HTTP ${response.status}`);
+                const errorMsg = await extractErrorMessage(response);
+                throw new Error(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error('Failed to fetch history log');
+                throw new Error(data.message || 'Failed to fetch history log');
             }
 
             STATE.currentHistoryData = data;
+            STATE.totalHistoryCount = data.pagination.total;
 
             // Render history cards
             if (data.data && data.data.length > 0) {
-                renderHistoryCards(data.data);
+                renderHistoryCards(data.data, append);
+                STATE.loadedHistoryCount += data.data.length;
+                updateHistoryCounters();
+                updateLoadMoreButton(data.pagination.has_more);
                 showElement(DOM.historyCardsContainer);
-
-                // Render pagination
-                if (data.pagination && data.pagination.has_more) {
-                    STATE.historyTotalPages = Math.ceil(data.pagination.total / CONFIG.settings.historyPageSize);
-                    renderHistoryPagination(data.pagination);
-                    showElement(DOM.historyPagination);
-                }
+                hideElement(DOM.historyNoResults);
             } else {
-                showElement(DOM.historyNoResults);
+                if (!append) {
+                    // Only show "no results" on initial load with no data
+                    showElement(DOM.historyNoResults);
+                    hideElement(DOM.historyCardsContainer);
+                    updateLoadMoreButton(false);
+                }
             }
 
-            console.log(`Edit View: History log loaded - ${data.data.length} entries`);
+            console.log(`Edit View: History log loaded - ${data.data.length} entries (total loaded: ${STATE.loadedHistoryCount}/${STATE.totalHistoryCount})`);
 
         } catch (error) {
             console.error('Edit View: Error loading history log', error);
-            DOM.historyErrorMessage.text(error.message || 'Failed to load history log');
-            showElement(DOM.historyError);
+            showInlineError(
+                DOM.historyError,
+                DOM.historyErrorMessage,
+                error.message || 'Failed to load history log. Please try again.'
+            );
+            updateLoadMoreButton(false);
 
         } finally {
             STATE.isLoadingHistory = false;
@@ -776,8 +2237,11 @@
         }
     }
 
-    function renderHistoryCards(entries) {
-        DOM.historyCardsContainer.empty();
+    function renderHistoryCards(entries, append = false) {
+        // Clear only on initial load (not when appending)
+        if (!append) {
+            DOM.historyCardsContainer.empty();
+        }
 
         entries.forEach(entry => {
             const card = createHistoryCard(entry);
@@ -786,97 +2250,67 @@
     }
 
     function createHistoryCard(entry) {
-        const card = $('<div>').addClass('card edit-view-history-card mb-3');
+        const card = $('<div>').addClass('edit-view-card edit-view-history-card edit-view-mb-3');
 
-        // Determine border color based on change type
-        if (entry.change_type === 'Bench Allocation') {
-            card.addClass('edit-view-history-bench');
-        } else if (entry.change_type === 'CPH Update') {
-            card.addClass('edit-view-history-cph');
-        } else if (entry.change_type === 'Manual Update') {
-            card.addClass('edit-view-history-manual');
-        }
+        // Apply dynamic border color based on change type
+        const borderColor = getDynamicChangeTypeColor(entry.change_type);
+        card.css('border-left-color', borderColor);
 
-        const cardBody = $('<div>').addClass('card-body');
+        const cardBody = $('<div>').addClass('edit-view-card-body');
 
-        // Header
-        const header = $('<div>').addClass('d-flex justify-content-between align-items-start mb-3');
+        // Header with enhanced title
+        const header = $('<div>').addClass('edit-view-flex edit-view-justify-between edit-view-align-start edit-view-mb-3');
 
         const headerLeft = $('<div>');
-        headerLeft.append(`<h5 class="mb-1">${escapeHtml(entry.change_type || 'Update')}</h5>`);
+        // Use report_title if available, otherwise fallback to change_type
+        const title = entry.report_title || `${entry.change_type || 'Update'}, ${entry.month || ''} ${entry.year || ''}`;
+        headerLeft.append(`<h5 class="edit-view-mb-1">${escapeHtml(title)}</h5>`);
 
-        const badge = $('<span>').addClass('badge').text(entry.change_type || 'Update');
-        if (entry.change_type === 'Bench Allocation') {
-            badge.addClass('bg-primary');
-        } else if (entry.change_type === 'CPH Update') {
-            badge.addClass('bg-success');
-        } else {
-            badge.addClass('bg-warning text-dark');
-        }
+        // Dynamic badge with matching color
+        const badge = $('<span>')
+            .addClass('edit-view-badge edit-view-change-type-badge')
+            .css('background-color', borderColor)
+            .css('color', getContrastColor(borderColor))
+            .text(entry.change_type || 'Update');
         headerLeft.append(badge);
 
-        const headerRight = $('<div>').addClass('text-muted');
+        const headerRight = $('<div>').addClass('edit-view-text-muted');
         headerRight.append(`<small>${escapeHtml(entry.timestamp_formatted || entry.timestamp || '-')}</small>`);
 
         header.append(headerLeft).append(headerRight);
         cardBody.append(header);
 
-        // Details
-        const details = $('<div>').addClass('mb-2');
-        details.append(`<p class="mb-1"><strong>User:</strong> ${escapeHtml(entry.user || 'System')}</p>`);
-
-        if (entry.user_notes) {
-            details.append(`<p class="mb-1"><strong>Description:</strong> "${escapeHtml(entry.user_notes)}"</p>`);
-        }
-
-        details.append(`<p class="mb-1"><strong>Records Modified:</strong> ${entry.records_modified || 0}</p>`);
+        // Enhanced description
+        const details = $('<div>').addClass('edit-view-mb-3');
+        
+        // Description - user provided or system generated
+        const description = entry.description || `Updated ${entry.records_modified || 0} rows by ${entry.change_type || 'Update'} operation`;
+        details.append(`<p class="edit-view-mb-2"><strong>Description:</strong> ${escapeHtml(description)}</p>`);
+        
+        details.append(`<p class="edit-view-mb-1"><strong>Records Modified:</strong> ${entry.records_modified || 0}</p>`);
 
         cardBody.append(details);
 
-        // Changes list
-        if (entry.specific_changes && entry.specific_changes.changes && entry.specific_changes.changes.length > 0) {
-            const changesList = $('<ul>').addClass('edit-view-history-changes-list mb-2');
-
-            const threshold = CONFIG.settings.historyShowMoreThreshold;
-            const changes = entry.specific_changes.changes;
-            const showMore = changes.length > threshold;
-
-            // Show first N changes
-            changes.slice(0, threshold).forEach(change => {
-                changesList.append(`<li>${escapeHtml(change)}</li>`);
-            });
-
-            cardBody.append(changesList);
-
-            // Hidden changes (if more than threshold)
-            if (showMore) {
-                const remainingCount = changes.length - threshold;
-                const moreContainer = $('<div>').addClass('edit-view-more-changes-container');
-                const moreList = $('<ul>').addClass('edit-view-history-changes-list mt-0 mb-0');
-                
-                changes.slice(threshold).forEach(change => {
-                    moreList.append(`<li>${escapeHtml(change)}</li>`);
-                });
-
-                moreContainer.append(moreList);
-                cardBody.append(moreContainer);
-
-                // Show More button
-                const showMoreBtn = $('<button>')
-                    .addClass('btn btn-sm btn-outline-secondary edit-view-show-more-btn')
-                    .attr('data-entry-id', entry.id || Math.random())
-                    .attr('data-count', remainingCount)
-                    .html(`<i class="fas fa-chevron-down me-1"></i>Show More (${remainingCount} more changes)`);
-                cardBody.append(showMoreBtn);
-            }
+        // Summary table with month-wise changes
+        if (entry.summary_data) {
+            const summarySection = $('<div>').addClass('edit-view-history-summary-section edit-view-mb-3');
+            summarySection.append('<h6 class="edit-view-mb-2">Summary:</h6>');
+            
+            const summaryTable = renderHistorySummaryTable(entry.summary_data);
+            const tableContainer = $('<div>').addClass('edit-view-history-summary-container');
+            tableContainer.append(summaryTable);
+            summarySection.append(tableContainer);
+            
+            cardBody.append(summarySection);
         }
+
 
         // Download button
         if (entry.id) {
             const downloadBtn = $('<button>')
-                .addClass('btn btn-sm btn-outline-primary edit-view-download-excel-btn mt-2')
+                .addClass('edit-view-btn edit-view-btn-sm edit-view-btn-outline-primary edit-view-download-excel-btn edit-view-mt-2')
                 .attr('data-history-id', entry.id)
-                .html('<i class="fas fa-download me-1"></i>Download Modified Records (Excel)');
+                .html('<i class="fas fa-download edit-view-me-1"></i>Download Modified Records (Excel)');
             cardBody.append(downloadBtn);
         }
 
@@ -885,66 +2319,28 @@
         return card;
     }
 
-    function handleShowMoreClick(e) {
-        e.preventDefault();
-        const btn = $(this);
-        const card = btn.closest('.edit-view-history-card');
-        const moreContainer = card.find('.edit-view-more-changes-container');
-        const count = btn.attr('data-count') || '0';
 
-        if (moreContainer.is(':visible')) {
-            // Collapse
-            moreContainer.slideUp();
-            btn.html(`<i class="fas fa-chevron-down me-1"></i>Show More (${count} more changes)`);
+    // Helper function to update counter display
+    function updateHistoryCounters() {
+        $('#history-loaded-count').text(STATE.loadedHistoryCount);
+        $('#history-total-count').text(STATE.totalHistoryCount);
+    }
+
+    // Helper function to show/hide Load More button
+    function updateLoadMoreButton(hasMore) {
+        const container = DOM.historyLoadMoreContainer;
+
+        if (hasMore && STATE.loadedHistoryCount < STATE.totalHistoryCount) {
+            showElement(container);
         } else {
-            // Expand
-            moreContainer.slideDown();
-            btn.html('<i class="fas fa-chevron-up me-1"></i>Show Less');
+            hideElement(container);
         }
     }
 
-    function renderHistoryPagination(pagination) {
-        const paginationUl = DOM.historyPagination.find('ul.pagination');
-        paginationUl.empty();
-
-        if (!pagination || !pagination.has_more) {
-            hideElement(DOM.historyPagination);
-            return;
-        }
-
-        const totalPages = Math.ceil(pagination.total / CONFIG.settings.historyPageSize);
-        STATE.historyTotalPages = totalPages;
-
-        // Previous button
-        const prevLi = $('<li>').addClass('page-item').addClass(STATE.historyCurrentPage === 1 ? 'disabled' : '');
-        prevLi.append($('<a>').addClass('page-link').attr('href', '#').attr('data-page', STATE.historyCurrentPage - 1).text('Previous'));
-        paginationUl.append(prevLi);
-
-        // Page numbers
-        for (let i = 1; i <= totalPages; i++) {
-            const pageLi = $('<li>').addClass('page-item').addClass(i === STATE.historyCurrentPage ? 'active' : '');
-            pageLi.append($('<a>').addClass('page-link').attr('href', '#').attr('data-page', i).text(i));
-            paginationUl.append(pageLi);
-        }
-
-        // Next button
-        const nextLi = $('<li>').addClass('page-item').addClass(STATE.historyCurrentPage === totalPages ? 'disabled' : '');
-        nextLi.append($('<a>').addClass('page-link').attr('href', '#').attr('data-page', STATE.historyCurrentPage + 1).text('Next'));
-        paginationUl.append(nextLi);
-    }
-
-    function handleHistoryPageClick(e) {
+    // Handle Load More button click
+    function handleHistoryLoadMore(e) {
         e.preventDefault();
-
-        const page = parseInt($(this).attr('data-page'));
-        if (isNaN(page) || page < 1 || page > STATE.historyTotalPages || page === STATE.historyCurrentPage) {
-            return;
-        }
-
-        loadHistoryLog(page);
-
-        // Scroll to top of history container
-        DOM.historyCardsContainer[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        loadHistoryLog(true); // append = true
     }
 
     // ============================================================================
@@ -965,7 +2361,7 @@
         // Disable button during download
         const btn = $(this);
         const originalHtml = btn.html();
-        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Downloading...');
+        btn.prop('disabled', true).html('<span class="edit-view-spinner edit-view-spinner-sm edit-view-me-1"></span>Downloading...');
 
         try {
             const url = CONFIG.urls.downloadHistoryExcel.replace('{id}', historyId);
@@ -1007,6 +2403,156 @@
         } finally {
             btn.prop('disabled', false).html(originalHtml);
         }
+    }
+
+    // ============================================================================
+    // HISTORY SUMMARY TABLE FUNCTIONS
+    // ============================================================================
+
+    function renderHistorySummaryTable(summaryData) {
+        const table = $('<table>').addClass('edit-view-history-summary-table');
+        
+        // Create table structure
+        const thead = $('<thead>');
+        const tbody = $('<tbody>');
+        
+        // Header row 1 - Main headers
+        const headerRow1 = $('<tr>');
+        headerRow1.append('<th rowspan="2" class="edit-view-summary-fixed">Month</th>');
+        headerRow1.append('<th rowspan="2" class="edit-view-summary-fixed">Year</th>');
+        
+        summaryData.months.forEach(month => {
+            headerRow1.append(`<th colspan="4" class="edit-view-summary-scroll edit-view-month-header">${month}</th>`);
+        });
+        
+        // Header row 2 - Sub headers
+        const headerRow2 = $('<tr>');
+        summaryData.months.forEach(() => {
+            headerRow2.append('<th class="edit-view-summary-scroll">Total Forecast</th>');
+            headerRow2.append('<th class="edit-view-summary-scroll">Total FTE Required</th>');
+            headerRow2.append('<th class="edit-view-summary-scroll">Total FTE Available</th>');
+            headerRow2.append('<th class="edit-view-summary-scroll">Total Capacity</th>');
+        });
+        
+        thead.append(headerRow1).append(headerRow2);
+        
+        // Data row
+        const dataRow = $('<tr>');
+        dataRow.append(`<td class="edit-view-summary-fixed"><strong>${summaryData.report_month}</strong></td>`);
+        dataRow.append(`<td class="edit-view-summary-fixed"><strong>${summaryData.report_year}</strong></td>`);
+        
+        summaryData.months.forEach(month => {
+            const monthData = summaryData.totals[month];
+            
+            // Format each value as "old → new" with color coding
+            ['total_forecast', 'total_fte_required', 'total_fte_available', 'total_capacity'].forEach(field => {
+                const data = monthData[field];
+                const cell = formatOldNewCell(data.old, data.new);
+                dataRow.append(cell);
+            });
+        });
+        
+        tbody.append(dataRow);
+        table.append(thead).append(tbody);
+        
+        return table;
+    }
+
+    function formatOldNewCell(oldValue, newValue) {
+        const cell = $('<td>').addClass('edit-view-summary-scroll');
+        
+        if (oldValue === newValue) {
+            // No change
+            cell.html(`<span class="edit-view-old-new-value">${formatNumber(newValue)}</span>`);
+        } else {
+            // Changed value
+            const changeClass = newValue > oldValue ? 'edit-view-value-increase' : 'edit-view-value-decrease';
+            const arrow = '→';
+            cell.addClass(changeClass);
+            cell.html(`<span class="edit-view-old-new-value">${formatNumber(oldValue)} ${arrow} ${formatNumber(newValue)}</span>`);
+        }
+        
+        return cell;
+    }
+
+    function getDynamicChangeTypeColor(changeType) {
+        // Check if we have the color from the API response
+        if (STATE.availableChangeTypes) {
+            const changeTypeData = STATE.availableChangeTypes.find(ct => ct.value === changeType);
+            if (changeTypeData && changeTypeData.color) {
+                return changeTypeData.color;
+            }
+        }
+        
+        // Predefined colors for common change types (fallback)
+        const predefinedColors = {
+            'Bench Allocation': '#0d6efd',
+            'CPH Update': '#198754',
+            'Manual Update': '#ffc107',
+            'Capacity Update': '#6f42c1',
+            'FTE Update': '#fd7e14',
+            'Forecast Update': '#20c997'
+        };
+        
+        // Return predefined color if exists
+        if (predefinedColors[changeType]) {
+            return predefinedColors[changeType];
+        }
+        
+        // Use standard colors with hash-based selection
+        return getStandardColorForString(changeType);
+    }
+
+    function getStandardColorForString(str) {
+        // Standard colors array (matching backend config)
+        const standardColors = [
+            '#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1', '#fd7e14',
+            '#20c997', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3',
+            '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a', '#cddc39',
+            '#ffeb3b', '#ffc107', '#ff9800', '#ff5722', '#795548', '#9e9e9e',
+            '#607d8b', '#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5',
+            '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a',
+            '#cddc39', '#ffeb3b', '#ff9800', '#ff5722', '#795548', '#9e9e9e',
+            '#607d8b', '#1976d2', '#388e3c', '#f57c00', '#d32f2f', '#7b1fa2',
+            '#512da8', '#303f9f'
+        ];
+        
+        // Simple hash function to generate consistent index
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & 0xFFFFFFFF; // Convert to 32-bit integer
+        }
+        
+        const colorIndex = Math.abs(hash) % standardColors.length;
+        return standardColors[colorIndex];
+    }
+
+    function getContrastColor(backgroundColor) {
+        // Determine if text should be white or black based on background color brightness
+        let r, g, b;
+        
+        if (backgroundColor.startsWith('#')) {
+            // Hex color
+            const color = backgroundColor.replace('#', '');
+            if (color.length === 6) {
+                r = parseInt(color.substr(0, 2), 16);
+                g = parseInt(color.substr(2, 2), 16);
+                b = parseInt(color.substr(4, 2), 16);
+            } else {
+                return '#ffffff'; // Default to white for invalid hex
+            }
+        } else if (backgroundColor.startsWith('hsl')) {
+            // For HSL colors, use white text for better contrast
+            return '#ffffff';
+        } else {
+            return '#ffffff'; // Default to white
+        }
+        
+        // Calculate brightness using relative luminance formula
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness > 128 ? '#000000' : '#ffffff';
     }
 
     // ============================================================================
@@ -1062,36 +2608,980 @@
         return String(text).replace(/[&<>"']/g, m => map[m]);
     }
 
-    /**
-     * Transform records for API submission by wrapping month data in a 'months' object.
-     * The backend expects month-wise data to be nested under a 'months' key.
-     *
-     * @param {Array} records - Array of record objects with month keys at top level
-     * @returns {Array} - Transformed records with month data wrapped in 'months' object
-     */
-    function transformRecordsForAPI(records) {
-        const monthPattern = /^[A-Z][a-z]{2}-\d{2}$/; // e.g., "Jun-25"
+    // ============================================================================
+    // TARGET CPH FUNCTIONALITY
+    // ============================================================================
 
-        return records.map(record => {
-            const transformed = {
-                main_lob: record.main_lob,
-                state: record.state,
-                case_type: record.case_type,
-                case_id: record.case_id,
-                target_cph: record.target_cph,
-                _modified_fields: record._modified_fields,
-                months: {}
-            };
+    async function handleLoadCphData() {
+        console.log('Edit View: Load CPH Data clicked');
 
-            // Move month keys into months object
-            for (const key in record) {
-                if (monthPattern.test(key)) {
-                    transformed.months[key] = record[key];
-                }
+        const reportValue = DOM.cphReportSelect.val();
+
+        // Validate
+        if (!reportValue) {
+            await Swal.fire({
+                icon: 'warning',
+                title: 'Selection Required',
+                text: 'Please select an allocation report first.',
+                confirmButtonColor: '#0d6efd'
+            });
+            return;
+        }
+
+        // Parse report value (format: "YYYY-MM")
+        const [yearStr, monthNum] = reportValue.split('-');
+        const year = parseInt(yearStr);
+        const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                           'July', 'August', 'September', 'October', 'November', 'December'];
+        const month = monthNames[parseInt(monthNum)];
+
+        STATE.cph.currentSelectedReport = { month, year };
+
+        await loadCphData(month, year);
+    }
+
+    async function loadCphData(month, year) {
+        console.log(`Edit View: Loading CPH data for ${month} ${year}`);
+
+        showElement(DOM.cphDataLoading);
+        hideElement(DOM.cphDataError);
+        hideElement(DOM.cphDataContainer);
+        hideElement(DOM.cphPreviewContainer);
+        hideElement(DOM.cphActionsContainer);
+
+        try {
+            const url = `${CONFIG.urls.targetCphData}?month=${encodeURIComponent(month)}&year=${year}`;
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                const errorMsg = await extractErrorMessage(response);
+                throw new Error(errorMsg);
             }
 
-            return transformed;
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.message || 'Failed to load CPH data');
+            }
+
+            if (!data.data || data.data.length === 0) {
+                showInlineError(
+                    DOM.cphDataError,
+                    DOM.cphDataErrorMessage,
+                    'No CPH data available for the selected report. Please select a different report or contact your administrator.'
+                );
+                return;
+            }
+
+            // Store CPH data
+            STATE.cph.allCphRecords = data.data;
+            STATE.cph.filteredCphRecords = data.data;
+            STATE.cph.modifiedCphRecords.clear();
+            STATE.cph.currentPage = 1;
+            STATE.cph.totalPages = Math.ceil(data.data.length / 20); // 20 records per page
+
+            // Render CPH table
+            renderCphTable();
+            populateCphFilters();
+            updateCphModifiedCount();
+            showElement(DOM.cphDataContainer);
+
+            console.log(`Edit View: CPH data loaded - ${data.total} records`);
+
+        } catch (error) {
+            console.error('Edit View: Error loading CPH data', error);
+            showInlineError(
+                DOM.cphDataError,
+                DOM.cphDataErrorMessage,
+                error.message || 'Failed to load CPH data. Please try again.'
+            );
+
+        } finally {
+            hideElement(DOM.cphDataLoading);
+        }
+    }
+
+    function renderCphTable() {
+        const { filteredCphRecords, currentPage } = STATE.cph;
+        const recordsPerPage = 20;
+        const startIdx = (currentPage - 1) * recordsPerPage;
+        const endIdx = startIdx + recordsPerPage;
+        const pageRecords = filteredCphRecords.slice(startIdx, endIdx);
+
+        // Clear table body
+        DOM.cphTableBody.empty();
+
+        if (pageRecords.length === 0) {
+            DOM.cphTableBody.append(`
+                <tr>
+                    <td colspan="4" class="edit-view-text-center edit-view-text-muted">
+                        No CPH records found for the selected filters
+                    </td>
+                </tr>
+            `);
+            hideElement(DOM.cphPagination);
+            return;
+        }
+
+        // Render rows
+        pageRecords.forEach(record => {
+            DOM.cphTableBody.append(renderCphTableRow(record));
         });
+
+        // Render pagination
+        renderCphPagination();
+
+        console.log(`Edit View: Rendered ${pageRecords.length} CPH records (page ${currentPage})`);
+    }
+
+    function renderCphTableRow(record) {
+        const modifiedRecord = STATE.cph.modifiedCphRecords.get(record.id);
+        const currentValue = modifiedRecord ? modifiedRecord.modified_target_cph : record.modified_target_cph;
+        const isModified = modifiedRecord !== undefined;
+
+        const rowClass = isModified ? 'edit-view-cph-row-modified' : '';
+        const inputClass = isModified ? 'edit-view-input-modified' : '';
+
+        return `
+            <tr class="${rowClass}" data-cph-id="${escapeHtml(record.id)}">
+                <td>${escapeHtml(record.lob)}</td>
+                <td>${escapeHtml(record.case_type)}</td>
+                <td class="edit-view-text-end">${formatNumber(record.target_cph)}</td>
+                <td class="edit-view-cph-input-cell">
+                    <div class="edit-view-cph-btn-group">
+                        <button class="edit-view-btn edit-view-btn-sm cph-decrement-btn"
+                                data-cph-id="${escapeHtml(record.id)}"
+                                title="Decrement by 1.0">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <input type="number"
+                               class="edit-view-form-input cph-modified-input ${inputClass}"
+                               data-cph-id="${escapeHtml(record.id)}"
+                               data-original-value="${record.target_cph}"
+                               value="${currentValue}"
+                               step="1.0"
+                               min="0"
+                               max="10000"
+                               title="Target CPH">
+                        <button class="edit-view-btn edit-view-btn-sm cph-increment-btn"
+                                data-cph-id="${escapeHtml(record.id)}"
+                                title="Increment by 1.0">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }
+
+    function renderCphPagination() {
+        const { currentPage, totalPages } = STATE.cph;
+
+        if (totalPages <= 1) {
+            hideElement(DOM.cphPagination);
+            return;
+        }
+
+        const paginationHtml = [];
+        paginationHtml.push(`
+            <li class="edit-view-page-item ${currentPage === 1 ? 'edit-view-disabled' : ''}">
+                <a class="edit-view-page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+            </li>
+        `);
+
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                paginationHtml.push(`
+                    <li class="edit-view-page-item ${i === currentPage ? 'edit-view-active' : ''}">
+                        <a class="edit-view-page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `);
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                paginationHtml.push(`
+                    <li class="edit-view-page-item edit-view-disabled">
+                        <span class="edit-view-page-link">...</span>
+                    </li>
+                `);
+            }
+        }
+
+        paginationHtml.push(`
+            <li class="edit-view-page-item ${currentPage === totalPages ? 'edit-view-disabled' : ''}">
+                <a class="edit-view-page-link" href="#" data-page="${currentPage + 1}">Next</a>
+            </li>
+        `);
+
+        DOM.cphPagination.find('ul').html(paginationHtml.join(''));
+        showElement(DOM.cphPagination);
+    }
+
+    function populateCphFilters() {
+        const { allCphRecords } = STATE.cph;
+
+        // Extract unique LOBs and Case Types
+        const uniqueLobs = [...new Set(allCphRecords.map(r => r.lob))].sort();
+        const uniqueCaseTypes = [...new Set(allCphRecords.map(r => r.case_type))].sort();
+
+        // Populate LOB filter
+        DOM.cphLobFilter.empty();
+        uniqueLobs.forEach(lob => {
+            DOM.cphLobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
+        });
+
+        // Populate Case Type filter
+        DOM.cphCaseTypeFilter.empty();
+        uniqueCaseTypes.forEach(caseType => {
+            DOM.cphCaseTypeFilter.append(`<option value="${escapeHtml(caseType)}">${escapeHtml(caseType)}</option>`);
+        });
+
+        // Initialize Select2 on CPH filters
+        initializeCphFilterSelect2();
+
+        console.log(`Edit View: CPH filters populated - ${uniqueLobs.length} LOBs, ${uniqueCaseTypes.length} Case Types`);
+    }
+
+    function initializeCphFilterSelect2() {
+        // Destroy existing Select2 instances if present
+        if (DOM.cphLobFilter.data('select2')) {
+            DOM.cphLobFilter.select2('destroy');
+        }
+        if (DOM.cphCaseTypeFilter.data('select2')) {
+            DOM.cphCaseTypeFilter.select2('destroy');
+        }
+
+        // Initialize CPH LOB filter
+        DOM.cphLobFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All LOBs',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+
+        // Initialize CPH Case Type filter
+        DOM.cphCaseTypeFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All Case Types',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+    }
+
+    function applyCphFilters() {
+        const selectedLobs = DOM.cphLobFilter.val() || [];
+        const selectedCaseTypes = DOM.cphCaseTypeFilter.val() || [];
+
+        STATE.cph.filters.lobs = selectedLobs;
+        STATE.cph.filters.caseTypes = selectedCaseTypes;
+
+        // Filter records
+        STATE.cph.filteredCphRecords = STATE.cph.allCphRecords.filter(record => {
+            const lobMatch = selectedLobs.length === 0 || selectedLobs.includes(record.lob);
+            const caseTypeMatch = selectedCaseTypes.length === 0 || selectedCaseTypes.includes(record.case_type);
+            return lobMatch && caseTypeMatch;
+        });
+
+        // Reset to page 1
+        STATE.cph.currentPage = 1;
+        STATE.cph.totalPages = Math.ceil(STATE.cph.filteredCphRecords.length / 20);
+
+        // Re-render table
+        renderCphTable();
+
+        console.log(`Edit View: CPH filters applied - ${STATE.cph.filteredCphRecords.length} records match`);
+    }
+
+    function updateCphCascadingFilters(changedFilter) {
+        const { allCphRecords, filters } = STATE.cph;
+
+        if (changedFilter === 'lob') {
+            const selectedLobs = DOM.cphLobFilter.val() || [];
+
+            if (selectedLobs.length > 0) {
+                // Filter case types based on selected LOBs
+                const availableCaseTypes = [...new Set(
+                    allCphRecords
+                        .filter(r => selectedLobs.includes(r.lob))
+                        .map(r => r.case_type)
+                )].sort();
+
+                // Update case type filter options
+                const selectedCaseTypes = DOM.cphCaseTypeFilter.val() || [];
+                DOM.cphCaseTypeFilter.empty();
+                availableCaseTypes.forEach(ct => {
+                    DOM.cphCaseTypeFilter.append(`<option value="${escapeHtml(ct)}">${escapeHtml(ct)}</option>`);
+                });
+
+                // Restore selections that still exist
+                const validSelections = selectedCaseTypes.filter(ct => availableCaseTypes.includes(ct));
+                DOM.cphCaseTypeFilter.val(validSelections).trigger('change');
+            }
+        } else if (changedFilter === 'caseType') {
+            const selectedCaseTypes = DOM.cphCaseTypeFilter.val() || [];
+
+            if (selectedCaseTypes.length > 0) {
+                // Filter LOBs based on selected case types
+                const availableLobs = [...new Set(
+                    allCphRecords
+                        .filter(r => selectedCaseTypes.includes(r.case_type))
+                        .map(r => r.lob)
+                )].sort();
+
+                // Update LOB filter options
+                const selectedLobs = DOM.cphLobFilter.val() || [];
+                DOM.cphLobFilter.empty();
+                availableLobs.forEach(lob => {
+                    DOM.cphLobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
+                });
+
+                // Restore selections that still exist
+                const validSelections = selectedLobs.filter(lob => availableLobs.includes(lob));
+                DOM.cphLobFilter.val(validSelections).trigger('change');
+            }
+        }
+    }
+
+    function clearCphFilters() {
+        DOM.cphLobFilter.val(null).trigger('change');
+        DOM.cphCaseTypeFilter.val(null).trigger('change');
+
+        // Repopulate filters with all options
+        populateCphFilters();
+
+        // Apply empty filters
+        applyCphFilters();
+    }
+
+    function handleCphPageClick(e) {
+        e.preventDefault();
+
+        const page = parseInt($(e.currentTarget).data('page'));
+
+        if (isNaN(page) || page < 1 || page > STATE.cph.totalPages) {
+            return;
+        }
+
+        STATE.cph.currentPage = page;
+        renderCphTable();
+
+        // Scroll to table top
+        DOM.cphTable[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function handleCphInputChange(e) {
+        const input = $(e.target);
+        const cphId = input.data('cph-id');
+        const originalValue = parseFloat(input.data('original-value'));
+        const newValue = parseFloat(input.val());
+
+        // Validate
+        if (isNaN(newValue) || newValue < 0 || newValue > 10000) {
+            input.addClass('edit-view-input-invalid');
+            return;
+        } else {
+            input.removeClass('edit-view-input-invalid');
+        }
+
+        trackCphModification(cphId, newValue, originalValue);
+    }
+
+    function handleCphIncrement(e) {
+        e.preventDefault();
+
+        const cphId = $(e.currentTarget).data('cph-id');
+        const input = $(`input.cph-modified-input[data-cph-id="${cphId}"]`);
+        const currentValue = parseFloat(input.val()) || 0;
+        const originalValue = parseFloat(input.data('original-value'));
+        const newValue = Math.min(currentValue + 1.0, 10000);
+
+        input.val(newValue.toFixed(2));
+        trackCphModification(cphId, newValue, originalValue);
+    }
+
+    function handleCphDecrement(e) {
+        e.preventDefault();
+
+        const cphId = $(e.currentTarget).data('cph-id');
+        const input = $(`input.cph-modified-input[data-cph-id="${cphId}"]`);
+        const currentValue = parseFloat(input.val()) || 0;
+        const originalValue = parseFloat(input.data('original-value'));
+        const newValue = Math.max(currentValue - 1.0, 0);
+
+        input.val(newValue.toFixed(2));
+        trackCphModification(cphId, newValue, originalValue);
+    }
+
+    function trackCphModification(cphId, newValue, originalValue) {
+        const record = STATE.cph.allCphRecords.find(r => r.id === cphId);
+        if (!record) return;
+
+        const roundedNewValue = Math.round(newValue * 100) / 100;
+        const roundedOriginalValue = Math.round(originalValue * 100) / 100;
+
+        if (roundedNewValue === roundedOriginalValue) {
+            // Reverted to original - remove from modified map
+            STATE.cph.modifiedCphRecords.delete(cphId);
+        } else {
+            // Modified - add/update in map
+            STATE.cph.modifiedCphRecords.set(cphId, {
+                id: record.id,
+                lob: record.lob,
+                case_type: record.case_type,
+                target_cph: record.target_cph,
+                modified_target_cph: roundedNewValue
+            });
+        }
+
+        // Update UI
+        updateCphModifiedCount();
+        updateCphRowHighlight(cphId);
+    }
+
+    function updateCphRowHighlight(cphId) {
+        const row = $(`tr[data-cph-id="${cphId}"]`);
+        const input = $(`input.cph-modified-input[data-cph-id="${cphId}"]`);
+        const isModified = STATE.cph.modifiedCphRecords.has(cphId);
+
+        if (isModified) {
+            row.addClass('edit-view-cph-row-modified');
+            input.addClass('edit-view-input-modified');
+        } else {
+            row.removeClass('edit-view-cph-row-modified');
+            input.removeClass('edit-view-input-modified');
+        }
+    }
+
+    function updateCphModifiedCount() {
+        const count = STATE.cph.modifiedCphRecords.size;
+        DOM.cphModifiedCountBadge.text(`${count} modified`);
+
+        // Enable/disable submit button
+        if (count > 0) {
+            DOM.submitCphChangesBtn.prop('disabled', false);
+        } else {
+            DOM.submitCphChangesBtn.prop('disabled', true);
+        }
+    }
+
+    async function handleSubmitCphChanges() {
+        console.log('Edit View: Submit CPH Changes clicked');
+
+        const modifiedCount = STATE.cph.modifiedCphRecords.size;
+
+        if (modifiedCount === 0) {
+            await Swal.fire({
+                icon: 'warning',
+                title: 'No Changes',
+                text: 'Please modify at least one CPH value before generating preview.',
+                confirmButtonColor: '#0d6efd'
+            });
+            return;
+        }
+
+        const { month, year } = STATE.cph.currentSelectedReport;
+        const modifiedRecords = Array.from(STATE.cph.modifiedCphRecords.values());
+
+        await loadCphPreview(month, year, modifiedRecords);
+    }
+
+    async function loadCphPreview(month, year, modifiedRecords) {
+        console.log(`Edit View: Loading CPH preview for ${month} ${year} (${modifiedRecords.length} changes)`);
+
+        showElement(DOM.cphPreviewLoading);
+        hideElement(DOM.cphPreviewError);
+        hideElement(DOM.cphPreviewContainer);
+        hideElement(DOM.cphActionsContainer);
+
+        try {
+            const response = await fetch(CONFIG.urls.targetCphPreview, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ month, year, modified_records: modifiedRecords })
+            });
+
+            if (!response.ok) {
+                const errorMsg = await extractErrorMessage(response);
+
+                // Check if errorMsg is an object with error and recommendation
+                if (typeof errorMsg === 'object' && errorMsg.error) {
+                    const errorObj = {
+                        message: errorMsg.error,
+                        recommendation: errorMsg.recommendation
+                    };
+                    throw errorObj;
+                }
+
+                throw new Error(errorMsg);
+            }
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.message || 'Preview calculation failed');
+            }
+
+            // Check if there are any affected forecast rows
+            if (!data.modified_records || data.modified_records.length === 0) {
+                showInlineError(
+                    DOM.cphPreviewError,
+                    DOM.cphPreviewErrorMessage,
+                    'No forecast rows were affected by the CPH changes. The selected CPH values may not have any active forecasts.'
+                );
+                return;
+            }
+
+            // Store preview data
+            STATE.cph.previewData = data;
+            STATE.cph.allPreviewRecords = data.modified_records || [];
+            STATE.cph.filteredPreviewRecords = STATE.cph.allPreviewRecords;
+            STATE.cph.previewCurrentPage = 1;
+            STATE.cph.previewTotalPages = Math.ceil(data.total_modified / CONFIG.settings.previewPageSize);
+
+            // Render preview (reuse bench allocation rendering functions)
+            renderCphPreviewTable(data);
+            showElement(DOM.cphPreviewContainer);
+            showElement(DOM.cphActionsContainer);
+
+            // Update action summary
+            DOM.cphActionSummaryCount.text(modifiedRecords.length);
+            DOM.cphForecastRowsCount.text(data.total_modified || 0);
+
+            console.log(`Edit View: CPH preview loaded - ${data.total_modified} forecast rows affected`);
+
+        } catch (error) {
+            console.error('Edit View: Error loading CPH preview', error);
+
+            // Check if error has recommendation (from API detail object)
+            if (error.message && error.recommendation) {
+                const errorMessage = `<strong>${error.message}</strong><br><br><em>Recommendation:</em> ${error.recommendation}`;
+                DOM.cphPreviewErrorMessage.html(errorMessage);
+                showElement(DOM.cphPreviewError);
+            } else {
+                showInlineError(
+                    DOM.cphPreviewError,
+                    DOM.cphPreviewErrorMessage,
+                    error.message || 'Failed to calculate CPH impact preview. Please try again.'
+                );
+            }
+
+        } finally {
+            hideElement(DOM.cphPreviewLoading);
+        }
+    }
+
+    function renderCphPreviewTable(data) {
+        if (!data || !data.modified_records || data.modified_records.length === 0) {
+            console.warn('Edit View: No CPH preview records to display');
+            hideElement(DOM.cphPreviewFilters);
+            hideElement(DOM.cphOverallChanges);
+            return;
+        }
+
+        const config = PREVIEW_CONFIGS.targetCph;
+
+        // Store all records (important for pagination and filtering)
+        STATE.cph.allPreviewRecords = data.modified_records;
+        STATE.cph.filteredPreviewRecords = data.modified_records;
+        STATE.cph.previewTotalPages = Math.ceil(data.modified_records.length / CONFIG.settings.previewPageSize);
+
+        // Update CPH-specific summary badges
+        DOM.cphSummaryText.text(
+            `${data.total_modified} forecast rows affected by ${STATE.cph.modifiedCphRecords.size} CPH changes`
+        );
+        DOM.cphPreviewModifiedCountBadge.text(`${data.total_modified} forecast rows affected`);
+
+        // Populate filters using generic system
+        populateGenericFilters(data.modified_records, config);
+
+        // Render using generic system (THIS FIXES THE BUG - uses getMonthData with 'direct' access)
+        renderGenericPreviewTable(data, config);
+
+        // Show containers
+        showElement(DOM.cphPreviewFilters);
+        showElement(DOM.cphOverallChanges);
+    }
+
+    function renderCphPreviewHeaders(months) {
+        let headersHtml = `
+            <tr>
+                <th class="edit-view-preview-fixed-col edit-view-preview-lob-col" rowspan="2">LOB</th>
+                <th class="edit-view-preview-fixed-col edit-view-preview-state-col" rowspan="2">State</th>
+                <th class="edit-view-preview-fixed-col edit-view-preview-case-type-col" rowspan="2">Case Type</th>
+                <th class="edit-view-preview-fixed-col edit-view-preview-case-id-col" rowspan="2">Case ID</th>
+        `;
+
+        months.forEach(month => {
+            headersHtml += `<th colspan="4" class="edit-view-text-center edit-view-month-header">${month}</th>`;
+        });
+
+        headersHtml += `</tr><tr>`;
+
+        months.forEach(() => {
+            headersHtml += `
+                <th class="edit-view-preview-metric-col">CF</th>
+                <th class="edit-view-preview-metric-col">FTE Req</th>
+                <th class="edit-view-preview-metric-col">FTE Avail</th>
+                <th class="edit-view-preview-metric-col">Cap</th>
+            `;
+        });
+
+        headersHtml += `</tr>`;
+        DOM.cphPreviewTableHead.html(headersHtml);
+    }
+
+    function renderCphPreviewRows(records, months) {
+        let rowsHtml = '';
+
+        records.forEach(record => {
+            rowsHtml += `
+                <tr>
+                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.main_lob)}</td>
+                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.state)}</td>
+                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.case_type)}</td>
+                    <td class="edit-view-preview-fixed-col">${escapeHtml(record.case_id)}</td>
+            `;
+
+            months.forEach(month => {
+                const monthData = record.data[month] || {};
+                const modifiedFields = record.modified_fields || [];
+
+                rowsHtml += renderCell(monthData.cf, monthData.cf_change, modifiedFields.includes(`${month}_cf`));
+                rowsHtml += renderCell(monthData.fte_required, monthData.fte_required_change, modifiedFields.includes(`${month}_fte_required`));
+                rowsHtml += renderCell(monthData.fte_available, monthData.fte_available_change, modifiedFields.includes(`${month}_fte_available`));
+                rowsHtml += renderCell(monthData.capacity, monthData.capacity_change, modifiedFields.includes(`${month}_capacity`));
+            });
+
+            rowsHtml += `</tr>`;
+        });
+
+        DOM.cphPreviewTableBody.html(rowsHtml);
+    }
+
+    function populateCphPreviewFilters(records) {
+        const uniqueLobs = [...new Set(records.map(r => r.main_lob))].sort();
+        const uniqueCaseTypes = [...new Set(records.map(r => r.case_type))].sort();
+
+        // Populate LOB filter
+        DOM.cphPreviewLobFilter.empty();
+        uniqueLobs.forEach(lob => {
+            DOM.cphPreviewLobFilter.append(`<option value="${escapeHtml(lob)}">${escapeHtml(lob)}</option>`);
+        });
+
+        // Populate Case Type filter
+        DOM.cphPreviewCaseTypeFilter.empty();
+        uniqueCaseTypes.forEach(caseType => {
+            DOM.cphPreviewCaseTypeFilter.append(`<option value="${escapeHtml(caseType)}">${escapeHtml(caseType)}</option>`);
+        });
+
+        // Initialize Select2
+        initializeCphPreviewFilterSelect2();
+
+        // Show filters
+        showElement(DOM.cphPreviewFilters);
+
+        console.log(`Edit View: CPH preview filters populated - ${uniqueLobs.length} LOBs, ${uniqueCaseTypes.length} Case Types`);
+    }
+
+    function initializeCphPreviewFilterSelect2() {
+        if (DOM.cphPreviewLobFilter.data('select2')) {
+            DOM.cphPreviewLobFilter.select2('destroy');
+        }
+        if (DOM.cphPreviewCaseTypeFilter.data('select2')) {
+            DOM.cphPreviewCaseTypeFilter.select2('destroy');
+        }
+
+        DOM.cphPreviewLobFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All LOBs',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+
+        DOM.cphPreviewCaseTypeFilter.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'All Case Types',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+    }
+
+    function applyCphPreviewFilters() {
+        const config = PREVIEW_CONFIGS.targetCph;
+        applyGenericFilters(config);
+        renderCphPreviewTable(STATE.cph.previewData);
+    }
+
+    function updateCphPreviewCascadingFilters(changedFilter) {
+        updateGenericCascadingFilters(changedFilter, PREVIEW_CONFIGS.targetCph);
+    }
+
+    function clearCphPreviewFilters() {
+        const config = PREVIEW_CONFIGS.targetCph;
+
+        DOM.cphPreviewLobFilter.val(null).trigger('change');
+        DOM.cphPreviewCaseTypeFilter.val(null).trigger('change');
+
+        // Repopulate filters with all options
+        populateGenericFilters(STATE.cph.allPreviewRecords, config);
+
+        // Apply empty filters
+        applyCphPreviewFilters();
+    }
+
+    function updateCphMonthwiseChanges(summary) {
+        let summaryHtml = '';
+
+        Object.keys(summary).forEach(month => {
+            const monthData = summary[month];
+            summaryHtml += `
+                <div class="edit-view-month-change-item">
+                    <strong>${month}:</strong>
+                    <span>CF: ${formatNumber(monthData.cf_total)}</span> |
+                    <span>FTE Req: ${formatNumber(monthData.fte_required_total)}</span> |
+                    <span>FTE Avail: ${formatNumber(monthData.fte_available_total)}</span> |
+                    <span>Cap: ${formatNumber(monthData.capacity_total)}</span>
+                </div>
+            `;
+        });
+
+        DOM.cphMonthChangesContainer.html(summaryHtml);
+    }
+
+    function renderCphPreviewPagination() {
+        const { previewCurrentPage, previewTotalPages } = STATE.cph;
+
+        if (previewTotalPages <= 1) {
+            hideElement(DOM.cphPreviewPagination);
+            return;
+        }
+
+        const paginationHtml = [];
+        paginationHtml.push(`
+            <li class="edit-view-page-item ${previewCurrentPage === 1 ? 'edit-view-disabled' : ''}">
+                <a class="edit-view-page-link" href="#" data-page="${previewCurrentPage - 1}">Previous</a>
+            </li>
+        `);
+
+        for (let i = 1; i <= previewTotalPages; i++) {
+            if (i === 1 || i === previewTotalPages || (i >= previewCurrentPage - 2 && i <= previewCurrentPage + 2)) {
+                paginationHtml.push(`
+                    <li class="edit-view-page-item ${i === previewCurrentPage ? 'edit-view-active' : ''}">
+                        <a class="edit-view-page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `);
+            } else if (i === previewCurrentPage - 3 || i === previewCurrentPage + 3) {
+                paginationHtml.push(`
+                    <li class="edit-view-page-item edit-view-disabled">
+                        <span class="edit-view-page-link">...</span>
+                    </li>
+                `);
+            }
+        }
+
+        paginationHtml.push(`
+            <li class="edit-view-page-item ${previewCurrentPage === previewTotalPages ? 'edit-view-disabled' : ''}">
+                <a class="edit-view-page-link" href="#" data-page="${previewCurrentPage + 1}">Next</a>
+            </li>
+        `);
+
+        DOM.cphPreviewPagination.find('ul').html(paginationHtml.join(''));
+        showElement(DOM.cphPreviewPagination);
+    }
+
+    function handleCphPreviewPageClick(e) {
+        e.preventDefault();
+
+        const page = parseInt($(e.currentTarget).data('page'));
+
+        if (isNaN(page) || page < 1 || page > STATE.cph.previewTotalPages) {
+            return;
+        }
+
+        STATE.cph.previewCurrentPage = page;
+
+        // Just re-render the table with the new page, don't reset state
+        const config = PREVIEW_CONFIGS.targetCph;
+        renderGenericPreviewTable(STATE.cph.previewData, config);
+
+        // Scroll to preview table top
+        DOM.cphPreviewContainer[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function handleCphReject() {
+        console.log('Edit View: CPH Reject clicked');
+
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Reject CPH Preview?',
+            text: 'This will clear the preview. CPH changes will remain in the table for further editing.',
+            showCancelButton: true,
+            confirmButtonColor: '#6c757d',
+            cancelButtonColor: '#0d6efd',
+            confirmButtonText: 'Yes, Reject',
+            cancelButtonText: 'Cancel'
+        });
+
+        if (result.isConfirmed) {
+            // Clear preview
+            STATE.cph.previewData = null;
+            STATE.cph.allPreviewRecords = [];
+            STATE.cph.filteredPreviewRecords = [];
+            DOM.cphUserNotesInput.val('');
+            DOM.cphNotesCharCount.text('0');
+
+            hideElement(DOM.cphPreviewContainer);
+            hideElement(DOM.cphActionsContainer);
+
+            console.log('Edit View: CPH preview rejected');
+        }
+    }
+
+    async function handleCphAccept() {
+        console.log('Edit View: CPH Accept clicked');
+
+        const modifiedCount = STATE.cph.modifiedCphRecords.size;
+
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Accept CPH Changes?',
+            html: `
+                <p>This will update <strong>${modifiedCount} CPH values</strong> affecting <strong>${STATE.cph.previewData.total_modified} forecast rows</strong>.</p>
+                <p>This action will create a history log entry.</p>
+            `,
+            showCancelButton: true,
+            confirmButtonColor: '#198754',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, Accept',
+            cancelButtonText: 'Cancel'
+        });
+
+        if (result.isConfirmed) {
+            await submitCphUpdate();
+        }
+    }
+
+    async function submitCphUpdate() {
+        console.log('Edit View: Submitting CPH update');
+
+        STATE.isSubmitting = true;
+
+        try {
+            // Validate preview data exists
+            if (!STATE.cph.previewData || !STATE.cph.previewData.modified_records) {
+                showErrorDialog(
+                    'No CPH Preview Data',
+                    'Please run CPH preview before submitting updates.',
+                    'CPH Update'
+                );
+                return;
+            }
+
+            const { month, year } = STATE.cph.currentSelectedReport;
+            const userNotes = DOM.cphUserNotesInput.val().trim() || '';
+
+            // Build payload with FULL preview structure
+            const payload = {
+                month,
+                year,
+                months: STATE.cph.previewData.months,  // Top-level months mapping
+                modified_records: STATE.cph.previewData.modified_records,  // Use FULL preview records
+                user_notes: userNotes
+            };
+
+            console.log('Edit View: Sending CPH update with full preview structure', {
+                modifiedRecordsCount: payload.modified_records.length,
+                hasMonthsMapping: !!payload.months
+            });
+
+            const response = await fetch(CONFIG.urls.targetCphUpdate, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorMsg = await extractErrorMessage(response);
+                throw new Error(errorMsg);
+            }
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(data.message || 'Update failed');
+            }
+
+            // Show success message
+            await Swal.fire({
+                icon: 'success',
+                title: 'CPH Updated Successfully',
+                html: `
+                    <p><strong>${data.cph_changes_applied || STATE.cph.modifiedCphRecords.size}</strong> CPH changes applied</p>
+                    <p><strong>${data.forecast_rows_affected || 0}</strong> forecast rows affected</p>
+                `,
+                confirmButtonColor: '#198754'
+            });
+
+            // Reset CPH tab
+            STATE.cph.modifiedCphRecords.clear();
+            STATE.cph.previewData = null;
+            STATE.cph.allPreviewRecords = [];
+            STATE.cph.filteredPreviewRecords = [];
+            DOM.cphUserNotesInput.val('');
+            DOM.cphNotesCharCount.text('0');
+
+            hideElement(DOM.cphPreviewContainer);
+            hideElement(DOM.cphActionsContainer);
+
+            // Reload CPH data
+            await loadCphData(month, year);
+
+            console.log('Edit View: CPH update successful');
+
+        } catch (error) {
+            console.error('Edit View: Error submitting CPH update', error);
+
+            // Show detailed error message
+            showErrorDialog(
+                'CPH Update Failed',
+                'The CPH update could not be completed. Please review the error details and try again.',
+                `Error: ${error.message}`
+            );
+
+        } finally {
+            STATE.isSubmitting = false;
+        }
+    }
+
+    function handleCphNotesInput(e) {
+        const input = $(e.target);
+        const charCount = input.val().length;
+        const maxLength = CONFIG.settings.maxUserNotesLength;
+
+        DOM.cphNotesCharCount.text(charCount);
+
+        if (charCount > maxLength) {
+            input.val(input.val().substring(0, maxLength));
+            DOM.cphNotesCharCount.text(maxLength);
+        }
     }
 
     // ============================================================================

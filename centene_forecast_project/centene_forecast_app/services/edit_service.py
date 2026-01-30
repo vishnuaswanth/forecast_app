@@ -111,6 +111,42 @@ class EditViewService:
             raise
 
     @staticmethod
+    def _transform_records_for_api(records: list) -> list:
+        """
+        Transform records for API submission by wrapping month data in a 'months' object.
+        The backend expects month-wise data to be nested under a 'months' key.
+
+        Args:
+            records: List of record objects with month keys at top level
+
+        Returns:
+            Transformed records with month data wrapped in 'months' object
+        """
+        import re
+        month_pattern = re.compile(r'^[A-Z][a-z]{2}-\d{2}$')  # e.g., "Jun-25"
+
+        transformed = []
+        for record in records:
+            new_record = {
+                'main_lob': record.get('main_lob'),
+                'state': record.get('state'),
+                'case_type': record.get('case_type'),
+                'case_id': record.get('case_id'),
+                'target_cph': record.get('target_cph'),
+                '_modified_fields': record.get('_modified_fields', []),
+                'months': {}
+            }
+
+            # Move month keys into months object
+            for key, value in record.items():
+                if month_pattern.match(key):
+                    new_record['months'][key] = value
+
+            transformed.append(new_record)
+
+        return transformed
+
+    @staticmethod
     def submit_bench_allocation_update(
         month: str,
         year: int,
@@ -122,9 +158,10 @@ class EditViewService:
 
         This method orchestrates the update process:
         1. Validates that records exist
-        2. Calls backend API to save changes
-        3. Creates history log entry
-        4. Returns success/failure response
+        2. Transforms records to API format (wraps month data in 'months' object)
+        3. Calls backend API to save changes
+        4. Creates history log entry
+        5. Returns success/failure response
 
         Args:
             month: Month name (e.g., 'April')
@@ -158,11 +195,16 @@ class EditViewService:
         )
 
         try:
+            # Transform records to API format
+            transformed_records = EditViewService._transform_records_for_api(
+                modified_records
+            )
+
             client = get_api_client()
             response = client.update_bench_allocation(
                 month,
                 year,
-                modified_records,
+                transformed_records,
                 user_notes or ''
             )
 
