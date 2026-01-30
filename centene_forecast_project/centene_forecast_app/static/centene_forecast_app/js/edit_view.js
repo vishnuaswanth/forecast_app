@@ -371,12 +371,16 @@
     }
 
     function extractMonthsFromRecord(record) {
-        // Assuming structure: record has _modified_fields and month keys
-        // Example: record["Jun-25"] = {forecast: 12500, fte_req: 10.5, ...}
+        // Handles both formats:
+        // 1. Months at top level: record["Jun-25"] = {forecast: 12500, ...}
+        // 2. Months nested: record.months = {"Jun-25": {forecast: 12500, ...}}
         const months = [];
         const monthPattern = /^[A-Z][a-z]{2}-\d{2}$/; // e.g., "Jun-25"
 
-        for (const key in record) {
+        // Check if months are nested under 'months' key
+        const source = record.months && typeof record.months === 'object' ? record.months : record;
+
+        for (const key in source) {
             if (monthPattern.test(key)) {
                 months.push(key);
             }
@@ -445,9 +449,10 @@
             const cphClass = targetCPHModified ? 'edit-view-modified-cell' : '';
             tr.append(`<td class="${cphClass}">${formatNumber(record.target_cph)}</td>`);
 
-            // Month columns
+            // Month columns - handle both formats (top-level or nested under 'months')
+            const monthsSource = record.months && typeof record.months === 'object' ? record.months : record;
             months.forEach(month => {
-                const monthData = record[month] || {};
+                const monthData = monthsSource[month] || {};
 
                 // Forecast
                 const forecastModified = modifiedFields.includes(`${month}.forecast`);
