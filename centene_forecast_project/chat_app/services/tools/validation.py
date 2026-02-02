@@ -3,7 +3,7 @@ Pydantic Models for Chat App LLM Service
 Validation models for intent classification, forecast queries, and conversation context.
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime
 from enum import Enum
 import re
@@ -219,7 +219,7 @@ class ConversationContext(BaseModel):
     )
 
     # ===== USER PREFERENCES =====
-    user_preferences: Dict[str, any] = Field(
+    user_preferences: Dict[str, Any] = Field(
         default_factory=lambda: {
             'show_totals_only': False,
             'max_preview_records': 5,
@@ -229,11 +229,11 @@ class ConversationContext(BaseModel):
     )
 
     # ===== QUERY HISTORY =====
-    last_successful_query: Optional[Dict[str, any]] = Field(
+    last_successful_query: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Last successful query parameters for repeat functionality"
     )
-    pending_clarification: Optional[Dict[str, any]] = Field(
+    pending_clarification: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Pending clarification details when waiting for user input"
     )
@@ -243,7 +243,7 @@ class ConversationContext(BaseModel):
     # PERSISTENCE RULES:
     # - Keep until: report_type changes, OR different record is selected, OR CPH change on different record
     # - Clear when: switching from forecast to roster (or vice versa)
-    selected_forecast_row: Optional[Dict[str, any]] = Field(
+    selected_forecast_row: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Currently selected forecast row. Persists until report type changes or different row selected."
     )
@@ -468,7 +468,7 @@ class PreprocessedMessage(BaseModel):
         ge=0.0, le=1.0,
         description="Confidence in parsing quality"
     )
-    implicit_info: Dict[str, any] = Field(
+    implicit_info: Dict[str, Any] = Field(
         default_factory=dict,
         description="Implicit information detected (uses_previous_context, operation, reset_filter)"
     )
