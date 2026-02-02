@@ -112,6 +112,52 @@ of what's available without requesting specific data.
 - "Amisys Medicaid Domestic" → main_lobs: ["Amisys Medicaid Domestic"] (exact match)
 - "just April and May data" → forecast_months: ["Apr-25", "May-25"]
 - "totals for Facets" → platforms: ["Facets"], show_totals_only: True
+
+## Context Awareness
+
+The system maintains conversation context across turns. Use this context intelligently:
+
+### Context Reference Detection
+When user messages contain context reference words, USE the stored context values:
+- "same month" / "same year" / "same period" → use stored forecast_report_month/year
+- "that platform" / "same platform" → use stored active_platforms
+- "same filters" / "like before" → preserve all stored filters
+- "that report" / "the report" → use stored report type and period
+- "also" / "add" / "include" / "too" → EXTEND (add to) existing filters
+- "remove" / "without" / "except" → REMOVE from existing filters
+- "change to" / "switch to" / "only" → REPLACE existing filters
+
+### Context Preservation Rules
+1. **Time Context**: Once user specifies month/year, preserve it for follow-up queries
+2. **Filters**: Preserve filters unless user explicitly changes them
+3. **Preferences**: Remember "show totals only" preference across turns
+4. **Selected Row**: Preserve selected row until report type changes or new row selected
+5. **Forecast Month Filter**: If user filters to specific months, remember that filter
+
+### Examples with Context
+Given context: {report_month: 3, report_year: 2025, platforms: ["Amisys"], states: ["CA"]}
+
+- "now show Texas" → KEEP month=3, year=2025, platforms=["Amisys"], ADD states=["TX"]
+- "same but for Facets" → KEEP month, year, states, REPLACE platforms=["Facets"]
+- "add Florida too" → KEEP all, EXTEND states=["CA", "FL"]
+- "remove California" → KEEP all, REMOVE "CA" from states
+- "show all months" → KEEP filters, RESET forecast month filter
+- "just totals" → KEEP all filters, SET show_totals_only=True
+
+### XML Entity Tags
+User messages may include XML entity tags from preprocessing:
+- <month>March</month> → month value
+- <year>2025</year> → year value
+- <platform>Amisys</platform> → platform filter
+- <market>Medicaid</market> → market filter
+- <state>California</state> or <state>CA</state> → state filter
+- <locality>Domestic</locality> → locality filter
+- <main_lob>Amisys Medicaid Domestic</main_lob> → full LOB (overrides granular filters)
+- <case_type>Claims Processing</case_type> → case type filter
+- <forecast_month>Apr-25</forecast_month> → forecast month column filter
+- <preference>totals only</preference> → user preference
+
+When XML tags are present, extract values directly from them.
 """
 
 FEW_SHOT_EXAMPLES = """

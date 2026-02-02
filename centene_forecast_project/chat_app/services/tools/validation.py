@@ -164,34 +164,107 @@ class ConversationContext(BaseModel):
     Tracks conversation state across turns.
 
     Stores entities, filters, and cached data to enable context-aware responses.
+    Enhanced with comprehensive entity tracking for memory management.
     """
     conversation_id: str
 
-    # Stored entities
-    current_forecast_month: Optional[int] = None
-    current_forecast_year: Optional[int] = None
+    # ===== REPORT TYPE TRACKING =====
+    active_report_type: Optional[str] = Field(
+        default=None,
+        description="Current report type: 'forecast' or 'roster'"
+    )
+
+    # ===== TIME PERIOD (Report month/year, not calendar) =====
+    # Renamed from current_forecast_month/year for clarity
+    forecast_report_month: Optional[int] = Field(
+        default=None,
+        ge=1, le=12,
+        description="The report's period month (e.g., 3 for March report)"
+    )
+    forecast_report_year: Optional[int] = Field(
+        default=None,
+        ge=2020, le=2100,
+        description="The report's year (e.g., 2025)"
+    )
+
+    # Legacy field names for backward compatibility
+    current_forecast_month: Optional[int] = Field(default=None, description="Deprecated: use forecast_report_month")
+    current_forecast_year: Optional[int] = Field(default=None, description="Deprecated: use forecast_report_year")
     current_roster_month: Optional[int] = None
     current_roster_year: Optional[int] = None
 
-    # Active filters (from last query)
+    # ===== ALL FORECAST FILTERS =====
+    # Note: main_lobs overrides platforms/markets/localities per API precedence
+    active_main_lobs: Optional[List[str]] = Field(
+        default=None,
+        description="Full LOB strings like 'Amisys Medicaid Domestic'. Overrides platform/market/locality."
+    )
     active_platforms: List[str] = Field(default_factory=list)
     active_markets: List[str] = Field(default_factory=list)
     active_localities: List[str] = Field(default_factory=list)
     active_states: List[str] = Field(default_factory=list)
+    active_case_types: List[str] = Field(
+        default_factory=list,
+        description="Work types: Claims Processing, Enrollment, etc."
+    )
 
-    # Selected records
+    # ===== FORECAST MONTH COLUMNS (6-month rolling forecast) =====
+    forecast_months: Optional[Dict[int, str]] = Field(
+        default=None,
+        description="Available forecast month columns from report. Populated after data fetch. Format: {0: 'Apr-25', 1: 'May-25', ...}"
+    )
+    active_forecast_months: Optional[List[str]] = Field(
+        default=None,
+        description="Which forecast months to filter. None = show all 6 months. Format: ['Apr-25', 'May-25']"
+    )
+
+    # ===== USER PREFERENCES =====
+    user_preferences: Dict[str, any] = Field(
+        default_factory=lambda: {
+            'show_totals_only': False,
+            'max_preview_records': 5,
+            'auto_apply_last_filters': True,
+        },
+        description="User display preferences"
+    )
+
+    # ===== QUERY HISTORY =====
+    last_successful_query: Optional[Dict[str, any]] = Field(
+        default=None,
+        description="Last successful query parameters for repeat functionality"
+    )
+    pending_clarification: Optional[Dict[str, any]] = Field(
+        default=None,
+        description="Pending clarification details when waiting for user input"
+    )
+
+    # ===== SELECTED ROW PERSISTENCE =====
+    # The currently selected forecast row for FTE/CPH operations
+    # PERSISTENCE RULES:
+    # - Keep until: report_type changes, OR different record is selected, OR CPH change on different record
+    # - Clear when: switching from forecast to roster (or vice versa)
+    selected_forecast_row: Optional[Dict[str, any]] = Field(
+        default=None,
+        description="Currently selected forecast row. Persists until report type changes or different row selected."
+    )
+    selected_row_key: Optional[str] = Field(
+        default=None,
+        description="Unique key for selected row: 'main_lob|state|case_type'"
+    )
+
+    # Legacy field for backward compatibility
+    selected_row: Optional[dict] = Field(
+        default=None,
+        description="Deprecated: use selected_forecast_row"
+    )
+
+    # ===== SELECTED RECORDS =====
     selected_forecast_records: List[str] = Field(
         default_factory=list,
         description="Record IDs selected by user"
     )
 
-    # Selected row from forecast modal (for FTE/CPH operations)
-    selected_row: Optional[dict] = Field(
-        default=None,
-        description="Currently selected forecast row data for operations"
-    )
-
-    # Cached data
+    # ===== CACHED DATA =====
     last_forecast_data: Optional[dict] = Field(
         default=None,
         description="Last fetched forecast data response"
@@ -207,7 +280,7 @@ class ConversationContext(BaseModel):
         description="Configuration for current report (working_days, work_hours, shrinkage by month and locality)"
     )
 
-    # Metadata
+    # ===== METADATA =====
     last_updated: datetime = Field(default_factory=datetime.now)
     turn_count: int = Field(default=0, description="Number of conversation turns")
 
@@ -216,6 +289,205 @@ class ConversationContext(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
+
+    # ===== HELPER METHODS =====
+
+    def should_clear_selected_row(
+        self,
+        new_report_type: Optional[str] = None,
+        new_row_key: Optional[str] = None
+    ) -> bool:
+        """
+        Determine if selected_forecast_row should be cleared.
+
+        Clear when:
+        1. Report type changes (forecast → roster or vice versa)
+        2. A different row is being selected (new_row_key != current)
+        3. CPH change is for a different row
+
+        Keep when:
+        1. Same report type, no new selection
+        2. Follow-up questions about the same row
+        3. FTE details for same row
+        """
+        # Rule 1: Report type change
+        if new_report_type and new_report_type != self.active_report_type:
+            return True
+
+        # Rule 2: Different row selected
+        if new_row_key and new_row_key != self.selected_row_key:
+            return True
+
+        return False
+
+    def update_selected_row(self, row_data: dict):
+        """
+        Update selected row with proper key generation.
+        """
+        self.selected_forecast_row = row_data
+        self.selected_row_key = f"{row_data.get('main_lob')}|{row_data.get('state')}|{row_data.get('case_type')}"
+        # Also update legacy field
+        self.selected_row = row_data
+
+    def clear_selected_row(self):
+        """Clear selected row when appropriate."""
+        self.selected_forecast_row = None
+        self.selected_row_key = None
+        self.selected_row = None
+
+    def should_apply_forecast_month_filter(self) -> bool:
+        """
+        Determine if forecast month filter should be applied.
+
+        Returns False (no filter) if:
+        - active_forecast_months is None (initial state)
+        - All 6 months are in active_forecast_months
+
+        Returns True (apply filter) if:
+        - active_forecast_months has fewer than 6 months
+        """
+        if self.active_forecast_months is None:
+            return False  # No filter - show all months
+
+        if self.forecast_months is None:
+            return False  # Can't filter without knowing available months
+
+        # If all 6 months are active, no need to filter
+        all_months = set(self.forecast_months.values())
+        active_months = set(self.active_forecast_months)
+
+        return active_months != all_months and len(active_months) < len(all_months)
+
+    def get_forecast_month_filter(self) -> Optional[List[str]]:
+        """
+        Get the filter to apply for forecast months.
+
+        Returns None if no filter should be applied.
+        Returns list of month names to include if filter should be applied.
+        """
+        if not self.should_apply_forecast_month_filter():
+            return None
+        return self.active_forecast_months
+
+    def get_context_summary_for_llm(self) -> str:
+        """
+        Generate compact context string for LLM prompts.
+
+        Returns a readable summary of current context state.
+        """
+        parts = []
+
+        # Report type
+        if self.active_report_type:
+            parts.append(f"Report: {self.active_report_type.title()}")
+
+        # Period
+        if self.forecast_report_month and self.forecast_report_year:
+            import calendar
+            month_name = calendar.month_name[self.forecast_report_month]
+            parts.append(f"Period: {month_name} {self.forecast_report_year}")
+        elif self.current_forecast_month and self.current_forecast_year:
+            # Fallback to legacy fields
+            import calendar
+            month_name = calendar.month_name[self.current_forecast_month]
+            parts.append(f"Period: {month_name} {self.current_forecast_year}")
+
+        # Filters (with main_lobs precedence)
+        if self.active_main_lobs:
+            parts.append(f"LOBs: {', '.join(self.active_main_lobs[:3])}")
+        else:
+            if self.active_platforms:
+                parts.append(f"Platforms: {', '.join(self.active_platforms[:3])}")
+            if self.active_markets:
+                parts.append(f"Markets: {', '.join(self.active_markets[:3])}")
+            if self.active_localities:
+                parts.append(f"Localities: {', '.join(self.active_localities[:3])}")
+
+        if self.active_states:
+            parts.append(f"States: {', '.join(self.active_states[:5])}")
+
+        if self.active_case_types:
+            parts.append(f"Case Types: {', '.join(self.active_case_types[:3])}")
+
+        # Forecast month filter
+        if self.should_apply_forecast_month_filter():
+            parts.append(f"Month Filter: {', '.join(self.active_forecast_months)}")
+
+        # Preferences
+        if self.user_preferences.get('show_totals_only'):
+            parts.append("Display: Totals Only")
+
+        # Selected row
+        if self.selected_row_key:
+            parts.append(f"Selected: {self.selected_row_key}")
+
+        return " | ".join(parts) if parts else "No context set"
+
+    def sync_legacy_fields(self):
+        """
+        Sync new fields with legacy fields for backward compatibility.
+        Call this after updating either set of fields.
+        """
+        # Sync forecast month/year
+        if self.forecast_report_month and not self.current_forecast_month:
+            self.current_forecast_month = self.forecast_report_month
+        elif self.current_forecast_month and not self.forecast_report_month:
+            self.forecast_report_month = self.current_forecast_month
+
+        if self.forecast_report_year and not self.current_forecast_year:
+            self.current_forecast_year = self.forecast_report_year
+        elif self.current_forecast_year and not self.forecast_report_year:
+            self.forecast_report_year = self.current_forecast_year
+
+        # Sync selected row
+        if self.selected_forecast_row and not self.selected_row:
+            self.selected_row = self.selected_forecast_row
+        elif self.selected_row and not self.selected_forecast_row:
+            self.selected_forecast_row = self.selected_row
+
+
+class PreprocessedMessage(BaseModel):
+    """
+    Result of message preprocessing pipeline.
+
+    Contains normalized text, XML-tagged text, and extracted entities.
+    """
+    original: str = Field(description="Original user input")
+    normalized_text: str = Field(description="Clean, corrected text")
+    tagged_text: str = Field(description="Text with XML entity tags")
+    extracted_entities: Dict[str, List[str]] = Field(
+        default_factory=dict,
+        description="Extracted entities by type: {entity_type: [values]}"
+    )
+    corrections_made: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="List of corrections: [{original: ..., corrected: ...}]"
+    )
+    parsing_confidence: float = Field(
+        default=0.5,
+        ge=0.0, le=1.0,
+        description="Confidence in parsing quality"
+    )
+    implicit_info: Dict[str, any] = Field(
+        default_factory=dict,
+        description="Implicit information detected (uses_previous_context, operation, reset_filter)"
+    )
+
+    def has_time_context(self) -> bool:
+        """Check if month and year were extracted."""
+        return bool(
+            self.extracted_entities.get('month') and
+            self.extracted_entities.get('year')
+        )
+
+    def has_filters(self) -> bool:
+        """Check if any filter entities were extracted."""
+        filter_types = ['platforms', 'markets', 'localities', 'states', 'case_types', 'main_lobs']
+        return any(self.extracted_entities.get(ft) for ft in filter_types)
+
+    def uses_previous_context(self) -> bool:
+        """Check if message references previous context."""
+        return self.implicit_info.get('uses_previous_context', False)
 
 
 class FilterValidationSummary(BaseModel):

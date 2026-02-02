@@ -35,8 +35,8 @@ from centene_forecast_app.serializers.edit_serializers import (
     serialize_history_log_response,
     serialize_error_response
 )
-from config import EditViewConfig
-from repository import get_api_client
+from core.config import EditViewConfig
+from centene_forecast_app.repository import get_api_client
 
 logger = logging.getLogger('django')
 

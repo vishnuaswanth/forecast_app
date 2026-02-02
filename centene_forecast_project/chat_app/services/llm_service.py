@@ -152,20 +152,58 @@ class LLMService:
                 selected_row=selected_row
             )
 
+        # Build comprehensive context dictionary for LLM
+        # Include all context fields for context-aware responses
+        context_dict = {
+            # Report type
+            'report_type': context.active_report_type,
+
+            # Time period (prefer new fields, fall back to legacy)
+            'report_month': context.forecast_report_month or context.current_forecast_month,
+            'report_year': context.forecast_report_year or context.current_forecast_year,
+
+            # Filters (with main_lobs precedence)
+            'main_lobs': context.active_main_lobs,
+            'platforms': context.active_platforms if not context.active_main_lobs else None,
+            'markets': context.active_markets if not context.active_main_lobs else None,
+            'localities': context.active_localities if not context.active_main_lobs else None,
+            'states': context.active_states,
+            'case_types': context.active_case_types,
+
+            # Forecast month columns
+            'forecast_months': context.forecast_months,  # {0: "Apr-25", 1: "May-25", ...}
+            'active_forecast_months': context.active_forecast_months,  # Which months to show
+            'forecast_month_filter_active': context.should_apply_forecast_month_filter(),
+
+            # Preferences
+            'show_totals_only': context.user_preferences.get('show_totals_only', False),
+
+            # Selected row
+            'selected_row_key': context.selected_row_key,
+
+            # Full context summary
+            'context_summary': context.get_context_summary_for_llm(),
+        }
+
         # Format input into clear, compact prompt
         from chat_app.utils.input_sanitizer import get_sanitizer
         sanitizer = get_sanitizer()
 
-        # Build context dictionary for formatting
-        context_dict = {
-            'current_forecast_month': context.current_forecast_month,
-            'current_forecast_year': context.current_forecast_year,
+        # Build legacy format dict for backward compatibility with format_for_llm
+        legacy_context = {
+            'current_forecast_month': context_dict['report_month'],
+            'current_forecast_year': context_dict['report_year'],
             'last_platform': context.active_platforms[0] if context.active_platforms else None,
             'last_market': context.active_markets[0] if context.active_markets else None,
         }
 
         # Format prompt: clear separation of context and user query
-        formatted_prompt = sanitizer.format_for_llm(user_text, context_dict)
+        formatted_prompt = sanitizer.format_for_llm(user_text, legacy_context)
+
+        # Append comprehensive context summary for better LLM understanding
+        if context_dict['context_summary'] and context_dict['context_summary'] != "No context set":
+            formatted_prompt += f"\nActive Context: {context_dict['context_summary']}"
+
         logger.debug(f"[LLM Service] Formatted prompt: {formatted_prompt}")
 
         # Build system prompt with selected row context
@@ -361,38 +399,68 @@ class LLMService:
 
         if classification.category == IntentCategory.GET_FORECAST_DATA:
             # Use structured output with ForecastQueryParams
-            # Build compact context
-            context_parts = []
-            if context.current_forecast_month:
-                month_name = calendar.month_name[context.current_forecast_month]
-                context_parts.append(f"Last: {month_name} {context.current_forecast_year or ''}")
-            if context.active_platforms:
-                context_parts.append(f"Platforms: {', '.join(context.active_platforms[:3])}")
-            if context.active_markets:
-                context_parts.append(f"Markets: {', '.join(context.active_markets[:3])}")
+            # Build comprehensive context summary
+            context_summary = context.get_context_summary_for_llm()
 
-            context_str = " | ".join(context_parts) if context_parts else "No previous filters"
+            # Build context parts for backward compatibility
+            context_parts = []
+            report_month = context.forecast_report_month or context.current_forecast_month
+            report_year = context.forecast_report_year or context.current_forecast_year
+
+            if report_month:
+                month_name = calendar.month_name[report_month]
+                context_parts.append(f"Period: {month_name} {report_year or ''}")
+
+            if context.active_main_lobs:
+                context_parts.append(f"LOBs: {', '.join(context.active_main_lobs[:3])}")
+            else:
+                if context.active_platforms:
+                    context_parts.append(f"Platforms: {', '.join(context.active_platforms[:3])}")
+                if context.active_markets:
+                    context_parts.append(f"Markets: {', '.join(context.active_markets[:3])}")
+                if context.active_localities:
+                    context_parts.append(f"Localities: {', '.join(context.active_localities[:3])}")
+
+            if context.active_states:
+                context_parts.append(f"States: {', '.join(context.active_states[:5])}")
+            if context.active_case_types:
+                context_parts.append(f"Case Types: {', '.join(context.active_case_types[:3])}")
+
+            if context.should_apply_forecast_month_filter():
+                context_parts.append(f"Month Filter: {', '.join(context.active_forecast_months)}")
+
+            if context.user_preferences.get('show_totals_only'):
+                context_parts.append("Display: Totals Only")
+
+            context_str = " | ".join(context_parts) if context_parts else "No previous context"
 
             # Compact extraction prompt - preserves all parameters
             extraction_prompt = f"""
 Query: {user_text}
-Context: {context_str}
+Active Context: {context_str}
 
-Extract: month (1-12), year, platforms[], markets[], localities[], states[], case_types[], forecast_months[]
-Rules:
-- CRITICAL: If user did NOT specify a month or year, set them to null. Do NOT guess or assume values.
-- Only extract values that are EXPLICITLY stated in the query
-- Use context ONLY if user says "same month", "that year", or similar references
-- If query is vague like "get forecast data" without month/year, set month=null and year=null
+Extract: month (1-12), year, platforms[], markets[], localities[], main_lobs[], states[], case_types[], forecast_months[]
+
+Context-Aware Rules:
+- If user says "same month", "that platform", "like before" → USE values from Active Context
+- If query references context ("that report", "same filters") → preserve context values
+- If user EXPLICITLY specifies new values → use those instead
+- If user did NOT specify month/year and context has them AND user uses context reference words → use context values
+- If query is vague WITHOUT context references → set month=null, year=null
+
+Standard Rules:
 - Multi-values → lists: "CA and TX" → ["CA", "TX"]
 - Month names → numbers: "March" → 3
 - "totals only" → show_totals_only=True
+- main_lobs (e.g., "Amisys Medicaid Domestic") → overrides platform/market/locality
 - Preserve exact case type names: "Claims Processing", "Enrollment"
 
-Examples of null extraction:
-- "get forecast data" → month=null, year=null (user didn't specify)
-- "show me forecast records" → month=null, year=null (user didn't specify)
-- "show March 2025 data" → month=3, year=2025 (user specified both)
+Examples:
+- "get forecast data" → month=null, year=null (no context reference)
+- "same month but for Texas" → use context month/year, add states=["TX"]
+- "show March 2025 data" → month=3, year=2025 (explicit)
+- "also include California" → add "CA" to existing states (extend operation)
+- "just April and May columns" → forecast_months=["Apr-25", "May-25"]
 """
 
             param_llm = self.llm.with_structured_output(ForecastQueryParams)
@@ -401,18 +469,18 @@ Examples of null extraction:
                 params = await param_llm.ainvoke([HumanMessage(content=extraction_prompt)])
                 duration_ms = (time.time() - start_time) * 1000
 
-                logger.info(f"[LLM Service] Extracted parameters: {params.dict()}")
+                logger.info(f"[LLM Service] Extracted parameters: {params.model_dump()}")
 
                 # Log parameter extraction
                 llm_logger.log_parameter_extraction(
                     correlation_id=correlation_id,
-                    params=params.dict(),
+                    params=params.model_dump(),
                     source='llm',
                     duration_ms=duration_ms
                 )
 
                 # Check if required fields are missing - flag for clarification
-                params_dict = params.dict()
+                params_dict = params.model_dump()
                 if params.is_missing_required():
                     params_dict['_missing_required'] = params.get_missing_fields()
                     logger.info(f"[LLM Service] Missing required fields: {params_dict['_missing_required']}")
@@ -789,7 +857,7 @@ Be specific about what's needed.
                     params
                 ),
                 'metadata': {
-                    'validation_summary': validation_summary.dict(),
+                    'validation_summary': validation_summary.model_dump(),
                     'requires_confirmation': True,
                     'correlation_id': correlation_id
                 }
@@ -833,21 +901,37 @@ Be specific about what's needed.
             }
 
         # Cache data in context (including report configuration for CPH calculations)
+        # Also store forecast_months from API response for filtering
         report_config = data.get('configuration', None)
+        months_from_api = data.get('months', {})  # {0: "Apr-25", 1: "May-25", ...}
+
         await self.context_manager.update_entities(
             conversation_id,
+            # Report type and data
+            active_report_type='forecast',
             last_forecast_data=data,
+            # Time period (both new and legacy fields)
+            forecast_report_month=params.month,
+            forecast_report_year=params.year,
             current_forecast_month=params.month,
             current_forecast_year=params.year,
+            # Filters
+            active_main_lobs=params.main_lobs or None,
             active_platforms=params.platforms or [],
             active_markets=params.markets or [],
             active_localities=params.localities or [],
             active_states=params.states or [],
+            active_case_types=params.case_types or [],
+            # Forecast months from response (for filtering options)
+            forecast_months=months_from_api,
+            # Report configuration
             report_configuration=report_config
         )
 
         if report_config:
             logger.debug(f"[LLM Service] Stored report configuration in context: {list(report_config.keys()) if isinstance(report_config, dict) else 'N/A'}")
+        if months_from_api:
+            logger.debug(f"[LLM Service] Stored forecast months: {list(months_from_api.values())}")
 
         # Check if we got 0 records - trigger combination diagnosis (NEW)
         if len(data.get('records', [])) == 0:
@@ -902,7 +986,7 @@ Be specific about what's needed.
                             'problematic_filters': diagnosis_result.problematic_filters,
                             'total_records_available': diagnosis_result.total_records_available
                         },
-                        'validation_summary': validation_summary.dict(),
+                        'validation_summary': validation_summary.model_dump(),
                         'correlation_id': correlation_id
                     }
                 }
@@ -917,20 +1001,34 @@ Be specific about what's needed.
                     'message': 'No data found - suggestions provided',
                     'data': data,
                     'ui_component': ui_html,
-                    'metadata': {'validation_summary': validation_summary.dict()}
+                    'metadata': {'validation_summary': validation_summary.model_dump()}
                 }
 
         # Cache data in context (including report configuration for CPH calculations)
+        # Note: This is a second update point - first is after initial fetch
         await self.context_manager.update_entities(
             conversation_id,
+            # Report type and data
+            active_report_type='forecast',
             last_forecast_data=data,
+            # Time period
+            forecast_report_month=params.month,
+            forecast_report_year=params.year,
             current_forecast_month=params.month,
             current_forecast_year=params.year,
+            # Filters
+            active_main_lobs=params.main_lobs or None,
             active_platforms=params.platforms or [],
             active_markets=params.markets or [],
             active_localities=params.localities or [],
             active_states=params.states or [],
-            report_configuration=data.get('configuration', None)
+            active_case_types=params.case_types or [],
+            # Forecast months from response
+            forecast_months=data.get('months', {}),
+            # Report configuration
+            report_configuration=data.get('configuration', None),
+            # Store last successful query for repeat functionality
+            last_successful_query=params.model_dump()
         )
 
         # Generate UI based on user preference
@@ -995,7 +1093,7 @@ Be specific about what's needed.
                 'record_count': record_count,
                 'months_included': list(data.get('months', {}).values()),
                 'filters_applied': data.get('filters_applied', {}),
-                'validation_summary': validation_summary.dict(),
+                'validation_summary': validation_summary.model_dump(),
                 'correlation_id': correlation_id
             }
         }

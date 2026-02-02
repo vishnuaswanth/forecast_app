@@ -1,6 +1,8 @@
 """
 Chat Service - Orchestrates chat interactions between user, LLM, and tools.
 Handles message processing, tool execution, and UI generation.
+
+Enhanced with message preprocessing pipeline for entity extraction and context management.
 """
 import logging
 import time
@@ -13,6 +15,7 @@ from chat_app.utils.llm_logger import (
     create_correlation_id,
     CorrelationContext
 )
+from chat_app.utils.context_manager import get_context_manager
 
 logger = logging.getLogger(__name__)
 llm_logger = get_llm_logger()
@@ -141,16 +144,58 @@ class ChatService:
                         'metadata': {'error': 'empty_after_sanitization', 'correlation_id': correlation_id}
                     }
 
-                # STEP 2: Get recent message history for context
+                # STEP 2: Preprocess message (normalize, spell-correct, entity tag)
+                from chat_app.services.message_preprocessor import get_preprocessor
+
+                # Get preprocessor (with LLM if available for entity tagging)
+                preprocessor = get_preprocessor(llm=self.llm_service.llm if hasattr(self.llm_service, 'llm') else None)
+                preprocessed = await preprocessor.preprocess(sanitized_text)
+
+                logger.info(
+                    f"[Chat Service] Preprocessed - entities: {list(preprocessed.extracted_entities.keys())}, "
+                    f"confidence: {preprocessed.parsing_confidence:.2f}"
+                )
+
+                # STEP 3: Update context store with extracted entities
+                context_manager = get_context_manager()
+                await context_manager.update_from_preprocessed(conversation_id, preprocessed)
+
+                # Log preprocessing results
+                llm_logger._log(
+                    logging.DEBUG,
+                    'message_preprocessed',
+                    {
+                        'correlation_id': correlation_id,
+                        'entities_extracted': list(preprocessed.extracted_entities.keys()),
+                        'corrections_made': len(preprocessed.corrections_made),
+                        'confidence': preprocessed.parsing_confidence,
+                        'uses_previous_context': preprocessed.uses_previous_context()
+                    }
+                )
+
+                # STEP 4: Get recent message history for context
                 message_history = await self._get_message_history(conversation_id, limit=10)
 
-                # STEP 3: Categorize user intent with LLM (with sanitized input)
+                # STEP 5: Categorize user intent with LLM (with preprocessed input)
+                # Pass the tagged text if available for better LLM understanding
+                llm_input_text = preprocessed.tagged_text if preprocessed.tagged_text else sanitized_text
+
                 result = await self.llm_service.categorize_intent(
-                    user_text=sanitized_text,  # Sanitized input
+                    user_text=llm_input_text,  # Use tagged/preprocessed text
                     conversation_id=conversation_id,
                     message_history=message_history,
                     selected_row=selected_row  # Pass selected row context
                 )
+
+                # Add preprocessing metadata to result
+                if 'metadata' not in result:
+                    result['metadata'] = {}
+                result['metadata']['preprocessing'] = {
+                    'entities_extracted': list(preprocessed.extracted_entities.keys()),
+                    'corrections_made': preprocessed.corrections_made,
+                    'parsing_confidence': preprocessed.parsing_confidence,
+                    'uses_previous_context': preprocessed.uses_previous_context()
+                }
 
                 category = result.get('category')
                 confidence = result.get('confidence')
