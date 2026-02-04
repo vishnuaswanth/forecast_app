@@ -1,10 +1,13 @@
 """
 UI Generation Tools
 Functions for generating HTML tables and UI components for forecast data.
+
+All user-facing content is HTML-escaped to prevent XSS vulnerabilities.
 """
+import html as html_module
 import logging
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -430,32 +433,111 @@ def generate_confirmation_ui(category: str, params: dict) -> str:
     '''
 
 
-def generate_error_ui(error_message: str) -> str:
+def generate_error_ui(
+    error_message: str,
+    error_type: str = "unknown",
+    admin_contact: bool = False,
+    error_code: str = None
+) -> str:
     """
-    Generate error alert HTML.
+    Generate error alert HTML with proper XSS protection.
+
+    Supports both simple error messages and structured error cards.
 
     Args:
-        error_message: Error message to display
+        error_message: Error message to display (will be HTML-escaped)
+        error_type: Type of error ('llm', 'api', 'validation', 'context', 'unknown')
+        admin_contact: Whether to show "contact admin" guidance
+        error_code: Optional error code to display
 
     Returns:
-        HTML string for error alert
+        HTML string for error alert/card
     """
-    logger.warning(f"[UI Tools] Generated error UI: {error_message}")
-    return f'<div class="alert alert-danger">Error: {error_message}</div>'
+    # HTML-escape the message to prevent XSS
+    safe_message = html_module.escape(str(error_message))
+
+    logger.warning(f"[UI Tools] Generated error UI: {error_message[:100]}...")
+
+    # For simple errors (backward compatibility), use simple alert
+    if error_type == "unknown" and not admin_contact and not error_code:
+        return f'<div class="alert alert-danger" role="alert"><strong>Error:</strong> {safe_message}</div>'
+
+    # For structured errors, use error card format
+    error_config = _get_error_ui_config(error_type)
+
+    # Build footer elements
+    footer_parts = []
+    if error_code:
+        safe_code = html_module.escape(str(error_code))
+        footer_parts.append(f'<span class="error-code">Error: {safe_code}</span>')
+    if admin_contact:
+        footer_parts.append('<span class="admin-contact">Please contact admin if this persists.</span>')
+
+    footer_html = ""
+    if footer_parts:
+        footer_html = f'''
+            <div class="error-footer mt-2">
+                <small class="text-muted">{" ".join(footer_parts)}</small>
+            </div>
+        '''
+
+    safe_error_type = html_module.escape(error_type)
+    return f'''
+    <div class="chat-error-card error-{safe_error_type}" role="alert">
+        <div class="d-flex align-items-start">
+            <div class="error-icon me-2">{error_config["icon"]}</div>
+            <div class="error-content flex-grow-1">
+                <strong class="error-title">{error_config["title"]}</strong>
+                <p class="error-message mb-1">{safe_message}</p>
+                {footer_html}
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def _get_error_ui_config(error_type: str) -> Dict[str, str]:
+    """Get icon and title configuration for error type."""
+    configs = {
+        "llm": {
+            "icon": "\u26a0\ufe0f",  # Warning sign emoji
+            "title": "AI Service Issue",
+        },
+        "api": {
+            "icon": "\u26a0\ufe0f",  # Warning sign emoji
+            "title": "Data Service Issue",
+        },
+        "validation": {
+            "icon": "\u2139\ufe0f",  # Info sign emoji
+            "title": "Invalid Input",
+        },
+        "context": {
+            "icon": "\u2139\ufe0f",  # Info sign emoji
+            "title": "Session Issue",
+        },
+        "unknown": {
+            "icon": "\u26a0\ufe0f",  # Warning sign emoji
+            "title": "Error",
+        },
+    }
+    return configs.get(error_type, configs["unknown"])
 
 
 def generate_clarification_ui(clarification_message: str) -> str:
     """
-    Generate clarification request HTML.
+    Generate clarification request HTML with XSS protection.
 
     Args:
-        clarification_message: Clarification message to display
+        clarification_message: Clarification message to display (will be HTML-escaped)
 
     Returns:
         HTML string for clarification alert
     """
+    # HTML-escape the message to prevent XSS
+    safe_message = html_module.escape(str(clarification_message))
+
     logger.info(f"[UI Tools] Generated clarification UI")
-    return f'<div class="alert alert-info">{clarification_message}</div>'
+    return f'<div class="alert alert-info" role="alert">{safe_message}</div>'
 
 
 def generate_validation_confirmation_ui(
@@ -570,7 +652,7 @@ def generate_combination_diagnostic_ui(
     total_records: int
 ) -> str:
     """
-    Generate UI for filter combination diagnosis.
+    Generate UI for filter combination diagnosis with XSS protection.
 
     Shows:
     - LLM-generated diagnosis explanation
@@ -578,45 +660,51 @@ def generate_combination_diagnostic_ui(
     - Suggestions for alternative queries
 
     Args:
-        diagnosis_message: LLM-generated diagnostic message
+        diagnosis_message: LLM-generated diagnostic message (will be HTML-escaped)
         working_combinations: Valid filter values for working combinations
         total_records: Total records available
 
     Returns:
         HTML string for diagnostic UI
     """
-    html = '<div class="alert alert-warning" role="alert">'
-    html += '<h6 class="alert-heading"><i class="bi bi-search"></i> No Records Found - Diagnosis</h6>'
+    # HTML-escape the diagnosis message
+    safe_message = html_module.escape(str(diagnosis_message))
 
-    # Diagnosis message
-    html += f'<p class="mb-2">{diagnosis_message}</p>'
+    result = '<div class="alert alert-warning" role="alert">'
+    result += '<h6 class="alert-heading"><i class="bi bi-search"></i> No Records Found - Diagnosis</h6>'
 
-    html += '<hr>'
+    # Diagnosis message (escaped)
+    result += f'<p class="mb-2">{safe_message}</p>'
 
-    # Working combinations
+    result += '<hr>'
+
+    # Working combinations (escape all values)
     if working_combinations:
-        html += '<div class="mt-2">'
-        html += '<strong>Available Options:</strong>'
-        html += '<ul class="mb-0 mt-1">'
+        result += '<div class="mt-2">'
+        result += '<strong>Available Options:</strong>'
+        result += '<ul class="mb-0 mt-1">'
 
         for filter_name, valid_values in working_combinations.items():
-            display_values = ', '.join(valid_values[:10])
+            # Escape filter name and values
+            safe_filter_name = html_module.escape(filter_name.replace("_", " ").title())
+            safe_values = [html_module.escape(str(v)) for v in valid_values[:10]]
+            display_values = ', '.join(safe_values)
             if len(valid_values) > 10:
                 display_values += f' (and {len(valid_values) - 10} more)'
 
-            html += f'<li><strong>{filter_name.replace("_", " ").title()}:</strong> {display_values}</li>'
+            result += f'<li><strong>{safe_filter_name}:</strong> {display_values}</li>'
 
-        html += '</ul></div>'
+        result += '</ul></div>'
 
-    # Statistics
-    html += '<div class="mt-3">'
-    html += '<small class="text-muted">'
-    html += f'<strong>Total records available:</strong> {total_records:,}<br>'
-    html += '<strong>Suggestion:</strong> Try removing one of the problematic filters or selecting a different value from the available options above.'
-    html += '</small>'
-    html += '</div>'
+    # Statistics (total_records is an int, safe to use directly)
+    result += '<div class="mt-3">'
+    result += '<small class="text-muted">'
+    result += f'<strong>Total records available:</strong> {total_records:,}<br>'
+    result += '<strong>Suggestion:</strong> Try removing one of the problematic filters or selecting a different value from the available options above.'
+    result += '</small>'
+    result += '</div>'
 
-    html += '</div>'
+    result += '</div>'
 
     logger.info("[UI Tools] Generated combination diagnostic UI")
-    return html
+    return result

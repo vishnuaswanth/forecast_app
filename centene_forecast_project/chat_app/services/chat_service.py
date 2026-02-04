@@ -3,6 +3,12 @@ Chat Service - Orchestrates chat interactions between user, LLM, and tools.
 Handles message processing, tool execution, and UI generation.
 
 Enhanced with message preprocessing pipeline for entity extraction and context management.
+
+Error Handling:
+- All exceptions are caught at the orchestration level
+- Errors are converted to appropriate ChatAppError subclasses
+- Safe, user-friendly error responses are always returned
+- All errors are logged with correlation IDs for tracing
 """
 import logging
 import time
@@ -16,6 +22,20 @@ from chat_app.utils.llm_logger import (
     CorrelationContext
 )
 from chat_app.utils.context_manager import get_context_manager
+from chat_app.exceptions import (
+    ChatAppError,
+    LLMError,
+    APIError,
+    APIServerError,
+    APIClientError,
+    ValidationError,
+    ContextError,
+)
+from chat_app.utils.error_handler import (
+    create_error_response,
+    generate_error_ui,
+    log_error,
+)
 
 logger = logging.getLogger(__name__)
 llm_logger = get_llm_logger()
@@ -226,11 +246,165 @@ class ChatService:
                     'metadata': result_metadata
                 }
 
-            except Exception as e:
-                logger.error(f"[Chat Service] Error processing message: {str(e)}", exc_info=True)
-
-                # Log error
+            except LLMError as e:
+                # LLM-specific errors (connection, timeout, response issues)
                 total_duration_ms = (time.time() - start_time) * 1000
+                logger.error(f"[Chat Service] LLM error: {e.error_code}: {str(e)}", exc_info=True)
+
+                log_error(
+                    logger,
+                    e,
+                    context={
+                        'conversation_id': conversation_id,
+                        'user_id': user_id,
+                        'duration_ms': total_duration_ms,
+                    },
+                    correlation_id=correlation_id,
+                    stage='process_message'
+                )
+
+                llm_logger.log_message_processing_complete(
+                    correlation_id=correlation_id,
+                    success=False,
+                    total_duration_ms=total_duration_ms,
+                    category='llm_error'
+                )
+
+                return create_error_response(
+                    error=e,
+                    correlation_id=correlation_id,
+                    category='llm_error'
+                )
+
+            except APIClientError as e:
+                # API Client errors (4xx) - User can fix these (bad filters, missing params, no data)
+                # These are NOT system failures - show user what's wrong so they can correct it
+                total_duration_ms = (time.time() - start_time) * 1000
+                logger.warning(f"[Chat Service] API client error: {e.error_code}: {str(e)}")
+
+                llm_logger.log_message_processing_complete(
+                    correlation_id=correlation_id,
+                    success=False,
+                    total_duration_ms=total_duration_ms,
+                    category='api_client_error'
+                )
+
+                # Return user-friendly error with no "contact admin" message
+                return {
+                    'category': 'api_client_error',
+                    'confidence': 0.0,
+                    'parameters': {},
+                    'ui_component': generate_error_ui(
+                        error_type='validation',  # Use validation styling (info icon, no admin contact)
+                        user_message=e.user_message,
+                        admin_contact=False,  # User can fix this
+                        error_code=e.error_code
+                    ),
+                    'metadata': {
+                        'error': True,
+                        'error_type': 'api_client_error',
+                        'error_code': e.error_code,
+                        'correlation_id': correlation_id,
+                        'details': e.details,
+                    }
+                }
+
+            except APIError as e:
+                # API Server errors (5xx, connection, timeout) - System failure, contact admin
+                total_duration_ms = (time.time() - start_time) * 1000
+                logger.error(f"[Chat Service] API server error: {e.error_code}: {str(e)}", exc_info=True)
+
+                log_error(
+                    logger,
+                    e,
+                    context={
+                        'conversation_id': conversation_id,
+                        'user_id': user_id,
+                        'duration_ms': total_duration_ms,
+                    },
+                    correlation_id=correlation_id,
+                    stage='process_message'
+                )
+
+                llm_logger.log_message_processing_complete(
+                    correlation_id=correlation_id,
+                    success=False,
+                    total_duration_ms=total_duration_ms,
+                    category='api_error'
+                )
+
+                return create_error_response(
+                    error=e,
+                    correlation_id=correlation_id,
+                    category='api_error'
+                )
+
+            except ValidationError as e:
+                # Validation errors (user can fix these - no admin contact)
+                total_duration_ms = (time.time() - start_time) * 1000
+                logger.warning(f"[Chat Service] Validation error: {e.error_code}: {str(e)}")
+
+                llm_logger.log_message_processing_complete(
+                    correlation_id=correlation_id,
+                    success=False,
+                    total_duration_ms=total_duration_ms,
+                    category='validation_error'
+                )
+
+                return {
+                    'category': 'validation_error',
+                    'confidence': 0.0,
+                    'parameters': {},
+                    'ui_component': generate_error_ui(
+                        error_type='validation',
+                        user_message=e.user_message,
+                        admin_contact=False,
+                        error_code=e.error_code
+                    ),
+                    'metadata': {
+                        'error': True,
+                        'error_type': 'validation',
+                        'error_code': e.error_code,
+                        'correlation_id': correlation_id
+                    }
+                }
+
+            except ContextError as e:
+                # Context/session errors
+                total_duration_ms = (time.time() - start_time) * 1000
+                logger.warning(f"[Chat Service] Context error: {e.error_code}: {str(e)}")
+
+                llm_logger.log_message_processing_complete(
+                    correlation_id=correlation_id,
+                    success=False,
+                    total_duration_ms=total_duration_ms,
+                    category='context_error'
+                )
+
+                return {
+                    'category': 'context_error',
+                    'confidence': 0.0,
+                    'parameters': {},
+                    'ui_component': generate_error_ui(
+                        error_type='context',
+                        user_message=e.user_message,
+                        admin_contact=False,
+                        error_code=e.error_code
+                    ),
+                    'metadata': {
+                        'error': True,
+                        'error_type': 'context',
+                        'error_code': e.error_code,
+                        'correlation_id': correlation_id
+                    }
+                }
+
+            except Exception as e:
+                # Unexpected errors - log fully and show generic message
+                total_duration_ms = (time.time() - start_time) * 1000
+                logger.error(f"[Chat Service] Unexpected error: {str(e)}", exc_info=True)
+
+                # Log error with full context
                 llm_logger.log_error(
                     correlation_id=correlation_id,
                     error=e,
@@ -245,12 +419,22 @@ class ChatService:
                     category='error'
                 )
 
+                # Return safe error response (don't expose internal errors to user)
                 return {
                     'category': 'error',
                     'confidence': 0.0,
                     'parameters': {},
-                    'ui_component': self._build_error_ui(str(e)),
-                    'metadata': {'error': str(e), 'correlation_id': correlation_id}
+                    'ui_component': generate_error_ui(
+                        error_type='unknown',
+                        user_message="An unexpected error occurred. Please try again.",
+                        admin_contact=True,
+                        error_code='UNKNOWN_ERROR'
+                    ),
+                    'metadata': {
+                        'error': True,
+                        'error_type': 'unknown',
+                        'correlation_id': correlation_id
+                    }
                 }
 
     async def execute_cph_update(
@@ -391,13 +575,56 @@ class ChatService:
                     'ui_component': self._build_error_ui(f"Cannot handle category: {category}")
                 }
 
-        except Exception as e:
-            logger.error(f"Error executing action: {str(e)}", exc_info=True)
+        except LLMError as e:
+            logger.error(f"[Chat Service] LLM error in execute_confirmed_action: {str(e)}", exc_info=True)
+            return create_error_response(error=e, category='llm_error')
+
+        except APIClientError as e:
+            # API Client errors (4xx) - User can fix (bad filters, no data for criteria)
+            logger.warning(f"[Chat Service] API client error in execute_confirmed_action: {str(e)}")
             return {
                 'success': False,
-                'message': str(e),
-                'ui_component': self._build_error_ui(str(e)),
-                'metadata': {'error': str(e)}
+                'message': e.user_message,
+                'ui_component': generate_error_ui(
+                    error_type='validation',  # Use validation styling
+                    user_message=e.user_message,
+                    admin_contact=False,  # User can fix
+                    error_code=e.error_code
+                ),
+                'metadata': {'error': True, 'error_code': e.error_code, 'error_type': 'api_client_error'}
+            }
+
+        except APIError as e:
+            # API Server errors (5xx, connection) - System issue
+            logger.error(f"[Chat Service] API server error in execute_confirmed_action: {str(e)}", exc_info=True)
+            return create_error_response(error=e, category='api_error')
+
+        except ValidationError as e:
+            logger.warning(f"[Chat Service] Validation error in execute_confirmed_action: {str(e)}")
+            return {
+                'success': False,
+                'message': e.user_message,
+                'ui_component': generate_error_ui(
+                    error_type='validation',
+                    user_message=e.user_message,
+                    admin_contact=False,
+                    error_code=e.error_code
+                ),
+                'metadata': {'error': True, 'error_code': e.error_code}
+            }
+
+        except Exception as e:
+            logger.error(f"[Chat Service] Unexpected error in execute_confirmed_action: {str(e)}", exc_info=True)
+            return {
+                'success': False,
+                'message': "An unexpected error occurred",
+                'ui_component': generate_error_ui(
+                    error_type='unknown',
+                    user_message="An unexpected error occurred. Please try again.",
+                    admin_contact=True,
+                    error_code='UNKNOWN_ERROR'
+                ),
+                'metadata': {'error': True}
             }
 
     def _handle_forecast_query(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -671,13 +898,13 @@ class ChatService:
         return html
 
     def _build_error_ui(self, error_message: str) -> str:
-        """Build HTML error UI"""
-        html = f"""
-        <div class="alert alert-danger" role="alert">
-            <strong>Error:</strong> {error_message}
-        </div>
-        """
-        return html
+        """Build HTML error UI with XSS protection."""
+        # Use the centralized error UI generator for proper escaping
+        return generate_error_ui(
+            error_type='unknown',
+            user_message=error_message,
+            admin_contact=False
+        )
 
     def _format_json_params(self, params: Dict[str, Any]) -> str:
         """Format parameters as JSON string for data attribute"""

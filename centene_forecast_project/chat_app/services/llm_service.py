@@ -1,6 +1,12 @@
 """
 LLM Service
 Real LLM-powered chat service using LangChain + OpenAI for intent classification and query execution.
+
+Error Handling:
+- All LLM calls are wrapped with proper exception handling
+- OpenAI/LangChain errors are converted to LLMError subclasses
+- API errors from forecast tools are converted to APIError subclasses
+- All error responses include safe UI components and proper logging
 """
 import logging
 import calendar
@@ -38,6 +44,22 @@ from chat_app.utils.context_manager import ConversationContextManager
 from chat_app.utils.chunking import ForecastDataChunker
 from chat_app.prompts.system_prompts import CLASSIFICATION_SYSTEM_PROMPT
 from chat_app.utils.llm_logger import get_llm_logger, get_correlation_id, create_correlation_id
+from chat_app.exceptions import (
+    ChatAppError,
+    LLMError,
+    LLMConnectionError,
+    LLMTimeoutError,
+    LLMResponseError,
+    LLMRateLimitError,
+    APIError,
+    APIServerError,
+    APIClientError,
+    APIConnectionError,
+    APITimeoutError,
+    ValidationError,
+    classify_openai_error,
+)
+from chat_app.utils.error_handler import create_error_response, log_error
 
 logger = logging.getLogger(__name__)
 llm_logger = get_llm_logger()
@@ -264,21 +286,35 @@ class LLMService:
             llm_duration_ms = (time.time() - llm_start_time) * 1000
             logger.error(f"[LLM Service] Classification error: {str(e)}", exc_info=True)
 
-            # Log error
+            # Convert to appropriate LLM error type
+            llm_error = classify_openai_error(e)
+
+            # Log error with proper context
+            log_error(
+                logger,
+                llm_error,
+                context={
+                    'conversation_id': conversation_id,
+                    'duration_ms': llm_duration_ms,
+                    'user_text_length': len(user_text),
+                },
+                correlation_id=correlation_id,
+                stage='intent_classification'
+            )
+
+            # Also log to llm_logger for structured logging
             llm_logger.log_error(
                 correlation_id=correlation_id,
                 error=e,
                 stage='intent_classification',
-                context={'duration_ms': llm_duration_ms}
+                context={'duration_ms': llm_duration_ms, 'error_code': llm_error.error_code}
             )
 
-            # Fallback to unknown category
-            classification = IntentClassification(
-                category=IntentCategory.UNKNOWN,
-                confidence=0.0,
-                reasoning=f"Classification failed: {str(e)}",
-                requires_clarification=True,
-                missing_parameters=[]
+            # Return error response with proper UI
+            return create_error_response(
+                error=llm_error,
+                correlation_id=correlation_id,
+                category='llm_error'
             )
 
         # Check if we need clarification
@@ -565,6 +601,15 @@ Be specific about what's needed.
             clarification_text = response.content
         except Exception as e:
             logger.error(f"[LLM Service] Clarification generation error: {str(e)}")
+            # Convert to LLM error for logging
+            llm_error = classify_openai_error(e)
+            log_error(
+                logger,
+                llm_error,
+                context={'stage': 'clarification_generation'},
+                stage='_handle_clarification'
+            )
+            # Use fallback message instead of failing
             clarification_text = "I need more information to help you. Could you please provide more details?"
 
         return {
@@ -600,14 +645,38 @@ Be specific about what's needed.
         """
         logger.info("[LLM Service] Executing available reports query")
 
+        correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
+
         try:
             data = await fetch_available_reports()
+        except APIError as e:
+            # API-specific errors (connection, timeout, response)
+            logger.error(f"[LLM Service] Failed to fetch available reports: {str(e)}", exc_info=True)
+            log_error(
+                logger,
+                e,
+                context={'conversation_id': conversation_id},
+                correlation_id=correlation_id,
+                stage='execute_available_reports_query'
+            )
+            return create_error_response(
+                error=e,
+                correlation_id=correlation_id,
+                category='api_error'
+            )
         except Exception as e:
+            # Unexpected errors
             logger.error(f"[LLM Service] Failed to fetch available reports: {str(e)}", exc_info=True)
             return {
                 'success': False,
-                'message': f"Failed to retrieve available reports: {str(e)}",
-                'ui_component': generate_error_ui(f"Could not fetch available reports: {str(e)}")
+                'message': "Failed to retrieve available reports",
+                'ui_component': generate_error_ui(
+                    "Data service is temporarily unavailable. Please contact admin.",
+                    error_type="api",
+                    admin_contact=True,
+                    error_code="API_ERROR"
+                ),
+                'metadata': {'error': True, 'correlation_id': correlation_id}
             }
 
         # Generate UI card
@@ -879,7 +948,102 @@ Be specific about what's needed.
                 duration_ms=fetch_duration_ms
             )
 
+        except APIClientError as e:
+            # API Client errors (4xx) - User can fix these (bad filters, no data, invalid params)
+            # These are NOT system failures - show user what's wrong
+            fetch_duration_ms = (time.time() - fetch_start_time) * 1000
+            logger.warning(f"[LLM Service] API client error: {e.error_code}: {str(e)}")
+
+            # Log API call (warning level, not error)
+            llm_logger.log_api_call(
+                correlation_id=correlation_id,
+                endpoint='/api/forecast/data',
+                method='GET',
+                params={'month': params.month, 'year': params.year},
+                response_status=getattr(e, 'status_code', 400),
+                duration_ms=fetch_duration_ms,
+                error=str(e)
+            )
+
+            # Return user-friendly error with NO "contact admin" message
+            return {
+                'success': False,
+                'message': e.user_message,
+                'ui_component': generate_error_ui(
+                    e.user_message,
+                    error_type="validation",  # Use validation styling (info icon)
+                    admin_contact=False,  # User can fix this
+                    error_code=e.error_code
+                ),
+                'metadata': {
+                    'error': True,
+                    'error_type': 'api_client_error',
+                    'error_code': e.error_code,
+                    'correlation_id': correlation_id,
+                    'details': e.details,
+                }
+            }
+
+        except APIError as e:
+            # API Server errors (5xx, connection, timeout) - System failure, contact admin
+            fetch_duration_ms = (time.time() - fetch_start_time) * 1000
+            logger.error(f"[LLM Service] API server error: {str(e)}", exc_info=True)
+
+            # Log error with context
+            log_error(
+                logger,
+                e,
+                context={
+                    'conversation_id': conversation_id,
+                    'month': params.month,
+                    'year': params.year,
+                    'duration_ms': fetch_duration_ms,
+                },
+                correlation_id=correlation_id,
+                stage='execute_forecast_query'
+            )
+
+            # Log API call failure
+            llm_logger.log_api_call(
+                correlation_id=correlation_id,
+                endpoint='/api/forecast/data',
+                method='GET',
+                params={'month': params.month, 'year': params.year},
+                response_status=getattr(e, 'status_code', 500),
+                duration_ms=fetch_duration_ms,
+                error=str(e)
+            )
+
+            return create_error_response(
+                error=e,
+                correlation_id=correlation_id,
+                category='api_error'
+            )
+
+        except ValidationError as e:
+            # Handle validation errors (user can fix these)
+            fetch_duration_ms = (time.time() - fetch_start_time) * 1000
+            logger.warning(f"[LLM Service] Validation error: {str(e)}")
+
+            return {
+                'success': False,
+                'message': e.user_message,
+                'ui_component': generate_error_ui(
+                    e.user_message,
+                    error_type="validation",
+                    admin_contact=False,
+                    error_code=e.error_code
+                ),
+                'metadata': {
+                    'error': True,
+                    'error_type': 'validation',
+                    'error_code': e.error_code,
+                    'correlation_id': correlation_id
+                }
+            }
+
         except Exception as e:
+            # Handle unexpected errors
             fetch_duration_ms = (time.time() - fetch_start_time) * 1000
             logger.error(f"[LLM Service] API call failed: {str(e)}", exc_info=True)
 
@@ -896,8 +1060,18 @@ Be specific about what's needed.
 
             return {
                 'success': False,
-                'message': f"API error: {str(e)}",
-                'ui_component': generate_error_ui(f"Failed to fetch data: {str(e)}")
+                'message': "Failed to fetch data",
+                'ui_component': generate_error_ui(
+                    "Data service is temporarily unavailable. Please contact admin.",
+                    error_type="api",
+                    admin_contact=True,
+                    error_code="API_ERROR"
+                ),
+                'metadata': {
+                    'error': True,
+                    'error_type': 'api',
+                    'correlation_id': correlation_id
+                }
             }
 
         # Cache data in context (including report configuration for CPH calculations)
@@ -1192,14 +1366,25 @@ Be concise - maximum 4-5 sentences.
         except Exception as e:
             logger.error(f"[LLM Service] Failed to generate guidance: {str(e)}")
 
-            # Log error
-            llm_logger.log_error(
+            # Convert to LLM error and log properly
+            llm_error = classify_openai_error(e)
+            log_error(
+                logger,
+                llm_error,
+                context={'month': month_name, 'year': params.year},
                 correlation_id=correlation_id,
-                error=e,
                 stage='no_data_guidance_generation'
             )
 
-            # Fallback message
+            # Log error to structured logger
+            llm_logger.log_error(
+                correlation_id=correlation_id,
+                error=e,
+                stage='no_data_guidance_generation',
+                context={'error_code': llm_error.error_code}
+            )
+
+            # Fallback message (LLM failure shouldn't block user experience)
             guidance_text = (
                 f"No forecast data was found for {month_name} {params.year} with your specified filters. "
                 f"Please check if the data has been uploaded for this period, or try adjusting your filters."
@@ -1333,14 +1518,25 @@ Be concise - maximum 5-6 sentences.
         except Exception as e:
             logger.error(f"[LLM Service] Failed to generate diagnostic guidance: {str(e)}")
 
-            # Log error
-            llm_logger.log_error(
+            # Convert to LLM error and log properly
+            llm_error = classify_openai_error(e)
+            log_error(
+                logger,
+                llm_error,
+                context={'is_data_issue': diagnosis.is_data_issue},
                 correlation_id=correlation_id,
-                error=e,
                 stage='diagnostic_guidance_generation'
             )
 
-            # Fallback to simple message
+            # Log error to structured logger
+            llm_logger.log_error(
+                correlation_id=correlation_id,
+                error=e,
+                stage='diagnostic_guidance_generation',
+                context={'error_code': llm_error.error_code}
+            )
+
+            # Fallback to simple message (LLM failure shouldn't block user experience)
             guidance_text = diagnosis.diagnosis_message
 
         # Generate HTML UI with LLM guidance
@@ -1729,6 +1925,16 @@ Return ONLY the numeric value, nothing else. Round to 2 decimal places."""
 
         except Exception as e:
             logger.error(f"[LLM Service] Error extracting CPH value: {e}")
+
+            # Log the LLM error (but don't fail hard - try fallback)
+            llm_error = classify_openai_error(e)
+            log_error(
+                logger,
+                llm_error,
+                context={'user_text': user_text[:100], 'current_cph': current_cph},
+                stage='extract_cph_value',
+                include_traceback=False  # Don't need full trace for this
+            )
 
             # Fallback: try simple regex extraction from user text
             numbers = re.findall(r'[\d.]+', user_text)

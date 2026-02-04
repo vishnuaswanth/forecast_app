@@ -253,7 +253,7 @@ CHAT_CONFIG = {
 # LLM Configuration (for Phase 2+ when integrating real LLM)
 LLM_CONFIG = {
     'provider': 'openai',
-    'model': 'gpt-4-turbo-preview',
+    'model': 'gpt-4o',  # Stable model. Try 'gpt-5' or 'gpt-5.2' for latest capability
     'api_key': env('OPENAI_API_KEY'),  # Read from .env file
     'max_tokens': 4096,
     'temperature': 0.1,

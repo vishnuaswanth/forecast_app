@@ -1,6 +1,11 @@
 """
 Forecast API Tools
 LangChain tools for making forecast API calls and processing data.
+
+Error Handling:
+- All API calls are wrapped with proper exception handling
+- httpx errors are converted to APIError subclasses
+- Validation errors are converted to ValidationError subclasses
 """
 import logging
 import calendar
@@ -11,6 +16,21 @@ import httpx
 
 from chat_app.services.tools.validation import ForecastQueryParams
 from chat_app.repository import get_chat_api_client
+from chat_app.exceptions import (
+    APIError,
+    APIServerError,
+    APIClientError,
+    APIConnectionError,
+    APITimeoutError,
+    APIInternalError,
+    APIResponseError,
+    APIBadRequestError,
+    APINotFoundError,
+    APIValidationError,
+    ValidationError,
+    InvalidFilterError,
+    classify_httpx_error,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,17 +43,41 @@ async def fetch_available_reports() -> dict:
         Dictionary with available reports from /api/llm/forecast/available-reports
 
     Raises:
-        ValueError: If API returns error
-        Exception: On other errors
+        APIConnectionError: If cannot connect to API
+        APITimeoutError: If API request times out
+        APIResponseError: If API returns error status
+        APIError: On other API errors
     """
+    endpoint = "/api/llm/forecast/available-reports"
     try:
         client = get_chat_api_client()
         data = client.get_available_reports()
         logger.info(f"[Forecast Tools] Fetched {data.get('total_reports', 0)} available reports")
         return data
+    except httpx.ConnectError as e:
+        logger.error(f"[Forecast Tools] Connection error: {str(e)}", exc_info=True)
+        raise APIConnectionError(
+            message=f"Cannot connect to forecast API: {str(e)}",
+            details={"endpoint": endpoint}
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"[Forecast Tools] Timeout error: {str(e)}", exc_info=True)
+        raise APITimeoutError(
+            message=f"Forecast API request timed out: {str(e)}",
+            details={"endpoint": endpoint}
+        )
+    except httpx.HTTPStatusError as e:
+        logger.error(f"[Forecast Tools] HTTP error {e.response.status_code}: {e.response.text}", exc_info=True)
+        raise APIResponseError(
+            message=f"Forecast API error: {str(e)}",
+            status_code=e.response.status_code,
+            response_body=e.response.text[:500] if e.response.text else None,
+            details={"endpoint": endpoint}
+        )
     except Exception as e:
         logger.error(f"[Forecast Tools] Failed to fetch available reports: {str(e)}", exc_info=True)
-        raise
+        # Convert generic exceptions to APIError
+        raise classify_httpx_error(e, endpoint)
 
 
 async def validate_report_exists(month: int, year: int) -> dict:
@@ -198,6 +242,7 @@ async def fetch_forecast_data(
         filters['forecast_months'] = params.forecast_months
 
     # Make API call using chat_app repository (cached for 60s by backend)
+    endpoint = "/api/llm/forecast"
     try:
         logger.info(
             f"[Forecast Tools] Fetching data for {api_params['month']} {api_params['year']} "
@@ -221,14 +266,131 @@ async def fetch_forecast_data(
         return data
 
     except ValueError as e:
+        # Validation errors from API
         logger.error(f"[Forecast Tools] API validation error: {str(e)}")
-        raise
+        raise ValidationError(
+            message=str(e),
+            user_message="Invalid query parameters. Please check your filters."
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"[Forecast Tools] Connection error: {str(e)}", exc_info=True)
+        raise APIConnectionError(
+            message=f"Cannot connect to forecast API: {str(e)}",
+            details={"endpoint": endpoint, "month": api_params['month'], "year": api_params['year']}
+        )
+    except httpx.TimeoutException as e:
+        logger.error(f"[Forecast Tools] Timeout error: {str(e)}", exc_info=True)
+        raise APITimeoutError(
+            message=f"Forecast API request timed out: {str(e)}",
+            details={"endpoint": endpoint, "month": api_params['month'], "year": api_params['year']}
+        )
     except httpx.HTTPStatusError as e:
-        logger.error(f"[Forecast Tools] API HTTP error {e.response.status_code}: {e.response.text}")
-        raise
+        import json
+
+        status_code = e.response.status_code
+        response_text = e.response.text[:500] if e.response.text else None
+
+        # Try to parse JSON response for structured error info
+        response_json = None
+        try:
+            response_json = json.loads(e.response.text) if e.response.text else None
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # === CLIENT ERRORS (4xx) - User can fix these ===
+
+        if status_code == 400:
+            # Bad Request - missing/invalid parameters
+            logger.warning(f"[Forecast Tools] Bad request (400): {response_text}")
+
+            missing_fields = None
+            invalid_fields = None
+            if response_json:
+                missing_fields = response_json.get('missing_fields', response_json.get('missing'))
+                invalid_fields = response_json.get('invalid_fields', response_json.get('errors'))
+
+            raise APIBadRequestError(
+                message=f"Invalid request for {api_params['month']} {api_params['year']}",
+                status_code=status_code,
+                response_body=response_text,
+                missing_fields=missing_fields,
+                invalid_fields=invalid_fields,
+                details={"endpoint": endpoint, "filters": filters}
+            )
+
+        if status_code == 404:
+            # Not Found - no data for the given criteria
+            logger.info(f"[Forecast Tools] No data found (404) for {api_params['month']} {api_params['year']} with filters: {filters}")
+
+            raise APINotFoundError(
+                message=f"No forecast data found for {api_params['month']} {api_params['year']}",
+                filters_used={"month": api_params['month'], "year": api_params['year'], **filters},
+                details={"endpoint": endpoint}
+            )
+
+        if status_code == 422:
+            # Validation Error - invalid filter values
+            logger.warning(f"[Forecast Tools] Validation error (422): {response_text}")
+
+            field_name = None
+            invalid_value = None
+            valid_options = None
+            if response_json:
+                # FastAPI validation errors
+                if 'detail' in response_json and isinstance(response_json['detail'], list):
+                    first_error = response_json['detail'][0] if response_json['detail'] else {}
+                    field_name = first_error.get('loc', [None])[-1]
+                    invalid_value = first_error.get('input')
+                else:
+                    field_name = response_json.get('field')
+                    invalid_value = response_json.get('value')
+                    valid_options = response_json.get('valid_options')
+
+            raise APIValidationError(
+                message=f"Invalid filter value for {api_params['month']} {api_params['year']}",
+                field_name=field_name,
+                invalid_value=invalid_value,
+                valid_options=valid_options,
+                details={"endpoint": endpoint, "filters": filters}
+            )
+
+        # Other 4xx errors - user-fixable
+        if 400 <= status_code < 500:
+            logger.warning(f"[Forecast Tools] Client error ({status_code}): {response_text}")
+            raise APIClientError(
+                message=f"Request error ({status_code}) for {api_params['month']} {api_params['year']}",
+                user_message=f"There was an issue with your request. Please check your filters and try again.",
+                details={"endpoint": endpoint, "status_code": status_code, "filters": filters}
+            )
+
+        # === SERVER ERRORS (5xx) - System issue, contact admin ===
+
+        if status_code == 500:
+            logger.error(f"[Forecast Tools] Internal server error (500): {response_text}")
+            raise APIInternalError(
+                message=f"Internal server error for {api_params['month']} {api_params['year']}",
+                details={"endpoint": endpoint}
+            )
+
+        if status_code >= 500:
+            logger.error(f"[Forecast Tools] Server error ({status_code}): {response_text}")
+            raise APIServerError(
+                message=f"Server error ({status_code}) for {api_params['month']} {api_params['year']}",
+                details={"endpoint": endpoint, "status_code": status_code}
+            )
+
+        # Fallback for unknown status codes
+        logger.error(f"[Forecast Tools] Unexpected HTTP error {status_code}: {response_text}")
+        raise APIResponseError(
+            message=f"Forecast API error: HTTP {status_code}",
+            status_code=status_code,
+            response_body=response_text,
+            details={"endpoint": endpoint}
+        )
     except Exception as e:
         logger.error(f"[Forecast Tools] API call failed: {str(e)}", exc_info=True)
-        raise
+        # Convert generic exceptions to APIError
+        raise classify_httpx_error(e, endpoint)
 
 
 @tool("get_forecast_data", args_schema=ForecastQueryInput, return_direct=False)
