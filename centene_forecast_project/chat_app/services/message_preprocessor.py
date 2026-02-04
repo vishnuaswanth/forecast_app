@@ -100,6 +100,9 @@ class MessagePreprocessor:
     }
     VALID_STATE_CODES = set(US_STATES.values()) | {'N/A'}
 
+    # State codes that are also common English words - require context to match
+    AMBIGUOUS_STATE_CODES = {'ME', 'IN', 'OR', 'OK'}
+
     # Month mappings
     MONTH_NAMES = {
         'january': 1, 'february': 2, 'march': 3, 'april': 4,
@@ -130,7 +133,17 @@ class MessagePreprocessor:
             r'vermont|wyoming|district of columbia)\b',
         ],
         'state_code': [
-            r'\b([A-Z]{2})\b',  # Two-letter codes
+            # Non-ambiguous state codes only (excludes ME, IN, OR, OK which are common English words)
+            r'\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b',
+        ],
+        'state_code_contextual': [
+            # Ambiguous codes (ME, IN, OR, OK) - only match with state-related context
+            # Require preposition or "state" keyword before the ambiguous code
+            r'\b(?:for|from|in|state[s]?)\s+(ME|IN|OR|OK)\b',
+            # After another state code in a list (e.g., "CA and ME", "TX, IN")
+            r'\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)[,\s]+(?:and\s+)?(ME|IN|OR|OK)\b',
+            # Before another state code in a list (e.g., "ME and CA", "IN, TX")
+            r'\b(ME|IN|OR|OK)[,\s]+(?:and\s+)?(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b',
         ],
         'platform': [
             r'\b(amisys|facets|xcelys)\b',
@@ -464,6 +477,12 @@ Do NOT tag words that are not clear entities.
                 validated['states'].extend(state_codes)
             else:
                 validated['states'] = state_codes
+        if 'state_code_contextual' in entities and entities['state_code_contextual']:
+            contextual_codes = self._validate_states(entities['state_code_contextual'])
+            if 'states' in validated:
+                validated['states'].extend(contextual_codes)
+            else:
+                validated['states'] = contextual_codes
 
         # Remove duplicates from states
         if 'states' in validated:

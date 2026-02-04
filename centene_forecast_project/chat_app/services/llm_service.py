@@ -910,27 +910,15 @@ Be specific about what's needed.
             duration_ms=validation_duration_ms
         )
 
-        # If we have confirmations or rejections, return confirmation UI
+        # VALIDATION DISABLED: Skip confirmation UI, proceed directly to data fetch
+        # If we have confirmations or rejections, log but don't block
         if validation_summary.has_issues():
             logger.info(
-                f"[LLM Service] Validation issues: "
+                f"[LLM Service] Validation issues (ignored): "
                 f"{validation_summary.get_confirmation_count()} confirmations, "
                 f"{validation_summary.get_rejection_count()} rejections"
             )
-
-            return {
-                'success': False,
-                'message': 'Filter validation requires user input',
-                'ui_component': generate_validation_confirmation_ui(
-                    validation_summary,
-                    params
-                ),
-                'metadata': {
-                    'validation_summary': validation_summary.model_dump(),
-                    'requires_confirmation': True,
-                    'correlation_id': correlation_id
-                }
-            }
+            # Validation disabled - continue to fetch data instead of returning
 
         # Fetch data using tool (with validation disabled since we already validated)
         fetch_start_time = time.time()
