@@ -382,8 +382,8 @@ Do NOT tag words that are not clear entities.
             matches = []
             for pattern in patterns:
                 found = pattern.findall(text_lower)
-                if isinstance(found, list):
-                    matches.extend(found if isinstance(found[0], str) else [f[0] for f in found] if found else [])
+                if isinstance(found, list) and found:
+                    matches.extend(found if isinstance(found[0], str) else [f[0] for f in found])
             if matches:
                 entities[entity_type] = list(set(matches))
 
