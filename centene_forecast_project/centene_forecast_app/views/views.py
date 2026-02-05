@@ -134,12 +134,16 @@ def upload_view(request):
         logger.debug("POST upload_view: file_type=%s, uploaded_file=%s", file_type, uploaded_file)
         if not uploaded_file:
             logger.warning("No file uploaded by user: %s", request.user.username)
-            return JsonResponse({'error': 'No file uploaded.'}, status=400)
+            return JsonResponse(
+                serialize_error_response('No file uploaded.', 400),
+                status=400
+            )
         if not uploaded_file.name.endswith(('.csv', '.xlsx')):
             logger.warning("Invalid file type uploaded: %s", uploaded_file.name)
-            return JsonResponse({
-                'error': 'Invalid file type. Only CSV and Excel files are allowed.'
-            }, status=400)
+            return JsonResponse(
+                serialize_error_response('Invalid file type. Only CSV and Excel files are allowed.', 400),
+                status=400
+            )
         file_content = uploaded_file.read()
         user_name = f"{request.user.first_name} {request.user.last_name}".strip()
 
@@ -171,18 +175,30 @@ def upload_view(request):
                 )
             else:
                 logger.error("Unsupported file type: %s", file_type)
-                return JsonResponse({'error': 'Unsupported file type'}, status=400)
+                return JsonResponse(
+                    serialize_error_response('Unsupported file type', 400),
+                    status=400
+                )
         except Exception as e:
             logger.exception("Exception during file upload: %s", str(e))
-            return JsonResponse({'error': 'Upload failed due to server error'}, status=500)
+            return JsonResponse(
+                serialize_error_response('Upload failed due to server error', 500),
+                status=500
+            )
         
         if 'error' in response:
             logger.error("Upload failed with error: %s", response['error'])
-            return JsonResponse({'error': response['error']}, status=400)
-        
+            return JsonResponse(
+                serialize_error_response(response['error'], 400),
+                status=400
+            )
+
         if response is None:
             logger.error("Upload failed, response is None")
-            return JsonResponse({'error': 'Upload failed'}, status=500)
+            return JsonResponse(
+                serialize_error_response('Upload failed', 500),
+                status=500
+            )
         
         # Clear relevant caches after successful upload
         # Extract month and year from response or filename if available
@@ -578,10 +594,17 @@ def forecast_worktypes_api(request):
 def data_view(request):
     logger.info("Entered data_view for user: %s", request.user.username)
     client = get_api_client()
-    
+
     error_message = ""
     info_message = ""
     years = client.get_forecast_filter_years()
+
+    # Handle API error response
+    if is_api_error(years):
+        error_message = years.get('error', 'Failed to fetch filter years')
+        logger.error("Failed to fetch filter years: %s", error_message)
+        years = {}  # Fallback to empty dict
+
     logger.debug("years: %s", years)
     options = get_dropdown_options(years)
 
@@ -698,7 +721,10 @@ def download_data(request):
 
     if not data_type or not selected_month or not selected_year:
         logger.warning("Missing parameters for download: data_type=%s, month=%s, year=%s", data_type, selected_month, selected_year)
-        return JsonResponse({'error': 'Missing parameters for download'}, status=400)
+        return JsonResponse(
+            serialize_error_response('Missing parameters for download', 400),
+            status=400
+        )
     
     client = get_api_client()
     file_stream, filename = client.download_file_stream(data_type, selected_month, selected_year)
@@ -707,8 +733,12 @@ def download_data(request):
         logger.info("data downloaded successfully")
         return FileResponse(file_stream, as_attachment=True, filename=filename)
     else:
+        error_msg = f"Failed to fetch {data_type} file for month: {selected_month} year: {selected_year}"
         logger.error(f"Failed to fetch {data_type} file for {selected_month} {selected_year} - API error")
-        return JsonResponse({'error': f"Failed to fetch {data_type} file for month: {selected_month} year: {selected_year}"}, status=404)
+        return JsonResponse(
+            serialize_error_response(error_msg, 404),
+            status=404
+        )
 
 
 @login_required
@@ -773,12 +803,16 @@ def check_progress(request):
     try:
         file_upload = UploadedFile.objects.get(id=file_upload_id)
         data = {
+            'success': True,
             'progress': file_upload.progress,
             'status': file_upload.status,
         }
         return JsonResponse(data)
     except UploadedFile.DoesNotExist:
-        return JsonResponse({'error': 'File not found'}, status=404) 
+        return JsonResponse(
+            serialize_error_response('Upload not found', 404),
+            status=404
+        )
     
 
 def logout_view(request):

@@ -13,36 +13,25 @@ $(document).ready(function(){
             contentType: false,
             success: function(response){
                 console.log(response);
-                if (response && response.message && response.message.toLowerCase().includes('file uploaded')) {
+                // Check success field first (preferred), then fallback to message check
+                if (response && response.success) {
                     onUploadSuccess();
-                } else if (response && response.success){
+                } else if (response && response.message && response.message.toLowerCase().includes('file uploaded')) {
                     onUploadSuccess();
                 } else {
                     console.log("not handled case in upload");
                     location.reload();
                 }
-                // If file_upload_id is returned, start polling for progress
-                // var file_upload_id = response.file_upload_id;
-                // if(file_upload_id){
-                //     $('#progress-container').show();
-                //     pollProgress(file_upload_id);
-
-                // } else {
-                //     // If not, simply reload the page (or handle error as needed)
-                //     // location.reload();
-                //     console.log("error occured")
-                // }
             },
             error: function(xhr){
-                // Handle error
-                console.log("Error uploading file:", xhr.responseJSON.responseText) ;
+                // Handle error - fix: use xhr.responseText for raw response, xhr.responseJSON for parsed JSON
+                var errorMsg = xhr.responseJSON && xhr.responseJSON.error
+                    ? xhr.responseJSON.error
+                    : (xhr.responseText || 'Error uploading file');
+                console.error("Error uploading file:", errorMsg);
                 console.log(xhr);
-                console.error("Error uploading file:", xhr)
-                var errorMsg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'Error uploading file';
                 $('#error-message').text(errorMsg).show();
-                // $('#upload-btn').prop('disabled', false);
                 enable_upload_button();
-
             }
         });
     });
@@ -100,9 +89,12 @@ $(document).ready(function(){
                         }
                     }
                 },
-                error: function(){
+                error: function(xhr){
                     clearInterval(interval);
-                    alert('Error checking progress.');
+                    var errorMsg = xhr.responseJSON && xhr.responseJSON.error
+                        ? xhr.responseJSON.error
+                        : 'Error checking upload progress';
+                    $('#error-message').text(errorMsg).show();
                 }
             });
         }, 1000); // Poll every second

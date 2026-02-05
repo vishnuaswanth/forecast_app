@@ -6,6 +6,7 @@ Useful for development and troubleshooting cache issues.
 """
 
 import logging
+from datetime import datetime
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.decorators import login_required
@@ -22,6 +23,25 @@ from centene_forecast_app.app_utils.cache_utils import (
 from core.config import ForecastCacheConfig
 
 logger = logging.getLogger('django')
+
+
+def _serialize_cache_error(message: str, status_code: int) -> dict:
+    """
+    Serialize error response for cache endpoints with consistent format.
+
+    Args:
+        message: Human-readable error message
+        status_code: HTTP status code
+
+    Returns:
+        JSON-ready error response dictionary
+    """
+    return {
+        'success': False,
+        'error': message,
+        'status_code': status_code,
+        'timestamp': datetime.now().isoformat()
+    }
 
 
 # ============================================================================
@@ -59,10 +79,10 @@ def cache_stats_view(request):
         })
     except Exception as e:
         logger.error(f"Failed to get cache stats: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )
 
 
 
@@ -88,10 +108,10 @@ def inspect_cache_view(request):
     cache_key = request.GET.get('key')
 
     if not cache_key:
-        return JsonResponse({
-            'success': False,
-            'error': 'Missing required parameter: key'
-        }, status=400)
+        return JsonResponse(
+            _serialize_cache_error('Missing required parameter: key', 400),
+            status=400
+        )
 
     try:
         value = inspect_cache_value(cache_key)
@@ -116,10 +136,10 @@ def inspect_cache_view(request):
 
     except Exception as e:
         logger.error(f"Failed to inspect cache key '{cache_key}': {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )
 
 
 # ============================================================================
@@ -143,10 +163,10 @@ def clear_forecast_cache_view(request):
         year = request.POST.get('year') or request.GET.get('year')
 
         if not month or not year:
-            return JsonResponse({
-                'success': False,
-                'error': 'Missing required parameters: month and year'
-            }, status=400)
+            return JsonResponse(
+                _serialize_cache_error('Missing required parameters: month and year', 400),
+                status=400
+            )
 
         month = int(month)
         year = int(year)
@@ -156,20 +176,21 @@ def clear_forecast_cache_view(request):
         logger.info(f"Cleared forecast cache for {month}/{year} via API")
         return JsonResponse({
             'success': True,
-            'message': f'Cleared forecast cache for {month}/{year}'
+            'message': f'Cleared forecast cache for {month}/{year}',
+            'timestamp': datetime.now().isoformat()
         })
 
     except ValueError as e:
-        return JsonResponse({
-            'success': False,
-            'error': f'Invalid month or year: {e}'
-        }, status=400)
+        return JsonResponse(
+            _serialize_cache_error(f'Invalid month or year: {e}', 400),
+            status=400
+        )
     except Exception as e:
         logger.error(f"Failed to clear forecast cache: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )
 
 
 
@@ -190,10 +211,10 @@ def clear_roster_cache_view(request):
         roster_type = request.POST.get('roster_type') or request.GET.get('roster_type')
 
         if not month or not year:
-            return JsonResponse({
-                'success': False,
-                'error': 'Missing required parameters: month and year'
-            }, status=400)
+            return JsonResponse(
+                _serialize_cache_error('Missing required parameters: month and year', 400),
+                status=400
+            )
 
         month = int(month)
         year = int(year)
@@ -203,20 +224,21 @@ def clear_roster_cache_view(request):
         logger.info(f"Cleared roster cache for {month}/{year} (type: {roster_type}) via API")
         return JsonResponse({
             'success': True,
-            'message': f'Cleared roster cache for {month}/{year}'
+            'message': f'Cleared roster cache for {month}/{year}',
+            'timestamp': datetime.now().isoformat()
         })
 
     except ValueError as e:
-        return JsonResponse({
-            'success': False,
-            'error': f'Invalid month or year: {e}'
-        }, status=400)
+        return JsonResponse(
+            _serialize_cache_error(f'Invalid month or year: {e}', 400),
+            status=400
+        )
     except Exception as e:
         logger.error(f"Failed to clear roster cache: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )
 
 
 
@@ -237,10 +259,10 @@ def clear_summary_cache_view(request):
         summary_type = request.POST.get('summary_type') or request.GET.get('summary_type')
 
         if not month or not year:
-            return JsonResponse({
-                'success': False,
-                'error': 'Missing required parameters: month and year'
-            }, status=400)
+            return JsonResponse(
+                _serialize_cache_error('Missing required parameters: month and year', 400),
+                status=400
+            )
 
         month = int(month)
         year = int(year)
@@ -250,20 +272,21 @@ def clear_summary_cache_view(request):
         logger.info(f"Cleared summary cache for {month}/{year} (type: {summary_type}) via API")
         return JsonResponse({
             'success': True,
-            'message': f'Cleared summary cache for {month}/{year}'
+            'message': f'Cleared summary cache for {month}/{year}',
+            'timestamp': datetime.now().isoformat()
         })
 
     except ValueError as e:
-        return JsonResponse({
-            'success': False,
-            'error': f'Invalid month or year: {e}'
-        }, status=400)
+        return JsonResponse(
+            _serialize_cache_error(f'Invalid month or year: {e}', 400),
+            status=400
+        )
     except Exception as e:
         logger.error(f"Failed to clear summary cache: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )
 
 
 
@@ -283,15 +306,16 @@ def clear_cascade_caches_view(request):
         logger.info("Cleared cascade caches via API")
         return JsonResponse({
             'success': True,
-            'message': 'Cleared all cascade caches (years, months)'
+            'message': 'Cleared all cascade caches (years, months)',
+            'timestamp': datetime.now().isoformat()
         })
 
     except Exception as e:
         logger.error(f"Failed to clear cascade caches: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )
 
 
 
@@ -312,25 +336,26 @@ def clear_all_caches_view(request):
         confirm = request.POST.get('confirm') or request.GET.get('confirm')
 
         if confirm != 'yes':
-            return JsonResponse({
-                'success': False,
-                'error': 'Confirmation required. Send confirm=yes to proceed.'
-            }, status=400)
+            return JsonResponse(
+                _serialize_cache_error('Confirmation required. Send confirm=yes to proceed.', 400),
+                status=400
+            )
 
         clear_all_caches()
 
         logger.warning("Cleared ALL caches via API (nuclear option)")
         return JsonResponse({
             'success': True,
-            'message': 'Cleared all caches. Performance may be impacted temporarily.'
+            'message': 'Cleared all caches. Performance may be impacted temporarily.',
+            'timestamp': datetime.now().isoformat()
         })
 
     except Exception as e:
         logger.error(f"Failed to clear all caches: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )
 
 
 # ============================================================================
@@ -365,7 +390,7 @@ def cache_config_view(request):
 
     except Exception as e:
         logger.error(f"Failed to get cache config: {e}")
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        }, status=500)
+        return JsonResponse(
+            _serialize_cache_error(str(e), 500),
+            status=500
+        )

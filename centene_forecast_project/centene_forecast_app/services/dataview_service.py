@@ -15,6 +15,7 @@ from centene_forecast_app.repository import (
     get_forecast_localities,
     get_forecast_worktypes
 )
+from centene_forecast_app.app_utils.api_utils import is_api_error
 
 logger = logging.getLogger('django')
 
@@ -52,13 +53,18 @@ class ForecastFilterService:
         try:
             filters = get_forecast_filter_years()
 
-            logger.debug(f"Retrieved {len(filters['years'])} years")
+            # Handle API error response
+            if is_api_error(filters):
+                logger.error(f"API error getting filter years: {filters.get('error')}")
+                return {'success': False, 'years': [], 'error': filters.get('error')}
+
+            logger.debug(f"Retrieved {len(filters.get('years', []))} years")
 
             return filters
 
         except Exception as e:
             logger.error(f"Failed to get initial filter options: {str(e)}")
-            return {'years': []}
+            return {'success': False, 'years': [], 'error': str(e)}
 
     @staticmethod
     def get_months_for_year(year: int) -> List[Dict[str, str]]:
@@ -85,9 +91,14 @@ class ForecastFilterService:
         try:
             months = get_forecast_months_for_year(year)
 
-            logger.debug(f"Retrieved {len(months)} months for year {year}")
+            # Handle API error response
+            if is_api_error(months):
+                logger.error(f"API error getting months for year {year}: {months.get('error')}")
+                return []
 
-            return months
+            logger.debug(f"Retrieved {len(months) if isinstance(months, list) else 0} months for year {year}")
+
+            return months if isinstance(months, list) else []
 
         except Exception as e:
             logger.error(f"Failed to get months for year {year}: {str(e)}")
@@ -114,9 +125,14 @@ class ForecastFilterService:
         try:
             platforms = get_forecast_platforms(year, month)
 
-            logger.debug(f"Retrieved {len(platforms)} platforms")
+            # Handle API error response
+            if is_api_error(platforms):
+                logger.error(f"API error getting platforms: {platforms.get('error')}")
+                return []
 
-            return platforms
+            logger.debug(f"Retrieved {len(platforms) if isinstance(platforms, list) else 0} platforms")
+
+            return platforms if isinstance(platforms, list) else []
 
         except Exception as e:
             logger.error(f"Failed to get platforms: {str(e)}")
@@ -151,9 +167,14 @@ class ForecastFilterService:
         try:
             markets = get_forecast_markets(year, month, platform)
 
-            logger.debug(f"Retrieved {len(markets)} markets for platform {platform}")
+            # Handle API error response
+            if is_api_error(markets):
+                logger.error(f"API error getting markets for platform {platform}: {markets.get('error')}")
+                return []
 
-            return markets
+            logger.debug(f"Retrieved {len(markets) if isinstance(markets, list) else 0} markets for platform {platform}")
+
+            return markets if isinstance(markets, list) else []
 
         except Exception as e:
             logger.error(f"Failed to get markets for platform {platform}: {str(e)}")
@@ -192,9 +213,14 @@ class ForecastFilterService:
         try:
             localities = get_forecast_localities(year, month, platform, market)
 
-            logger.debug(f"Retrieved {len(localities)} localities")
+            # Handle API error response
+            if is_api_error(localities):
+                logger.error(f"API error getting localities: {localities.get('error')}")
+                return [{'value': '', 'display': '-- All Localities --'}]
 
-            return localities
+            logger.debug(f"Retrieved {len(localities) if isinstance(localities, list) else 0} localities")
+
+            return localities if isinstance(localities, list) else [{'value': '', 'display': '-- All Localities --'}]
 
         except Exception as e:
             logger.error(
@@ -240,9 +266,14 @@ class ForecastFilterService:
                 year, month, platform, market, locality
             )
 
-            logger.debug(f"Retrieved {len(worktypes)} worktypes")
+            # Handle API error response
+            if is_api_error(worktypes):
+                logger.error(f"API error getting worktypes: {worktypes.get('error')}")
+                return []
 
-            return worktypes
+            logger.debug(f"Retrieved {len(worktypes) if isinstance(worktypes, list) else 0} worktypes")
+
+            return worktypes if isinstance(worktypes, list) else []
 
         except Exception as e:
             logger.error(

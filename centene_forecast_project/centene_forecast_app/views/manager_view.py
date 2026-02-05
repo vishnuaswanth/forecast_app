@@ -185,31 +185,36 @@ def manager_view_data_api(request):
     try:
         # Validate parameters
         validated = validate_manager_view_request(report_month, category)
-        
+
         # Get data from API client
         client = get_api_client()
         data = client.get_manager_view_data(
             validated['report_month'],
             validated['category']
         )
-        
+
+        # Check for API error response (4XX/5XX from backend)
+        error_response = handle_api_response(data)
+        if error_response:
+            return error_response
+
         # Serialize for JSON response
         response = serialize_data_response(data)
-        
+
         logger.info(
             f"Manager view data API success - {response['total_categories']} categories returned"
         )
-        
+
         return JsonResponse(response, status=200)
-        
+
     except ValidationError as e:
         logger.warning(f"Validation error in manager view data API: {str(e)}")
         return JsonResponse(serialize_error_response(str(e), 400), status=400)
-        
+
     except ValueError as e:
         logger.warning(f"Value error in manager view data API: {str(e)}")
         return JsonResponse(serialize_error_response(str(e), 404), status=404)
-        
+
     except Exception as e:
         logger.error(f"Unexpected error in manager view data API: {str(e)}", exc_info=True)
         return JsonResponse(

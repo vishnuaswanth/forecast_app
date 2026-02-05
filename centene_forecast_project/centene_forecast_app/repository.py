@@ -110,6 +110,27 @@ class APIClient:
                 timeout=request_timeout,
                 **kwargs
             )
+
+            # Handle 4XX client errors - return error dict instead of raising
+            if 400 <= response.status_code < 500:
+                error_detail = None
+                try:
+                    error_json = response.json()
+                    # FastAPI typically uses 'detail' for error messages
+                    error_detail = error_json.get('detail') or error_json.get('message') or error_json.get('error')
+                except (ValueError, KeyError):
+                    error_detail = response.text or f"HTTP {response.status_code} error"
+
+                logger.warning(
+                    f"API {method} {url} - Client error {response.status_code}: {error_detail}"
+                )
+                return {
+                    'success': False,
+                    'error': error_detail,
+                    'status_code': response.status_code
+                }
+
+            # Raise for 5XX server errors
             response.raise_for_status()
 
             logger.debug(f"API {method} {url} - Status: {response.status_code}")
@@ -118,16 +139,40 @@ class APIClient:
 
         except requests.exceptions.Timeout:
             logger.error(f"Request timeout after {request_timeout}s: {method} {url}")
-            raise
+            return {
+                'success': False,
+                'error': f'Request timeout after {request_timeout}s',
+                'status_code': 408
+            }
         except requests.exceptions.ConnectionError:
             logger.error(f"Connection error: {method} {url}")
-            raise
+            return {
+                'success': False,
+                'error': 'Connection error: Unable to reach the API server',
+                'status_code': 503
+            }
         except requests.exceptions.HTTPError as e:
-            logger.error(f"HTTP error {e.response.status_code}: {method} {url}")
-            raise
+            # 5XX server errors
+            error_detail = None
+            try:
+                error_json = e.response.json()
+                error_detail = error_json.get('detail') or error_json.get('message') or str(e)
+            except (ValueError, AttributeError):
+                error_detail = str(e)
+
+            logger.error(f"HTTP error {e.response.status_code}: {method} {url} - {error_detail}")
+            return {
+                'success': False,
+                'error': error_detail,
+                'status_code': e.response.status_code if e.response else 500
+            }
         except Exception as e:
             logger.error(f"Unexpected error in API request: {str(e)}")
-            raise
+            return {
+                'success': False,
+                'error': f'Unexpected error: {str(e)}',
+                'status_code': 500
+            }
 
     def _upload_file(self, endpoint: str, file_content: bytes, filename: str, user: str):
         url = f"{self.base_url}{endpoint}"
