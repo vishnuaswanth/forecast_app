@@ -1,4 +1,48 @@
+/**
+ * Extract error message from XHR response.
+ * Handles both responseJSON and responseText formats.
+ * Combines 'error' and 'details' fields into a readable message.
+ *
+ * @param {Object} xhr - jQuery XHR object
+ * @param {string} defaultMsg - Default message if extraction fails
+ * @returns {string} Human-readable error message
+ */
+function getErrorMessage(xhr, defaultMsg) {
+    defaultMsg = defaultMsg || 'An error occurred';
 
+    // Try responseJSON first (jQuery auto-parses JSON responses)
+    if (xhr.responseJSON) {
+        var response = xhr.responseJSON;
+        if (response.error) {
+            var msg = response.error;
+            if (response.details) {
+                msg += ': ' + response.details;
+            }
+            return msg;
+        }
+    }
+
+    // Fallback to parsing responseText
+    if (xhr.responseText) {
+        try {
+            var parsed = JSON.parse(xhr.responseText);
+            if (parsed.error) {
+                var msg = parsed.error;
+                if (parsed.details) {
+                    msg += ': ' + parsed.details;
+                }
+                return msg;
+            }
+        } catch (e) {
+            // Not valid JSON, return raw text if it looks like an error message
+            if (xhr.responseText.length < 500) {
+                return xhr.responseText;
+            }
+        }
+    }
+
+    return defaultMsg;
+}
 
 $(document).ready(function(){
     $('#uploadForm').on('submit', function(e){
@@ -24,10 +68,7 @@ $(document).ready(function(){
                 }
             },
             error: function(xhr){
-                // Handle error - fix: use xhr.responseText for raw response, xhr.responseJSON for parsed JSON
-                var errorMsg = xhr.responseJSON && xhr.responseJSON.error
-                    ? xhr.responseJSON.error
-                    : (xhr.responseText || 'Error uploading file');
+                var errorMsg = getErrorMessage(xhr, 'Error uploading file');
                 console.error("Error uploading file:", errorMsg);
                 console.log(xhr);
                 $('#error-message').text(errorMsg).show();
@@ -91,9 +132,7 @@ $(document).ready(function(){
                 },
                 error: function(xhr){
                     clearInterval(interval);
-                    var errorMsg = xhr.responseJSON && xhr.responseJSON.error
-                        ? xhr.responseJSON.error
-                        : 'Error checking upload progress';
+                    var errorMsg = getErrorMessage(xhr, 'Error checking upload progress');
                     $('#error-message').text(errorMsg).show();
                 }
             });
