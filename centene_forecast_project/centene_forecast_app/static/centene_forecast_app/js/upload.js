@@ -11,8 +11,8 @@ function getErrorMessage(xhr, defaultMsg) {
     defaultMsg = defaultMsg || 'An error occurred';
 
     // Try responseJSON first (jQuery auto-parses JSON responses)
-    if (xhr.responseJSON) {
-        var response = xhr.responseJSON;
+    if (xhr.responseJSON && xhr.responseJSON.error) {
+        var response = xhr.responseJSON.error;
         if (response.error) {
             var msg = response.error;
             if (response.details) {
@@ -21,6 +21,7 @@ function getErrorMessage(xhr, defaultMsg) {
             return msg;
         }
     }
+
 
     // Fallback to parsing responseText
     if (xhr.responseText) {
@@ -121,7 +122,7 @@ $(document).ready(function(){
                         clearInterval(interval);
                         $('#progress-container').hide();
                         $('#successMsg').show();
-                        
+
                         if(data.status === 'error'){
                             $('#error-message').show();
                             alert('Error processing file.');
