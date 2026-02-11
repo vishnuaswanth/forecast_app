@@ -53,6 +53,12 @@ urlpatterns = [
     path("api/edit-view/bench-allocation/update/", edit_view.bench_allocation_update_api, name="bench_allocation_update"),
     path("api/edit-view/history-log/", edit_view.history_log_api, name="history_log"),
     path("api/edit-view/history-log/<str:history_log_id>/download/", edit_view.download_history_excel_api, name="download_history_excel"),
+    path("api/edit-view/available-change-types/", edit_view.available_change_types_api, name="available_change_types"),
+
+    # Target CPH endpoints
+    path("api/edit-view/target-cph/data/", edit_view.target_cph_data_api, name="target_cph_data"),
+    path("api/edit-view/target-cph/preview/", edit_view.target_cph_preview_api, name="target_cph_preview"),
+    path("api/edit-view/target-cph/update/", edit_view.target_cph_update_api, name="target_cph_update"),
 
     # Forecast Reallocation endpoints
     path("api/edit-view/forecast-reallocation/filters/", edit_view.forecast_reallocation_filters_api, name="forecast_reallocation_filters"),
@@ -91,4 +97,4 @@ urlpatterns = [
     path("api/configuration/target-cph/distinct/case-types/", configuration_view.target_cph_distinct_case_types_api, name="target_cph_distinct_case_types"),
 
     path('logout/', views.logout_view, name='logout'),
-] 
+]

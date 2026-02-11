@@ -858,12 +858,14 @@
             DOM.allocationReportSelect.empty().append('<option value="">-- Select Report Month --</option>');
             DOM.cphReportSelect.empty().append('<option value="">-- Select Report Month --</option>');
             DOM.historyReportSelect.empty().append('<option value="">-- All Reports --</option>');
+            DOM.reallocationReportSelect.empty().append('<option value="">-- Select Report Month --</option>');
 
             data.data.forEach(report => {
                 const option = $('<option>').val(report.value).text(report.display);
                 DOM.allocationReportSelect.append(option.clone());
                 DOM.cphReportSelect.append(option.clone());
                 DOM.historyReportSelect.append(option.clone());
+                DOM.reallocationReportSelect.append(option.clone());
             });
 
             console.log(`Edit View: Loaded ${data.total} allocation reports`);
@@ -3396,15 +3398,22 @@
             return;
         }
 
-        // Parse the selected value (format: "Month YYYY" e.g., "April 2025")
-        const parts = selectedValue.split(' ');
+        // Parse the selected value (format: "YYYY-MM" e.g., "2025-04")
+        const parts = selectedValue.split('-');
         if (parts.length !== 2) {
             showErrorDialog('Invalid Selection', 'Invalid report format. Please select a valid report.');
             return;
         }
 
-        const month = parts[0];
-        const year = parseInt(parts[1], 10);
+        const year = parseInt(parts[0], 10);
+        const monthNum = parseInt(parts[1], 10);
+
+        // Convert month number to name
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        const month = monthNames[monthNum - 1];
 
         // Store selected report
         STATE.reallocation.currentSelectedReport = { month, year };

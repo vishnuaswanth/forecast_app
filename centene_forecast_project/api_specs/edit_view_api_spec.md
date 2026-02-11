@@ -1,7 +1,7 @@
 # Edit View API Specification
 
 ## Overview
-APIs for bench allocation and Target CPH management with preview/approval workflow and history tracking.
+APIs for bench allocation, Target CPH management, and Forecast Reallocation with preview/approval workflow and history tracking.
 
 ---
 
@@ -1088,6 +1088,567 @@ Do you want us to try to recover as much as we can?"
 
 ---
 
+## 10. Get Forecast Reallocation Filters
+
+**Endpoint**: `GET /api/edit-view/forecast-reallocation/filters/`
+
+**Purpose**: Retrieve available filter options (Main LOBs, States, Case Types) for the Forecast Reallocation feature
+
+**Query Parameters**:
+- `month` (required): Month name (e.g., "April")
+- `year` (required): Year (e.g., 2025)
+
+**Success Response** (200):
+```json
+{
+    "success": true,
+    "main_lobs": [
+        "Medicaid",
+        "Medicare",
+        "Commercial",
+        "Exchange",
+        "Duals"
+    ],
+    "states": [
+        "MO", "TX", "FL", "GA", "IL", "OH", "MI", "NC", "AZ", "NV",
+        "WA", "OR", "CA", "NY", "PA"
+    ],
+    "case_types": [
+        "Appeals",
+        "Claims",
+        "Adjustments",
+        "Correspondence",
+        "OMNI",
+        "FTC",
+        "Member Services",
+        "Provider Services"
+    ]
+}
+```
+
+**Error Response** (400):
+```json
+{
+    "success": false,
+    "error": "Invalid month name: InvalidMonth. Must be full month name (e.g., 'April')"
+}
+```
+
+**Error Response** (500):
+```json
+{
+    "success": false,
+    "error": "Failed to retrieve reallocation filters"
+}
+```
+
+**Notes**:
+- Returns distinct filter options available for the selected report month/year
+- Used to populate multi-select dropdowns in the Forecast Reallocation tab
+- Filter values are used in subsequent data load requests
+
+**Field Reference**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `main_lobs` | array | List of available Main LOB values |
+| `states` | array | List of available state codes |
+| `case_types` | array | List of available case type values |
+
+---
+
+## 11. Get Forecast Reallocation Data
+
+**Endpoint**: `GET /api/edit-view/forecast-reallocation/data/`
+
+**Purpose**: Retrieve editable forecast records for reallocation with 6-month data
+
+**Query Parameters**:
+- `month` (required): Month name (e.g., "April")
+- `year` (required): Year (e.g., 2025)
+- `main_lobs[]` (optional): Array of Main LOB values to filter
+- `case_types[]` (optional): Array of Case Type values to filter
+- `states[]` (optional): Array of State codes to filter
+
+**Success Response** (200):
+```json
+{
+    "success": true,
+    "months": {
+        "month1": "Apr-25",
+        "month2": "May-25",
+        "month3": "Jun-25",
+        "month4": "Jul-25",
+        "month5": "Aug-25",
+        "month6": "Sep-25"
+    },
+    "data": [
+        {
+            "case_id": "550e8400-e29b-41d4-a716-446655440000",
+            "main_lob": "Medicaid",
+            "state": "MO",
+            "case_type": "Appeals",
+            "target_cph": 100.0,
+            "months": {
+                "Apr-25": {
+                    "forecast": 12500,
+                    "fte_req": 125,
+                    "fte_avail": 120,
+                    "capacity": 12000
+                },
+                "May-25": {
+                    "forecast": 13000,
+                    "fte_req": 130,
+                    "fte_avail": 125,
+                    "capacity": 12500
+                },
+                "Jun-25": {
+                    "forecast": 13500,
+                    "fte_req": 135,
+                    "fte_avail": 130,
+                    "capacity": 13000
+                },
+                "Jul-25": {
+                    "forecast": 14000,
+                    "fte_req": 140,
+                    "fte_avail": 135,
+                    "capacity": 13500
+                },
+                "Aug-25": {
+                    "forecast": 14500,
+                    "fte_req": 145,
+                    "fte_avail": 140,
+                    "capacity": 14000
+                },
+                "Sep-25": {
+                    "forecast": 15000,
+                    "fte_req": 150,
+                    "fte_avail": 145,
+                    "capacity": 14500
+                }
+            }
+        }
+    ],
+    "total": 150
+}
+```
+
+**Error Response** (400):
+```json
+{
+    "success": false,
+    "error": "Invalid month name: InvalidMonth. Must be full month name (e.g., 'April')"
+}
+```
+
+**Error Response** (500):
+```json
+{
+    "success": false,
+    "error": "Failed to retrieve reallocation data"
+}
+```
+
+**Notes**:
+- Returns forecast records with 6-month data starting from the selected report month
+- User can edit `target_cph` (per record) and `fte_avail` (per month) values in the frontend
+- `months` object mapping is required for rendering the table with correct month labels
+- Filters are applied server-side (AND logic between filter categories, OR logic within same category)
+- All numeric fields in month data are integers except `target_cph` which is a float
+
+**Field Reference for Records**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `case_id` | string | Unique identifier (UUID) for the forecast record |
+| `main_lob` | string | Main Line of Business |
+| `state` | string | State code (2-letter) |
+| `case_type` | string | Case type category |
+| `target_cph` | float | Target Cases Per Hour (editable) |
+| `months` | object | Nested object with month-specific data |
+
+**Month Data Fields**:
+
+| Field | Type | Editable | Description |
+|-------|------|----------|-------------|
+| `forecast` | integer | No | Client forecast volume |
+| `fte_req` | integer | No | FTE Required (calculated) |
+| `fte_avail` | integer | Yes | FTE Available (editable via ± controls) |
+| `capacity` | integer | No | Capacity (calculated from FTE Avail × Target CPH) |
+
+**Usage Example**:
+```
+GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025
+GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&main_lobs[]=Medicaid&main_lobs[]=Medicare
+GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO&states[]=TX&case_types[]=Appeals
+```
+
+---
+
+## 12. Get Forecast Reallocation Preview
+
+**Endpoint**: `POST /api/edit-view/forecast-reallocation/preview/`
+
+**Purpose**: Calculate preview with user-edited Target CPH and FTE Available values before committing
+
+**Request Body**:
+```json
+{
+    "month": "April",
+    "year": 2025,
+    "modified_records": [
+        {
+            "case_id": "550e8400-e29b-41d4-a716-446655440000",
+            "main_lob": "Medicaid",
+            "state": "MO",
+            "case_type": "Appeals",
+            "target_cph": 105.0,
+            "target_cph_change": 5.0,
+            "modified_fields": ["target_cph", "Apr-25.fte_avail", "Jun-25.fte_avail"],
+            "months": {
+                "Apr-25": {
+                    "forecast": 12500,
+                    "fte_avail": 125,
+                    "fte_avail_change": 5
+                },
+                "May-25": {
+                    "forecast": 13000,
+                    "fte_avail": 125,
+                    "fte_avail_change": 0
+                },
+                "Jun-25": {
+                    "forecast": 13500,
+                    "fte_avail": 135,
+                    "fte_avail_change": 5
+                },
+                "Jul-25": {
+                    "forecast": 14000,
+                    "fte_avail": 135,
+                    "fte_avail_change": 0
+                },
+                "Aug-25": {
+                    "forecast": 14500,
+                    "fte_avail": 140,
+                    "fte_avail_change": 0
+                },
+                "Sep-25": {
+                    "forecast": 15000,
+                    "fte_avail": 145,
+                    "fte_avail_change": 0
+                }
+            }
+        }
+    ]
+}
+```
+
+**Success Response** (200):
+```json
+{
+    "success": true,
+    "months": {
+        "month1": "Apr-25",
+        "month2": "May-25",
+        "month3": "Jun-25",
+        "month4": "Jul-25",
+        "month5": "Aug-25",
+        "month6": "Sep-25"
+    },
+    "modified_records": [
+        {
+            "case_id": "550e8400-e29b-41d4-a716-446655440000",
+            "main_lob": "Medicaid",
+            "state": "MO",
+            "case_type": "Appeals",
+            "target_cph": 105.0,
+            "target_cph_change": 5.0,
+            "modified_fields": ["target_cph", "Apr-25.fte_avail", "Jun-25.fte_avail"],
+            "months": {
+                "Apr-25": {
+                    "forecast": 12500,
+                    "fte_req": 119,
+                    "fte_avail": 125,
+                    "fte_avail_change": 5,
+                    "capacity": 13125,
+                    "gap": 625
+                },
+                "May-25": {
+                    "forecast": 13000,
+                    "fte_req": 124,
+                    "fte_avail": 125,
+                    "fte_avail_change": 0,
+                    "capacity": 13125,
+                    "gap": 125
+                },
+                "Jun-25": {
+                    "forecast": 13500,
+                    "fte_req": 129,
+                    "fte_avail": 135,
+                    "fte_avail_change": 5,
+                    "capacity": 14175,
+                    "gap": 675
+                },
+                "Jul-25": {
+                    "forecast": 14000,
+                    "fte_req": 133,
+                    "fte_avail": 135,
+                    "fte_avail_change": 0,
+                    "capacity": 14175,
+                    "gap": 175
+                },
+                "Aug-25": {
+                    "forecast": 14500,
+                    "fte_req": 138,
+                    "fte_avail": 140,
+                    "fte_avail_change": 0,
+                    "capacity": 14700,
+                    "gap": 200
+                },
+                "Sep-25": {
+                    "forecast": 15000,
+                    "fte_req": 143,
+                    "fte_avail": 145,
+                    "fte_avail_change": 0,
+                    "capacity": 15225,
+                    "gap": 225
+                }
+            }
+        }
+    ],
+    "total_modified": 1,
+    "summary": {
+        "total_fte_change": 10,
+        "total_records": 1
+    }
+}
+```
+
+**Error Response** (400):
+```json
+{
+    "success": false,
+    "error": "No records provided for preview"
+}
+```
+
+**Error Response** (500):
+```json
+{
+    "success": false,
+    "error": "Failed to calculate reallocation preview"
+}
+```
+
+**Notes**:
+- **Calculation Logic**: Backend recalculates based on user edits:
+  - `fte_req = ceil(forecast / target_cph)` (FTE Required based on new CPH)
+  - `capacity = fte_avail × target_cph` (Capacity based on new FTE Available and CPH)
+  - `gap = capacity - forecast` (Positive = surplus, Negative = deficit)
+- Only records with actual changes should be sent in `modified_records`
+- `modified_fields` uses DOT notation to track which fields changed (e.g., "target_cph", "Apr-25.fte_avail")
+- `target_cph_change` shows delta from original CPH (0 if CPH wasn't changed)
+- Each month object includes `fte_avail_change` showing delta from original value
+- Response includes `gap` field per month (not in original data, calculated in preview)
+- Preview response can be directly submitted to update endpoint after user approval
+
+**Request Validation**:
+- `month` must be full month name (January-December)
+- `year` must be integer between 2020-2050
+- `modified_records` must be non-empty array
+- Each record must have: case_id, main_lob, state, case_type, target_cph, months
+- `target_cph` must be between 0.0 and 200.0 (from ForecastReallocationConfig)
+- `fte_avail` must be between 0 and 999 (from ForecastReallocationConfig)
+
+**Field Reference for Preview Response**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `case_id` | string | Unique identifier for the record |
+| `main_lob` | string | Main Line of Business |
+| `state` | string | State code |
+| `case_type` | string | Case type category |
+| `target_cph` | float | NEW Target CPH value (after modification) |
+| `target_cph_change` | float | Delta from original CPH |
+| `modified_fields` | array | DOT notation list of changed fields |
+| `months` | object | Month-specific calculated data |
+
+**Month Data in Preview Response**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `forecast` | integer | Client forecast (unchanged) |
+| `fte_req` | integer | Recalculated FTE Required |
+| `fte_avail` | integer | FTE Available (user-modified or original) |
+| `fte_avail_change` | integer | Delta in FTE Available |
+| `capacity` | integer | Recalculated capacity |
+| `gap` | integer | Capacity minus forecast (positive = surplus) |
+
+---
+
+## 13. Update Forecast Reallocation
+
+**Endpoint**: `POST /api/edit-view/forecast-reallocation/update/`
+
+**Purpose**: Save forecast reallocation changes and create history log entry
+
+**Request Body**:
+```json
+{
+    "month": "April",
+    "year": 2025,
+    "months": {
+        "month1": "Apr-25",
+        "month2": "May-25",
+        "month3": "Jun-25",
+        "month4": "Jul-25",
+        "month5": "Aug-25",
+        "month6": "Sep-25"
+    },
+    "modified_records": [
+        {
+            "case_id": "550e8400-e29b-41d4-a716-446655440000",
+            "main_lob": "Medicaid",
+            "state": "MO",
+            "case_type": "Appeals",
+            "target_cph": 105.0,
+            "target_cph_change": 5.0,
+            "modified_fields": ["target_cph", "Apr-25.fte_avail", "Jun-25.fte_avail"],
+            "months": {
+                "Apr-25": {
+                    "forecast": 12500,
+                    "fte_req": 119,
+                    "fte_avail": 125,
+                    "fte_avail_change": 5,
+                    "capacity": 13125,
+                    "gap": 625
+                },
+                "May-25": {
+                    "forecast": 13000,
+                    "fte_req": 124,
+                    "fte_avail": 125,
+                    "fte_avail_change": 0,
+                    "capacity": 13125,
+                    "gap": 125
+                },
+                "Jun-25": {
+                    "forecast": 13500,
+                    "fte_req": 129,
+                    "fte_avail": 135,
+                    "fte_avail_change": 5,
+                    "capacity": 14175,
+                    "gap": 675
+                },
+                "Jul-25": {
+                    "forecast": 14000,
+                    "fte_req": 133,
+                    "fte_avail": 135,
+                    "fte_avail_change": 0,
+                    "capacity": 14175,
+                    "gap": 175
+                },
+                "Aug-25": {
+                    "forecast": 14500,
+                    "fte_req": 138,
+                    "fte_avail": 140,
+                    "fte_avail_change": 0,
+                    "capacity": 14700,
+                    "gap": 200
+                },
+                "Sep-25": {
+                    "forecast": 15000,
+                    "fte_req": 143,
+                    "fte_avail": 145,
+                    "fte_avail_change": 0,
+                    "capacity": 15225,
+                    "gap": 225
+                }
+            }
+        }
+    ],
+    "user_notes": "Adjusted FTE allocation for Q2 capacity optimization"
+}
+```
+
+**Success Response** (200):
+```json
+{
+    "success": true,
+    "message": "Forecast reallocation updated successfully",
+    "records_updated": 1,
+    "history_log_id": "550e8400-e29b-41d4-a716-446655440001",
+    "timestamp": "2025-04-15T14:30:00.000Z"
+}
+```
+
+**Error Response** (400):
+```json
+{
+    "success": false,
+    "error": "Validation error: target_cph must be between 0.0 and 200.0"
+}
+```
+
+**Error Response** (500):
+```json
+{
+    "success": false,
+    "error": "Failed to update forecast reallocation"
+}
+```
+
+**Notes**:
+- **IMPORTANT**: Send the FULL record structure from the preview response (Section 12)
+- Top-level `months` dictionary is **REQUIRED** - must match the mapping received from preview response
+- Frontend should send the exact structure received from the preview endpoint - DO NOT manually construct
+- Creates history log entry with change type "Forecast Reallocation"
+- Should be transactional (all or nothing)
+- Validator will reject requests missing `months`, `modified_fields`, or required identifier fields
+
+**Top-level Request Fields**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `month` | string | Yes | Report month name (e.g., "April") |
+| `year` | number | Yes | Report year (e.g., 2025) |
+| `months` | object | Yes | Month index mapping (month1-month6) to labels. Must match preview response |
+| `modified_records` | array | Yes | Array of modified forecast records from preview |
+| `user_notes` | string | Yes | User-provided description for audit trail (max 500 chars) |
+
+**Modified Records Structure**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `case_id` | string | Yes | Unique identifier for the record |
+| `main_lob` | string | Yes | Main Line of Business |
+| `state` | string | Yes | State code |
+| `case_type` | string | Yes | Case type category |
+| `target_cph` | float | Yes | NEW Target CPH value |
+| `target_cph_change` | float | Yes | Delta from original CPH |
+| `modified_fields` | array | Yes | DOT notation list of changed fields |
+| `months` | object | Yes | Month-specific data with all 6 months |
+
+**Response Fields**:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | Operation success status |
+| `message` | string | Success/error message |
+| `records_updated` | number | Number of forecast records updated |
+| `history_log_id` | string | UUID of created history log entry |
+| `timestamp` | string | ISO timestamp of the update |
+
+**Validation Rules**:
+- `month`: Must be full month name (January-December)
+- `year`: Must be integer between 2020-2050
+- `modified_records`: Must be non-empty array
+- `months`: Must have exactly 6 entries (month1-month6)
+- `target_cph`: Must be between 0.0 and 200.0
+- `fte_avail`: Must be between 0 and 999
+- `modified_fields`: Must be non-empty array
+- `user_notes`: Required, max 500 characters
+
+---
+
 ## Configuration Notes
 
 From `EditViewConfig` in config.py:
@@ -1105,6 +1666,18 @@ From `TargetCPHConfig` in config.py:
 - **Max CPH Value**: 200.0 (validated by Pydantic models)
 - **CPH Decimal Places**: 2
 - **Max User Notes Length**: 1000 characters
+
+From `ForecastReallocationConfig` in config.py:
+- **Max Months Display**: 6 months
+- **Records Per Page**: 25 records
+- **Min Target CPH**: 0.0
+- **Max Target CPH**: 200.0
+- **Min FTE Available**: 0
+- **Max FTE Available**: 999
+- **CPH Increment Unit**: 1.0 (for ± buttons)
+- **FTE Increment Unit**: 1 (for ± buttons)
+- **Data Cache TTL**: 900 seconds (15 minutes)
+- **Filter Cache TTL**: 300 seconds (5 minutes)
 
 ---
 

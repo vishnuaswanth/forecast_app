@@ -24,7 +24,9 @@
             filters: { year: '', month: '', workType: '' },
             currentPage: 1,
             totalPages: 1,
-            isLoading: false
+            isLoading: false,
+            distinctYears: [],
+            distinctMonths: []
         },
         // Target CPH state
         targetCph: {
@@ -144,8 +146,8 @@
         bindEvents();
         initSelect2();
 
-        // Load initial data for Month Config tab
-        loadMonthConfigurations();
+        // Load initial data for Month Config tab (with isInitialLoad=true to populate filters)
+        loadMonthConfigurations(true);
     }
 
     function cacheDOM() {
@@ -237,41 +239,131 @@
     }
 
     function populateDropdowns() {
-        // Populate year filter (current year +/- 5 years)
+        // Populate modal dropdowns with static values (filters will be populated from data)
         const currentYear = new Date().getFullYear();
-        const yearOptions = [];
-        for (let y = currentYear - 5; y <= currentYear + 5; y++) {
-            yearOptions.push(`<option value="${y}">${y}</option>`);
-        }
-        if (DOM.monthConfig.yearFilter) {
-            DOM.monthConfig.yearFilter.innerHTML = '<option value="">All Years</option>' + yearOptions.join('');
-        }
 
-        // Populate month filter
+        // Populate month modal dropdown
         const monthNames = SETTINGS.monthNames || [];
         const monthOptions = monthNames.map(m => `<option value="${m}">${m}</option>`).join('');
-        if (DOM.monthConfig.monthFilter) {
-            DOM.monthConfig.monthFilter.innerHTML = '<option value="">All Months</option>' + monthOptions;
-        }
         if (DOM.monthConfigModal.monthField) {
             DOM.monthConfigModal.monthField.innerHTML = '<option value="">Select Month</option>' + monthOptions;
         }
 
-        // Populate work type filter
+        // Populate work type modal dropdown
         const workTypes = SETTINGS.workTypes || [];
         const workTypeOptions = workTypes.map(t => `<option value="${t}">${t}</option>`).join('');
-        if (DOM.monthConfig.workTypeFilter) {
-            DOM.monthConfig.workTypeFilter.innerHTML = '<option value="">All Types</option>' + workTypeOptions;
-        }
         if (DOM.monthConfigModal.workTypeField) {
             DOM.monthConfigModal.workTypeField.innerHTML = '<option value="">Select Type</option>' + workTypeOptions;
         }
 
-        // Set year field limits
+        // Work type filter can be static (only 2 values: Domestic, Global)
+        if (DOM.monthConfig.workTypeFilter) {
+            DOM.monthConfig.workTypeFilter.innerHTML = '<option value="">All Types</option>' + workTypeOptions;
+        }
+
+        // Set year field limits in modal
         if (DOM.monthConfigModal.yearField) {
             DOM.monthConfigModal.yearField.min = SETTINGS.minYear || 2020;
             DOM.monthConfigModal.yearField.max = SETTINGS.maxYear || 2100;
             DOM.monthConfigModal.yearField.value = currentYear;
+        }
+
+        // Initialize filter dropdowns with loading state
+        if (DOM.monthConfig.yearFilter) {
+            DOM.monthConfig.yearFilter.innerHTML = '<option value="">Loading...</option>';
+        }
+        if (DOM.monthConfig.monthFilter) {
+            DOM.monthConfig.monthFilter.innerHTML = '<option value="">Loading...</option>';
+        }
+
+        // Initialize Target CPH filters with loading state
+        if (DOM.targetCph.lobFilter) {
+            DOM.targetCph.lobFilter.innerHTML = '<option value="">Loading...</option>';
+        }
+        if (DOM.targetCph.caseTypeFilter) {
+            DOM.targetCph.caseTypeFilter.innerHTML = '<option value="">Loading...</option>';
+        }
+    }
+
+    function populateMonthConfigFiltersFromData() {
+        // Extract distinct years from data
+        const years = [...new Set(STATE.monthConfig.data.map(c => c.year))].sort((a, b) => b - a);
+        STATE.monthConfig.distinctYears = years;
+
+        // Extract distinct months from data (preserve month order)
+        const monthNames = SETTINGS.monthNames || [];
+        const monthsInData = [...new Set(STATE.monthConfig.data.map(c => c.month))];
+        const orderedMonths = monthNames.filter(m => monthsInData.includes(m));
+        STATE.monthConfig.distinctMonths = orderedMonths;
+
+        // Populate year filter
+        if (DOM.monthConfig.yearFilter) {
+            const yearOptions = years.map(y => `<option value="${y}">${y}</option>`).join('');
+            DOM.monthConfig.yearFilter.innerHTML = '<option value="">All Years</option>' + yearOptions;
+            // Restore selected value if it exists
+            if (STATE.monthConfig.filters.year && years.includes(parseInt(STATE.monthConfig.filters.year))) {
+                DOM.monthConfig.yearFilter.value = STATE.monthConfig.filters.year;
+            }
+        }
+
+        // Populate month filter
+        if (DOM.monthConfig.monthFilter) {
+            const monthOptions = orderedMonths.map(m => `<option value="${m}">${m}</option>`).join('');
+            DOM.monthConfig.monthFilter.innerHTML = '<option value="">All Months</option>' + monthOptions;
+            // Restore selected value if it exists
+            if (STATE.monthConfig.filters.month && orderedMonths.includes(STATE.monthConfig.filters.month)) {
+                DOM.monthConfig.monthFilter.value = STATE.monthConfig.filters.month;
+            }
+        }
+
+        // Refresh Select2 if initialized
+        if (jQuery && jQuery.fn.select2) {
+            if (DOM.monthConfig.yearFilter) {
+                jQuery(DOM.monthConfig.yearFilter).trigger('change.select2');
+            }
+            if (DOM.monthConfig.monthFilter) {
+                jQuery(DOM.monthConfig.monthFilter).trigger('change.select2');
+            }
+        }
+    }
+
+    function populateTargetCphFiltersFromData() {
+        // Populate Main LOB filter from distinct values
+        if (DOM.targetCph.lobFilter && STATE.targetCph.distinctLobs.length > 0) {
+            const lobOptions = STATE.targetCph.distinctLobs.map(item => {
+                const value = typeof item === 'object' ? item.value : item;
+                const display = typeof item === 'object' ? item.display : item;
+                return `<option value="${escapeHtml(value)}">${escapeHtml(display)}</option>`;
+            }).join('');
+            DOM.targetCph.lobFilter.innerHTML = '<option value="">All LOBs</option>' + lobOptions;
+            // Restore selected value
+            if (STATE.targetCph.filters.mainLob) {
+                DOM.targetCph.lobFilter.value = STATE.targetCph.filters.mainLob;
+            }
+        }
+
+        // Populate Case Type filter from distinct values
+        if (DOM.targetCph.caseTypeFilter && STATE.targetCph.distinctCaseTypes.length > 0) {
+            const caseTypeOptions = STATE.targetCph.distinctCaseTypes.map(item => {
+                const value = typeof item === 'object' ? item.value : item;
+                const display = typeof item === 'object' ? item.display : item;
+                return `<option value="${escapeHtml(value)}">${escapeHtml(display)}</option>`;
+            }).join('');
+            DOM.targetCph.caseTypeFilter.innerHTML = '<option value="">All Case Types</option>' + caseTypeOptions;
+            // Restore selected value
+            if (STATE.targetCph.filters.caseType) {
+                DOM.targetCph.caseTypeFilter.value = STATE.targetCph.filters.caseType;
+            }
+        }
+
+        // Refresh Select2 if initialized
+        if (jQuery && jQuery.fn.select2) {
+            if (DOM.targetCph.lobFilter) {
+                jQuery(DOM.targetCph.lobFilter).trigger('change.select2');
+            }
+            if (DOM.targetCph.caseTypeFilter) {
+                jQuery(DOM.targetCph.caseTypeFilter).trigger('change.select2');
+            }
         }
     }
 
@@ -368,6 +460,15 @@
             DOM.targetCph.bulkAddBtn.addEventListener('click', handleTargetCphBulkAdd);
         }
 
+        // LOB filter change event - update case types based on selected LOB
+        if (DOM.targetCph.lobFilter) {
+            DOM.targetCph.lobFilter.addEventListener('change', handleLobFilterChange);
+            // Also listen for Select2 change event
+            if (jQuery && jQuery.fn.select2) {
+                jQuery(DOM.targetCph.lobFilter).on('change', handleLobFilterChange);
+            }
+        }
+
         // Target CPH Modal events
         if (DOM.targetCphModal.saveBtn) {
             DOM.targetCphModal.saveBtn.addEventListener('click', handleTargetCphSave);
@@ -420,7 +521,9 @@
         if (targetId === '#target-cph-config-tab') {
             // Load Target CPH data when tab is activated
             if (STATE.targetCph.data.length === 0) {
+                // Load filter options and data
                 loadDistinctLobs();
+                loadDistinctCaseTypes();
                 loadTargetCphConfigurations();
             }
         }
@@ -429,7 +532,7 @@
     // ============================================================
     // MONTH CONFIGURATION FUNCTIONS
     // ============================================================
-    async function loadMonthConfigurations() {
+    async function loadMonthConfigurations(isInitialLoad = false) {
         if (STATE.monthConfig.isLoading) return;
 
         STATE.monthConfig.isLoading = true;
@@ -437,10 +540,14 @@
         hideError(DOM.monthConfig);
 
         try {
+            // On initial load, fetch all data to populate filters
+            // On subsequent loads, we can use server-side filtering if needed
             const params = new URLSearchParams();
-            if (STATE.monthConfig.filters.year) params.append('year', STATE.monthConfig.filters.year);
-            if (STATE.monthConfig.filters.month) params.append('month', STATE.monthConfig.filters.month);
-            if (STATE.monthConfig.filters.workType) params.append('work_type', STATE.monthConfig.filters.workType);
+            if (!isInitialLoad) {
+                if (STATE.monthConfig.filters.year) params.append('year', STATE.monthConfig.filters.year);
+                if (STATE.monthConfig.filters.month) params.append('month', STATE.monthConfig.filters.month);
+                if (STATE.monthConfig.filters.workType) params.append('work_type', STATE.monthConfig.filters.workType);
+            }
 
             const url = URLS.monthConfigList + (params.toString() ? '?' + params.toString() : '');
             const response = await fetch(url);
@@ -451,6 +558,12 @@
             }
 
             STATE.monthConfig.data = data.data || [];
+
+            // On initial load, populate filter dropdowns from data
+            if (isInitialLoad || STATE.monthConfig.distinctYears.length === 0) {
+                populateMonthConfigFiltersFromData();
+            }
+
             renderMonthConfigTable();
             updateMonthConfigCount();
 
@@ -1004,24 +1117,29 @@
 
             if (data.success && data.data) {
                 STATE.targetCph.distinctLobs = data.data;
-                populateLobFilter();
+                populateTargetCphFiltersFromData();
             }
         } catch (error) {
             console.error('Failed to load distinct LOBs:', error);
         }
     }
 
-    function populateLobFilter() {
-        if (!DOM.targetCph.lobFilter) return;
+    async function loadDistinctCaseTypes(mainLob = null) {
+        try {
+            let url = URLS.targetCphDistinctCaseTypes;
+            if (mainLob) {
+                url += '?main_lob=' + encodeURIComponent(mainLob);
+            }
 
-        const options = STATE.targetCph.distinctLobs.map(lob =>
-            `<option value="${escapeHtml(lob.value)}">${escapeHtml(lob.display)}</option>`
-        ).join('');
+            const response = await fetch(url);
+            const data = await response.json();
 
-        DOM.targetCph.lobFilter.innerHTML = '<option value="">All LOBs</option>' + options;
-
-        if (jQuery && jQuery.fn.select2) {
-            jQuery(DOM.targetCph.lobFilter).trigger('change');
+            if (data.success && data.data) {
+                STATE.targetCph.distinctCaseTypes = data.data;
+                populateTargetCphFiltersFromData();
+            }
+        } catch (error) {
+            console.error('Failed to load distinct Case Types:', error);
         }
     }
 
@@ -1173,15 +1291,33 @@
         STATE.targetCph.filters = { mainLob: '', caseType: '' };
 
         if (jQuery && jQuery.fn.select2) {
-            jQuery(DOM.targetCph.lobFilter).val('').trigger('change');
-            jQuery(DOM.targetCph.caseTypeFilter).val('').trigger('change');
+            jQuery(DOM.targetCph.lobFilter).val('').trigger('change.select2');
+            jQuery(DOM.targetCph.caseTypeFilter).val('').trigger('change.select2');
         } else {
             if (DOM.targetCph.lobFilter) DOM.targetCph.lobFilter.value = '';
             if (DOM.targetCph.caseTypeFilter) DOM.targetCph.caseTypeFilter.value = '';
         }
 
+        // Reset to all case types when clearing filters
+        loadDistinctCaseTypes();
+
         STATE.targetCph.currentPage = 1;
         loadTargetCphConfigurations();
+    }
+
+    function handleLobFilterChange(e) {
+        const selectedLob = e.target.value || '';
+
+        // Reset case type filter when LOB changes
+        if (DOM.targetCph.caseTypeFilter) {
+            DOM.targetCph.caseTypeFilter.innerHTML = '<option value="">Loading...</option>';
+            if (jQuery && jQuery.fn.select2) {
+                jQuery(DOM.targetCph.caseTypeFilter).val('').trigger('change.select2');
+            }
+        }
+
+        // Load case types filtered by selected LOB (or all if none selected)
+        loadDistinctCaseTypes(selectedLob || null);
     }
 
     function handleTargetCphAdd() {
