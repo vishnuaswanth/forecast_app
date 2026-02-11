@@ -1764,7 +1764,7 @@ class APIClient:
                 'total': 50
             }
         """
-        endpoint = "/api/configuration/month-config"
+        endpoint = "/api/month-config"
         params = {}
 
         if month:
@@ -1776,7 +1776,9 @@ class APIClient:
 
         logger.debug(f"[Month Config] Fetching with params: {params}")
         response = self._make_request('GET', endpoint, params=params)
-        logger.info(f"[Month Config] Fetched {len(response.get('data', []))} configurations")
+        # Extract configurations from nested data structure
+        configs = response.get('data', {}).get('configurations', []) if isinstance(response.get('data'), dict) else response.get('data', [])
+        logger.info(f"[Month Config] Fetched {len(configs)} configurations")
         return response
 
     def create_month_configuration(self, data: Dict) -> Dict:
@@ -1785,12 +1787,12 @@ class APIClient:
 
         Args:
             data: Configuration data with month, year, work_type, working_days,
-                  occupancy, shrinkage, work_hours, updated_by
+                  occupancy, shrinkage, work_hours, created_by
 
         Returns:
             Success response with created configuration
         """
-        endpoint = "/api/configuration/month-config"
+        endpoint = "/api/month-config"
         logger.info(f"[Month Config] Creating: {data.get('month')} {data.get('year')} {data.get('work_type')}")
         response = self._make_request('POST', endpoint, data=data)
 
@@ -1817,11 +1819,11 @@ class APIClient:
         Returns:
             Success response with created count
         """
-        endpoint = "/api/configuration/month-config/bulk"
+        endpoint = "/api/month-config/bulk"
         data = {
-            'configs': configs,
+            'configurations': configs,
             'created_by': created_by,
-            'skip_validation': skip_validation
+            'skip_pairing_validation': skip_validation
         }
         logger.info(f"[Month Config] Bulk creating {len(configs)} configurations")
         response = self._make_request('POST', endpoint, data=data)
@@ -1843,9 +1845,9 @@ class APIClient:
         Returns:
             Success response with updated configuration
         """
-        endpoint = f"/api/configuration/month-config/{config_id}"
+        endpoint = f"/api/month-config/{config_id}"
         logger.info(f"[Month Config] Updating ID: {config_id}")
-        response = self._make_request('PUT', endpoint, data=data)
+        response = self._make_request('PUT', endpoint, params=data)
 
         # Clear cache after successful update
         if response.get('success', True):
@@ -1864,8 +1866,8 @@ class APIClient:
         Returns:
             Success response or error with orphan warning
         """
-        endpoint = f"/api/configuration/month-config/{config_id}"
-        params = {'allow_orphan': allow_orphan} if allow_orphan else {}
+        endpoint = f"/api/month-config/{config_id}"
+        params = {'allow_orphan': str(allow_orphan).lower()} if allow_orphan else {}
         logger.info(f"[Month Config] Deleting ID: {config_id}, allow_orphan: {allow_orphan}")
         response = self._make_request('DELETE', endpoint, params=params)
 
@@ -1882,7 +1884,7 @@ class APIClient:
         Returns:
             Validation result with orphaned records list
         """
-        endpoint = "/api/configuration/month-config/validate"
+        endpoint = "/api/month-config/validate"
         logger.info("[Month Config] Running validation check")
         response = self._make_request('GET', endpoint)
         return response
@@ -1919,7 +1921,7 @@ class APIClient:
                 'total': 50
             }
         """
-        endpoint = "/api/configuration/target-cph"
+        endpoint = "/api/target-cph"
         params = {}
 
         if main_lob:
@@ -1929,7 +1931,9 @@ class APIClient:
 
         logger.debug(f"[Target CPH Config] Fetching with params: {params}")
         response = self._make_request('GET', endpoint, params=params)
-        logger.info(f"[Target CPH Config] Fetched {len(response.get('data', []))} configurations")
+        # Extract configurations from nested data structure
+        configs = response.get('data', {}).get('configurations', []) if isinstance(response.get('data'), dict) else response.get('data', [])
+        logger.info(f"[Target CPH Config] Fetched {len(configs)} configurations")
         return response
 
     def get_target_cph_by_id(self, config_id: int) -> Dict:
@@ -1942,7 +1946,7 @@ class APIClient:
         Returns:
             Configuration data or error response
         """
-        endpoint = f"/api/configuration/target-cph/{config_id}"
+        endpoint = f"/api/target-cph/{config_id}"
         logger.debug(f"[Target CPH Config] Fetching ID: {config_id}")
         response = self._make_request('GET', endpoint)
         return response
@@ -1957,7 +1961,7 @@ class APIClient:
         Returns:
             Success response with created configuration
         """
-        endpoint = "/api/configuration/target-cph"
+        endpoint = "/api/target-cph"
         logger.info(f"[Target CPH Config] Creating: {data.get('main_lob')} / {data.get('case_type')}")
         response = self._make_request('POST', endpoint, data=data)
 
@@ -1977,8 +1981,8 @@ class APIClient:
         Returns:
             Success response with created count
         """
-        endpoint = "/api/configuration/target-cph/bulk"
-        data = {'configs': configs}
+        endpoint = "/api/target-cph/bulk"
+        data = {'configurations': configs}
         logger.info(f"[Target CPH Config] Bulk creating {len(configs)} configurations")
         response = self._make_request('POST', endpoint, data=data)
 
@@ -1999,7 +2003,7 @@ class APIClient:
         Returns:
             Success response with updated configuration
         """
-        endpoint = f"/api/configuration/target-cph/{config_id}"
+        endpoint = f"/api/target-cph/{config_id}"
         logger.info(f"[Target CPH Config] Updating ID: {config_id}")
         response = self._make_request('PUT', endpoint, data=data)
 
@@ -2019,7 +2023,7 @@ class APIClient:
         Returns:
             Success response
         """
-        endpoint = f"/api/configuration/target-cph/{config_id}"
+        endpoint = f"/api/target-cph/{config_id}"
         logger.info(f"[Target CPH Config] Deleting ID: {config_id}")
         response = self._make_request('DELETE', endpoint)
 
@@ -2042,7 +2046,7 @@ class APIClient:
                 'total': 10
             }
         """
-        endpoint = "/api/configuration/target-cph/distinct/main-lobs"
+        endpoint = "/api/target-cph/distinct/main-lobs"
         logger.debug("[Target CPH Config] Fetching distinct Main LOBs")
         response = self._make_request('GET', endpoint)
         return response
@@ -2058,7 +2062,7 @@ class APIClient:
         Returns:
             Dictionary with distinct values
         """
-        endpoint = "/api/configuration/target-cph/distinct/case-types"
+        endpoint = "/api/target-cph/distinct/case-types"
         params = {'main_lob': main_lob} if main_lob else {}
         logger.debug(f"[Target CPH Config] Fetching distinct Case Types for LOB: {main_lob}")
         response = self._make_request('GET', endpoint, params=params)

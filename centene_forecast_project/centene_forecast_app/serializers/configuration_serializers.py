@@ -53,22 +53,35 @@ class ConfigurationSerializer:
         Serialize month configuration list response.
 
         Args:
-            data: Raw data from repository
+            data: Raw data from repository (API spec format: {success, data: {count, configurations: [...]}})
 
         Returns:
             Formatted response dict with configurations and metadata
 
         Example:
-            >>> data = {'success': True, 'data': [...], 'total': 50}
+            >>> data = {'success': True, 'data': {'count': 50, 'configurations': [...]}}
             >>> response = ConfigurationSerializer.serialize_month_config_list(data)
         """
         try:
-            configs = data.get('data', [])
+            # Handle API spec format: data.data.configurations
+            raw_data = data.get('data', {})
+            if isinstance(raw_data, dict):
+                configs = raw_data.get('configurations', [])
+                count = raw_data.get('count', len(configs))
+            else:
+                # Fallback for flat array format
+                configs = raw_data if isinstance(raw_data, list) else []
+                count = len(configs)
 
             # Format each configuration
             for config in configs:
-                # Format updated_date for display
-                if config.get('updated_date'):
+                # Map API field names to display names
+                # API uses: created_datetime, updated_datetime
+                # We normalize to: updated_date for display
+                if config.get('updated_datetime'):
+                    config['updated_date'] = config['updated_datetime']
+                    config['updated_date_formatted'] = _format_datetime(config['updated_datetime'])
+                elif config.get('updated_date'):
                     config['updated_date_formatted'] = _format_datetime(config['updated_date'])
 
                 # Ensure numeric fields are properly typed
@@ -82,7 +95,7 @@ class ConfigurationSerializer:
             response = {
                 'success': data.get('success', True),
                 'data': configs,
-                'total': data.get('total', len(configs)),
+                'total': count,
                 'timestamp': _get_timestamp()
             }
 
@@ -135,30 +148,46 @@ class ConfigurationSerializer:
         Serialize month configuration validation response.
 
         Args:
-            data: Validation result from repository
+            data: Validation result from repository (API spec format: {success, data: {...}})
 
         Returns:
             Formatted response with validation results
 
         Example:
-            >>> data = {'success': True, 'is_valid': False, 'orphaned_records': [...]}
+            >>> data = {'success': True, 'data': {'is_valid': False, 'orphaned_records': [...]}}
             >>> response = ConfigurationSerializer.serialize_validation_response(data)
         """
         try:
-            orphaned = data.get('orphaned_records', [])
+            # Handle API spec format: data.data contains the validation results
+            raw_data = data.get('data', data)
+            if isinstance(raw_data, dict) and 'is_valid' in raw_data:
+                validation_data = raw_data
+            else:
+                validation_data = data
+
+            orphaned = validation_data.get('orphaned_records', [])
 
             # Format orphaned records for display
             for record in orphaned:
-                if record.get('updated_date'):
+                if record.get('updated_datetime'):
+                    record['updated_date'] = record['updated_datetime']
+                    record['updated_date_formatted'] = _format_datetime(record['updated_datetime'])
+                elif record.get('updated_date'):
                     record['updated_date_formatted'] = _format_datetime(record['updated_date'])
+
+            # Get recommendations from API response
+            recommendations = validation_data.get('recommendations', [])
+            recommendation_text = '; '.join(recommendations) if recommendations else validation_data.get('recommendation')
 
             response = {
                 'success': data.get('success', True),
-                'is_valid': data.get('is_valid', len(orphaned) == 0),
-                'orphaned_count': len(orphaned),
+                'is_valid': validation_data.get('is_valid', len(orphaned) == 0),
+                'orphaned_count': validation_data.get('orphaned_count', len(orphaned)),
                 'orphaned_records': orphaned,
-                'message': data.get('message'),
-                'recommendation': data.get('recommendation'),
+                'total_configs': validation_data.get('total_configs', 0),
+                'paired_count': validation_data.get('paired_count', 0),
+                'message': validation_data.get('message'),
+                'recommendation': recommendation_text,
                 'timestamp': _get_timestamp()
             }
 
@@ -175,22 +204,34 @@ class ConfigurationSerializer:
         Serialize Target CPH configuration list response.
 
         Args:
-            data: Raw data from repository
+            data: Raw data from repository (API spec format: {success, data: {count, configurations: [...]}})
 
         Returns:
             Formatted response dict with configurations and metadata
 
         Example:
-            >>> data = {'success': True, 'data': [...], 'total': 50}
+            >>> data = {'success': True, 'data': {'count': 50, 'configurations': [...]}}
             >>> response = ConfigurationSerializer.serialize_target_cph_list(data)
         """
         try:
-            configs = data.get('data', [])
+            # Handle API spec format: data.data.configurations
+            raw_data = data.get('data', {})
+            if isinstance(raw_data, dict):
+                configs = raw_data.get('configurations', [])
+                count = raw_data.get('count', len(configs))
+            else:
+                # Fallback for flat array format
+                configs = raw_data if isinstance(raw_data, list) else []
+                count = len(configs)
 
             # Format each configuration
             for config in configs:
-                # Format updated_date for display
-                if config.get('updated_date'):
+                # Map API field names to display names
+                # API uses: created_datetime, updated_datetime
+                if config.get('updated_datetime'):
+                    config['updated_date'] = config['updated_datetime']
+                    config['updated_date_formatted'] = _format_datetime(config['updated_datetime'])
+                elif config.get('updated_date'):
                     config['updated_date_formatted'] = _format_datetime(config['updated_date'])
 
                 # Ensure target_cph is properly typed
@@ -200,7 +241,7 @@ class ConfigurationSerializer:
             response = {
                 'success': data.get('success', True),
                 'data': configs,
-                'total': data.get('total', len(configs)),
+                'total': count,
                 'timestamp': _get_timestamp()
             }
 
@@ -248,24 +289,36 @@ class ConfigurationSerializer:
             return serialize_error_response("Failed to serialize Target CPH configuration")
 
     @staticmethod
-    def serialize_distinct_values(data: Dict) -> Dict[str, Any]:
+    def serialize_distinct_values(data: Dict, value_key: str = 'values') -> Dict[str, Any]:
         """
         Serialize distinct values response for dropdowns.
 
         Args:
             data: Raw distinct values from repository
+                  (API spec format: {success, data: {count, main_lobs: [...]}} or {count, case_types: [...]})
+            value_key: Key to use for extracting values ('main_lobs' or 'case_types')
 
         Returns:
             Formatted response with value/display pairs
 
         Example:
-            >>> data = {'success': True, 'data': [...]}
-            >>> response = ConfigurationSerializer.serialize_distinct_values(data)
+            >>> data = {'success': True, 'data': {'count': 10, 'main_lobs': [...]}}
+            >>> response = ConfigurationSerializer.serialize_distinct_values(data, 'main_lobs')
         """
         try:
-            values = data.get('data', [])
+            raw_data = data.get('data', {})
 
-            # Ensure consistent format
+            # Handle API spec format: data.data.main_lobs or data.data.case_types
+            if isinstance(raw_data, dict):
+                # Try to find the values array in the nested data
+                values = raw_data.get('main_lobs') or raw_data.get('case_types') or raw_data.get(value_key, [])
+                count = raw_data.get('count', len(values))
+            else:
+                # Fallback for flat array format
+                values = raw_data if isinstance(raw_data, list) else []
+                count = len(values)
+
+            # Ensure consistent format - convert strings to value/display pairs
             formatted_values = []
             for value in values:
                 if isinstance(value, dict):
@@ -280,7 +333,7 @@ class ConfigurationSerializer:
             response = {
                 'success': data.get('success', True),
                 'data': formatted_values,
-                'total': len(formatted_values),
+                'total': count,
                 'timestamp': _get_timestamp()
             }
 
@@ -298,27 +351,42 @@ class ConfigurationSerializer:
 
         Args:
             data: Bulk operation result from repository
+                  (API spec format: {success, data: {total, succeeded, failed, errors}, message})
 
         Returns:
             Formatted response with created count and any errors
 
         Example:
-            >>> data = {'success': True, 'created_count': 10}
+            >>> data = {'success': True, 'data': {'total': 10, 'succeeded': 10, 'failed': 0}}
             >>> response = ConfigurationSerializer.serialize_bulk_response(data)
         """
         try:
+            # Handle API spec format: data.data contains the bulk operation stats
+            raw_data = data.get('data', {})
+            if isinstance(raw_data, dict):
+                created_count = raw_data.get('succeeded', raw_data.get('created_count', 0))
+                skipped_count = raw_data.get('duplicates_skipped', raw_data.get('skipped_count', 0))
+                failed_count = raw_data.get('failed', 0)
+                errors = raw_data.get('errors', []) + raw_data.get('validation_errors', [])
+            else:
+                created_count = data.get('created_count', 0)
+                skipped_count = data.get('skipped_count', 0)
+                failed_count = data.get('failed', 0)
+                errors = data.get('errors', [])
+
             response = {
                 'success': data.get('success', True),
-                'created_count': data.get('created_count', 0),
-                'skipped_count': data.get('skipped_count', 0),
-                'errors': data.get('errors', []),
+                'created_count': created_count,
+                'skipped_count': skipped_count,
+                'failed_count': failed_count,
+                'errors': errors,
                 'message': data.get('message', 'Bulk operation completed'),
                 'timestamp': _get_timestamp()
             }
 
             logger.debug(
                 f"[Serializer] Bulk response: {response['created_count']} created, "
-                f"{response['skipped_count']} skipped"
+                f"{response['skipped_count']} skipped, {response['failed_count']} failed"
             )
             return response
 

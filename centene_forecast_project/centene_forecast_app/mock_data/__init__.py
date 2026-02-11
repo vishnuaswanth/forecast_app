@@ -18,7 +18,7 @@ Usage:
 """
 
 # Manager View exports (backward compatibility with existing imports)
-from mock_data.manager_view import (
+from centene_forecast_app.mock_data.manager_view import (
     get_report_months,
     get_categories,
     get_manager_data,
@@ -27,7 +27,7 @@ from mock_data.manager_view import (
 )
 
 # Forecast Filters exports
-from mock_data.forecast_filters import (
+from centene_forecast_app.mock_data.forecast_filters import (
     get_forecast_filter_years,
     get_forecast_months_for_year,
     get_forecast_platforms,
@@ -37,7 +37,7 @@ from mock_data.forecast_filters import (
 )
 
 # Edit View exports
-from mock_data.edit_view import (
+from centene_forecast_app.mock_data.edit_view import (
     get_allocation_reports,
     get_bench_allocation_preview,
     get_history_log,
@@ -45,13 +45,13 @@ from mock_data.edit_view import (
 )
 
 # Target CPH exports
-from mock_data.target_cph import (
+from centene_forecast_app.mock_data.target_cph import (
     get_target_cph_data,
     get_target_cph_preview
 )
 
 # Forecast Reallocation exports
-from mock_data.forecast_reallocation import (
+from centene_forecast_app.mock_data.forecast_reallocation import (
     get_reallocation_filter_options,
     get_reallocation_data,
     get_reallocation_preview,

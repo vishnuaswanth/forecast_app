@@ -850,7 +850,7 @@
             const response = await fetch(URLS.monthConfigBulkCreate, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ configs: configs })
+                body: JSON.stringify({ configurations: configs })
             });
 
             const result = await response.json();
@@ -1237,7 +1237,7 @@
             const response = await fetch(URLS.targetCphBulkCreate, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ configs: configs })
+                body: JSON.stringify({ configurations: configs })
             });
 
             const result = await response.json();

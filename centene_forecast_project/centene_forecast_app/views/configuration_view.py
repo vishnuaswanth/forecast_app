@@ -212,9 +212,9 @@ def month_config_create_api(request):
         # Parse request body
         body = json.loads(request.body)
 
-        # Add updated_by from request user if not provided
-        if not body.get('updated_by') and hasattr(request, 'user') and request.user.is_authenticated:
-            body['updated_by'] = request.user.username
+        # Add created_by from request user if not provided (API spec uses created_by)
+        if not body.get('created_by') and hasattr(request, 'user') and request.user.is_authenticated:
+            body['created_by'] = request.user.username
 
         logger.info(
             f"[Config API] Creating month config - {body.get('month')} "
@@ -287,8 +287,9 @@ def month_config_bulk_create_api(request):
     try:
         # Parse request body
         body = json.loads(request.body)
-        configs = body.get('configs', [])
-        skip_validation = body.get('skip_validation', False)
+        # Support both 'configurations' (API spec) and 'configs' (legacy)
+        configs = body.get('configurations') or body.get('configs', [])
+        skip_validation = body.get('skip_pairing_validation', body.get('skip_validation', False))
 
         # Get username
         created_by = 'system'
@@ -300,9 +301,9 @@ def month_config_bulk_create_api(request):
         # Validate
         validated_configs = validate_month_config_bulk(configs)
 
-        # Add created_by to each config
+        # Add created_by to each config (API spec uses created_by)
         for config in validated_configs:
-            config['updated_by'] = created_by
+            config['created_by'] = created_by
 
         # Bulk create
         data = bulk_create_month_configurations(validated_configs, created_by, skip_validation)
@@ -626,9 +627,9 @@ def target_cph_create_api(request):
         # Parse request body
         body = json.loads(request.body)
 
-        # Add updated_by from request user if not provided
-        if not body.get('updated_by') and hasattr(request, 'user') and request.user.is_authenticated:
-            body['updated_by'] = request.user.username
+        # Add created_by from request user if not provided (API spec uses created_by)
+        if not body.get('created_by') and hasattr(request, 'user') and request.user.is_authenticated:
+            body['created_by'] = request.user.username
 
         logger.info(
             f"[Config API] Creating Target CPH - {body.get('main_lob')} / {body.get('case_type')}"
@@ -698,21 +699,22 @@ def target_cph_bulk_create_api(request):
     try:
         # Parse request body
         body = json.loads(request.body)
-        configs = body.get('configs', [])
+        # Support both 'configurations' (API spec) and 'configs' (legacy)
+        configs = body.get('configurations') or body.get('configs', [])
 
         # Get username
-        updated_by = 'system'
+        created_by = 'system'
         if hasattr(request, 'user') and request.user.is_authenticated:
-            updated_by = request.user.username
+            created_by = request.user.username
 
         logger.info(f"[Config API] Bulk creating {len(configs)} Target CPH configs")
 
         # Validate
         validated_configs = validate_target_cph_bulk(configs)
 
-        # Add updated_by to each config
+        # Add created_by to each config (API spec uses created_by)
         for config in validated_configs:
-            config['updated_by'] = updated_by
+            config['created_by'] = created_by
 
         # Bulk create
         data = bulk_create_target_cph_configurations(validated_configs)

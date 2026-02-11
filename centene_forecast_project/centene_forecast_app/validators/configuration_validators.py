@@ -307,10 +307,10 @@ def validate_month_config_create(data: Dict) -> Dict:
         'work_hours': validate_work_hours(data.get('work_hours')),
     }
 
-    # Optional updated_by field
-    updated_by = data.get('updated_by', '').strip()
-    if updated_by:
-        validated['updated_by'] = updated_by
+    # Optional created_by field (API spec uses created_by for create operations)
+    created_by = data.get('created_by', '').strip() if data.get('created_by') else ''
+    if created_by:
+        validated['created_by'] = created_by
 
     return validated
 
@@ -521,10 +521,10 @@ def validate_target_cph_create(data: Dict) -> Dict:
         'target_cph': validate_target_cph_value(data.get('target_cph')),
     }
 
-    # Optional updated_by field
-    updated_by = data.get('updated_by', '').strip() if data.get('updated_by') else ''
-    if updated_by:
-        validated['updated_by'] = updated_by
+    # Optional created_by field (API spec uses created_by for create operations)
+    created_by = data.get('created_by', '').strip() if data.get('created_by') else ''
+    if created_by:
+        validated['created_by'] = created_by
 
     return validated
 
