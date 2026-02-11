@@ -1,0 +1,798 @@
+/* configuration_view.css
+ * Styles for Configuration Management page
+ * Follows namespaced pattern from edit_view.css
+ * Light theme only
+ */
+
+/* ============================================================
+   BASE CONTAINER & LAYOUT
+   ============================================================ */
+
+.config-view-container {
+    padding: 1.5rem;
+    max-width: 1600px;
+    margin: 0 auto;
+    background-color: #f8f9fa;
+    min-height: 100vh;
+}
+
+.config-view-header {
+    background-color: #ffffff;
+    padding: 1.25rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+}
+
+.config-view-header h2 {
+    color: #212529;
+    font-weight: 600;
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+/* ============================================================
+   SPACING UTILITIES
+   ============================================================ */
+
+.config-view-mb-0 { margin-bottom: 0 !important; }
+.config-view-mb-2 { margin-bottom: 0.5rem !important; }
+.config-view-mb-3 { margin-bottom: 1rem !important; }
+.config-view-mb-4 { margin-bottom: 1.5rem !important; }
+.config-view-mt-2 { margin-top: 0.5rem !important; }
+.config-view-mt-3 { margin-top: 1rem !important; }
+.config-view-mt-4 { margin-top: 1.5rem !important; }
+.config-view-me-1 { margin-right: 0.25rem !important; }
+.config-view-me-2 { margin-right: 0.5rem !important; }
+.config-view-ms-2 { margin-left: 0.5rem !important; }
+
+/* ============================================================
+   TAB NAVIGATION
+   ============================================================ */
+
+.config-view-tabs {
+    border-bottom: 2px solid #e9ecef;
+    background-color: #ffffff;
+    padding: 0 1rem;
+    border-radius: 8px 8px 0 0;
+}
+
+.config-view-nav-item {
+    margin-bottom: -2px;
+}
+
+.config-view-nav-link {
+    color: #6c757d;
+    font-weight: 500;
+    padding: 0.875rem 1.25rem;
+    border: none;
+    border-bottom: 3px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.config-view-nav-link:hover {
+    color: #0d6efd;
+    border-bottom-color: #e9ecef;
+}
+
+.config-view-nav-link.active {
+    color: #0d6efd;
+    border-bottom-color: #0d6efd;
+    background-color: transparent;
+}
+
+.config-view-tab-content {
+    background-color: transparent;
+}
+
+.config-view-tab-pane {
+    padding: 0;
+}
+
+/* ============================================================
+   CARDS
+   ============================================================ */
+
+.config-view-card {
+    background-color: #ffffff;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.config-view-card-body {
+    padding: 1.25rem;
+}
+
+.config-view-card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    padding: 1rem 1.25rem;
+    border-radius: 8px 8px 0 0;
+}
+
+.config-view-filter-card {
+    border-left: 4px solid #0d6efd;
+}
+
+.config-view-filter-card h5 {
+    color: #212529;
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+/* ============================================================
+   GRID LAYOUT
+   ============================================================ */
+
+.config-view-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0 -0.5rem;
+}
+
+.config-view-col-2 { flex: 0 0 16.666%; max-width: 16.666%; padding: 0 0.5rem; }
+.config-view-col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 0.5rem; }
+.config-view-col-4 { flex: 0 0 33.333%; max-width: 33.333%; padding: 0 0.5rem; }
+.config-view-col-5 { flex: 0 0 41.666%; max-width: 41.666%; padding: 0 0.5rem; }
+.config-view-col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 0.5rem; }
+.config-view-col-8 { flex: 0 0 66.666%; max-width: 66.666%; padding: 0 0.5rem; }
+
+.config-view-align-end {
+    align-items: flex-end;
+}
+
+.config-view-align-center {
+    align-items: center;
+}
+
+/* ============================================================
+   FLEXBOX UTILITIES
+   ============================================================ */
+
+.config-view-flex {
+    display: flex;
+}
+
+.config-view-justify-between {
+    justify-content: space-between;
+}
+
+.config-view-justify-end {
+    justify-content: flex-end;
+}
+
+/* ============================================================
+   FORM ELEMENTS
+   ============================================================ */
+
+.config-view-form-label {
+    display: block;
+    margin-bottom: 0.375rem;
+    font-weight: 500;
+    color: #495057;
+    font-size: 0.875rem;
+}
+
+.config-view-form-select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #212529;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.config-view-form-select:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    outline: none;
+}
+
+.config-view-form-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.9375rem;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    background-color: #ffffff;
+    color: #212529;
+}
+
+.config-view-form-input:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    outline: none;
+}
+
+/* Select2 Customization */
+.config-view-container .select2-container--bootstrap-5 .select2-selection {
+    min-height: 38px;
+    border-color: #ced4da;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-selection:focus,
+.config-view-container .select2-container--bootstrap-5.select2-container--focus .select2-selection {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+.config-view-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.config-view-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.config-view-btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.config-view-btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #ffffff;
+}
+
+.config-view-btn-primary:hover:not(:disabled) {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.config-view-btn-success {
+    background-color: #198754;
+    border-color: #198754;
+    color: #ffffff;
+}
+
+.config-view-btn-success:hover:not(:disabled) {
+    background-color: #157347;
+    border-color: #146c43;
+}
+
+.config-view-btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #ffffff;
+}
+
+.config-view-btn-danger:hover:not(:disabled) {
+    background-color: #bb2d3b;
+    border-color: #b02a37;
+}
+
+.config-view-btn-warning {
+    background-color: #ffc107;
+    border-color: #ffc107;
+    color: #212529;
+}
+
+.config-view-btn-warning:hover:not(:disabled) {
+    background-color: #ffca2c;
+    border-color: #ffc720;
+}
+
+.config-view-btn-outline-primary {
+    background-color: transparent;
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
+.config-view-btn-outline-primary:hover:not(:disabled) {
+    background-color: #0d6efd;
+    color: #ffffff;
+}
+
+.config-view-btn-outline-secondary {
+    background-color: transparent;
+    border-color: #6c757d;
+    color: #6c757d;
+}
+
+.config-view-btn-outline-secondary:hover:not(:disabled) {
+    background-color: #6c757d;
+    color: #ffffff;
+}
+
+.config-view-btn-outline-success {
+    background-color: transparent;
+    border-color: #198754;
+    color: #198754;
+}
+
+.config-view-btn-outline-success:hover:not(:disabled) {
+    background-color: #198754;
+    color: #ffffff;
+}
+
+.config-view-btn-outline-danger {
+    background-color: transparent;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+.config-view-btn-outline-danger:hover:not(:disabled) {
+    background-color: #dc3545;
+    color: #ffffff;
+}
+
+/* Icon Buttons (in table actions) */
+.config-view-btn-icon {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1;
+}
+
+/* ============================================================
+   ACTIONS BAR
+   ============================================================ */
+
+.config-view-actions-bar {
+    background-color: #ffffff;
+    padding: 0.875rem 1.25rem;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* ============================================================
+   BADGES
+   ============================================================ */
+
+.config-view-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    border-radius: 50px;
+}
+
+.config-view-badge-info {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+}
+
+.config-view-badge-success {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+.config-view-badge-warning {
+    background-color: #fff3cd;
+    color: #664d03;
+}
+
+.config-view-badge-danger {
+    background-color: #f8d7da;
+    color: #842029;
+}
+
+/* ============================================================
+   ALERTS
+   ============================================================ */
+
+.config-view-alert {
+    padding: 0.875rem 1rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: flex-start;
+}
+
+.config-view-alert i {
+    margin-top: 0.125rem;
+}
+
+.config-view-alert-info {
+    background-color: #e7f1ff;
+    color: #0d47a1;
+    border: 1px solid #b6d4fe;
+}
+
+.config-view-alert-success {
+    background-color: #d1e7dd;
+    color: #0f5132;
+    border: 1px solid #badbcc;
+}
+
+.config-view-alert-warning {
+    background-color: #fff3cd;
+    color: #664d03;
+    border: 1px solid #ffecb5;
+}
+
+.config-view-alert-danger {
+    background-color: #f8d7da;
+    color: #842029;
+    border: 1px solid #f5c2c7;
+}
+
+.config-view-error-alert {
+    display: none;
+}
+
+/* ============================================================
+   LOADING SPINNER
+   ============================================================ */
+
+.config-view-loading {
+    padding: 2rem;
+}
+
+.config-view-spinner {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 3px solid #e9ecef;
+    border-top-color: #0d6efd;
+    border-radius: 50%;
+    animation: config-view-spin 0.8s linear infinite;
+    display: inline-block;
+}
+
+.config-view-spinner-sm {
+    width: 1rem;
+    height: 1rem;
+    border-width: 2px;
+}
+
+@keyframes config-view-spin {
+    to { transform: rotate(360deg); }
+}
+
+.config-view-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+/* ============================================================
+   DATA TABLES
+   ============================================================ */
+
+.config-view-table-container {
+    overflow-x: auto;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.config-view-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.config-view-table thead {
+    background-color: #f8f9fa;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.config-view-table th {
+    padding: 0.875rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    white-space: nowrap;
+}
+
+.config-view-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e9ecef;
+    color: #212529;
+    vertical-align: middle;
+}
+
+.config-view-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.config-view-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Column widths */
+.config-view-col-id { width: 60px; }
+.config-view-col-month { width: 100px; }
+.config-view-col-year { width: 80px; }
+.config-view-col-worktype { width: 100px; }
+.config-view-col-workdays { width: 100px; text-align: center; }
+.config-view-col-occupancy { width: 100px; text-align: center; }
+.config-view-col-shrinkage { width: 100px; text-align: center; }
+.config-view-col-workhours { width: 100px; text-align: center; }
+.config-view-col-lob { min-width: 200px; }
+.config-view-col-casetype { min-width: 150px; }
+.config-view-col-targetcph { width: 120px; text-align: right; }
+.config-view-col-updatedby { width: 120px; }
+.config-view-col-updateddate { width: 150px; }
+.config-view-col-actions { width: 100px; text-align: center; }
+
+/* Text alignment for data cells */
+.config-view-table td.config-view-col-workdays,
+.config-view-table td.config-view-col-occupancy,
+.config-view-table td.config-view-col-shrinkage,
+.config-view-table td.config-view-col-workhours,
+.config-view-table td.config-view-col-targetcph {
+    text-align: center;
+}
+
+.config-view-table td.config-view-col-actions {
+    text-align: center;
+}
+
+/* Action buttons in table */
+.config-view-table .config-view-action-btns {
+    display: flex;
+    gap: 0.375rem;
+    justify-content: center;
+}
+
+/* ============================================================
+   PAGINATION
+   ============================================================ */
+
+.config-view-pagination {
+    display: flex;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    gap: 0.25rem;
+}
+
+.config-view-pagination-sm .config-view-page-item .config-view-page-link {
+    padding: 0.375rem 0.625rem;
+    font-size: 0.875rem;
+}
+
+.config-view-page-item {
+    margin: 0;
+}
+
+.config-view-page-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 0.75rem;
+    color: #0d6efd;
+    background-color: #ffffff;
+    border: 1px solid #dee2e6;
+    text-decoration: none;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.15s, border-color 0.15s;
+}
+
+.config-view-page-link:hover {
+    background-color: #e9ecef;
+    border-color: #dee2e6;
+    color: #0d6efd;
+}
+
+.config-view-page-item.active .config-view-page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #ffffff;
+}
+
+.config-view-page-item.disabled .config-view-page-link {
+    color: #6c757d;
+    background-color: #ffffff;
+    border-color: #dee2e6;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+/* ============================================================
+   MODALS
+   ============================================================ */
+
+.config-view-modal-content {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.config-view-modal-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    padding: 1rem 1.5rem;
+    border-radius: 12px 12px 0 0;
+}
+
+.config-view-modal-header h5 {
+    color: #212529;
+    font-weight: 600;
+}
+
+.config-view-modal-body {
+    padding: 1.5rem;
+}
+
+.config-view-modal-footer {
+    background-color: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+    padding: 1rem 1.5rem;
+    border-radius: 0 0 12px 12px;
+}
+
+/* ============================================================
+   TEXT UTILITIES
+   ============================================================ */
+
+.config-view-text-center { text-align: center; }
+.config-view-text-muted { color: #6c757d !important; }
+.config-view-text-primary { color: #0d6efd !important; }
+.config-view-text-success { color: #198754 !important; }
+.config-view-text-danger { color: #dc3545 !important; }
+.config-view-text-warning { color: #ffc107 !important; }
+
+/* ============================================================
+   BULK ADD ROW STYLES
+   ============================================================ */
+
+.config-view-bulk-row {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 0.75rem;
+    border: 1px solid #e9ecef;
+}
+
+.config-view-bulk-row:hover {
+    border-color: #dee2e6;
+}
+
+.config-view-bulk-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.config-view-bulk-row-number {
+    font-weight: 600;
+    color: #495057;
+}
+
+.config-view-bulk-row-remove {
+    color: #dc3545;
+    cursor: pointer;
+    padding: 0.25rem;
+}
+
+.config-view-bulk-row-remove:hover {
+    color: #b02a37;
+}
+
+/* ============================================================
+   VALIDATION RESULT STYLES
+   ============================================================ */
+
+.config-view-validation-valid {
+    background-color: #d1e7dd;
+    border-color: #badbcc;
+    color: #0f5132;
+}
+
+.config-view-validation-invalid {
+    background-color: #fff3cd;
+    border-color: #ffecb5;
+    color: #664d03;
+}
+
+.config-view-orphan-list {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 1rem;
+}
+
+.config-view-orphan-item {
+    padding: 0.75rem;
+    border-radius: 4px;
+    background-color: #f8f9fa;
+    margin-bottom: 0.5rem;
+    border-left: 3px solid #ffc107;
+}
+
+/* ============================================================
+   RESPONSIVE STYLES
+   ============================================================ */
+
+@media (max-width: 1200px) {
+    .config-view-col-3,
+    .config-view-col-4 {
+        flex: 0 0 50%;
+        max-width: 50%;
+        margin-bottom: 0.75rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .config-view-container {
+        padding: 1rem;
+    }
+
+    .config-view-col-3,
+    .config-view-col-4,
+    .config-view-col-6 {
+        flex: 0 0 100%;
+        max-width: 100%;
+        margin-bottom: 0.75rem;
+    }
+
+    .config-view-actions-bar {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .config-view-actions-bar .config-view-flex {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .config-view-table {
+        font-size: 0.8125rem;
+    }
+
+    .config-view-table th,
+    .config-view-table td {
+        padding: 0.5rem 0.625rem;
+    }
+}
+
+/* ============================================================
+   WORK TYPE BADGES (in table)
+   ============================================================ */
+
+.config-view-worktype-domestic {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.config-view-worktype-global {
+    background-color: #d1e7dd;
+    color: #0f5132;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+/* ============================================================
+   PERCENTAGE & NUMBER FORMATTING
+   ============================================================ */
+
+.config-view-percentage {
+    font-family: 'SF Mono', 'Consolas', monospace;
+}
+
+.config-view-number {
+    font-family: 'SF Mono', 'Consolas', monospace;
+}

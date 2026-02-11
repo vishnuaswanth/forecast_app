@@ -278,6 +278,70 @@ class ConversationContextManager:
         await self.save_context(context)
         logger.info(f"[Context Manager] Updated selected row: {new_row_key}")
 
+    async def reset_filters(
+        self,
+        conversation_id: str,
+        keep_month_year: bool = True,
+        reset_preferences: bool = False
+    ) -> ConversationContext:
+        """
+        Reset filter fields while optionally preserving month/year.
+
+        Use this for "get all data" or "reset filters" scenarios where
+        the user wants to clear filters but keep the report period.
+
+        Args:
+            conversation_id: Conversation identifier
+            keep_month_year: If True, preserve forecast_report_month/year
+            reset_preferences: If True, also reset user_preferences
+
+        Returns:
+            Updated ConversationContext
+        """
+        context = await self.get_context(conversation_id)
+
+        # Store values to preserve
+        saved_month = context.forecast_report_month if keep_month_year else None
+        saved_year = context.forecast_report_year if keep_month_year else None
+
+        # Reset all filter fields
+        context.active_platforms = []
+        context.active_markets = []
+        context.active_localities = []
+        context.active_states = []
+        context.active_case_types = []
+        context.active_main_lobs = None
+        context.active_forecast_months = None
+        context.selected_forecast_row = None
+        context.selected_row_key = None
+        context.selected_row = None  # Legacy field
+
+        # Restore preserved values
+        if keep_month_year:
+            context.forecast_report_month = saved_month
+            context.forecast_report_year = saved_year
+
+        # Reset preferences if requested
+        if reset_preferences:
+            context.user_preferences = {
+                'show_totals_only': False,
+                'max_preview_records': 5,
+                'auto_apply_last_filters': True,
+            }
+
+        # Sync legacy fields
+        context.sync_legacy_fields()
+        context.last_updated = datetime.now()
+
+        await self.save_context(context)
+
+        logger.info(
+            f"[Context Manager] Reset filters for {conversation_id}, "
+            f"kept month/year: {keep_month_year}"
+        )
+
+        return context
+
     async def clear_context(self, conversation_id: str):
         """
         Clear conversation context from all storage layers.

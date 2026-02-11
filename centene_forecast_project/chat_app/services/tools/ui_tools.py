@@ -12,6 +12,70 @@ from typing import List, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def generate_clear_context_ui() -> str:
+    """
+    Generate confirmation UI for context cleared.
+
+    Returns:
+        HTML string for context cleared confirmation card
+    """
+    logger.info("[UI Tools] Generated clear context confirmation UI")
+    return '''
+    <div class="chat-success-card">
+        <div class="d-flex align-items-start">
+            <div class="success-icon me-2" style="font-size: 24px; color: #28a745;">&#10003;</div>
+            <div class="success-content flex-grow-1">
+                <strong class="success-title">Context Cleared</strong>
+                <p class="success-message mb-0">
+                    All filters and previous selections have been reset. You can start fresh!
+                </p>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def generate_context_update_ui(message: str, preserved_items: list = None) -> str:
+    """
+    Generate confirmation UI for context update (selective filter reset).
+
+    Args:
+        message: What was updated (will be HTML-escaped)
+        preserved_items: List of items that were preserved
+
+    Returns:
+        HTML string for context update confirmation card
+    """
+    # HTML-escape the message to prevent XSS
+    safe_message = html_module.escape(str(message))
+
+    preserved_html = ""
+    if preserved_items:
+        # HTML-escape each item
+        safe_items = [html_module.escape(str(item)) for item in preserved_items]
+        items = "".join(f"<li>{item}</li>" for item in safe_items)
+        preserved_html = f'''
+        <div class="preserved-items mt-2">
+            <small class="text-muted">Preserved:</small>
+            <ul class="mb-0 ps-3">{items}</ul>
+        </div>
+        '''
+
+    logger.info("[UI Tools] Generated context update confirmation UI")
+    return f'''
+    <div class="chat-success-card">
+        <div class="d-flex align-items-start">
+            <div class="success-icon me-2" style="font-size: 24px; color: #28a745;">&#10003;</div>
+            <div class="success-content flex-grow-1">
+                <strong class="success-title">Filters Reset</strong>
+                <p class="success-message mb-0">{safe_message}</p>
+                {preserved_html}
+            </div>
+        </div>
+    </div>
+    '''
+
+
 def generate_available_reports_ui(reports_data: dict) -> str:
     """
     Generate HTML card listing available forecast reports.

@@ -423,16 +423,27 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:
         """
         Handle user request to start a new conversation.
-        Marks current conversation as inactive and creates a new one.
+        Marks current conversation as inactive, clears its context, and creates a new one.
         """
+        from chat_app.utils.context_manager import get_context_manager
+
         old_conversation_id = data.get('old_conversation_id')
 
-        # Mark old conversation as inactive (if exists)
+        # Mark old conversation as inactive and clear its context (if exists)
         if old_conversation_id:
             try:
                 await self.mark_conversation_inactive(old_conversation_id)
             except Exception as e:
                 logger.error(f"Failed to mark conversation inactive: {str(e)}")
+                # Continue - don't fail new conversation creation
+
+            # Clear old conversation's context from all storage layers
+            try:
+                context_manager = get_context_manager()
+                await context_manager.clear_context(old_conversation_id)
+                logger.info(f"Cleared context for old conversation: {old_conversation_id}")
+            except Exception as e:
+                logger.error(f"Failed to clear context for old conversation: {str(e)}")
                 # Continue - don't fail new conversation creation
 
         # Create new conversation

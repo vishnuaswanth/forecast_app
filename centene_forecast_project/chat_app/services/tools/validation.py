@@ -22,6 +22,8 @@ class IntentCategory(str, Enum):
     SHOW_ALLOCATED_RESOURCES = "show_allocated_resources"
     GET_FTE_DETAILS = "get_fte_details"  # Get FTE mapping info for selected row
     MODIFY_CPH = "modify_cph"  # Modify target CPH for selected row
+    CLEAR_CONTEXT = "clear_context"  # Clear/reset conversation context and filters
+    UPDATE_CONTEXT = "update_context"  # Selective context update (reset filters but keep period)
     UNKNOWN = "unknown"
 
 

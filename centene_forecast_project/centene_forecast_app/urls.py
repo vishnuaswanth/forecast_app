@@ -1,7 +1,7 @@
 from django.urls import path
 
 from centene_forecast_app import views
-from centene_forecast_app.views import cache_views, execution_monitoring, edit_view
+from centene_forecast_app.views import cache_views, execution_monitoring, edit_view, configuration_view
 
 app_name = "forecast_app"
 
@@ -53,7 +53,13 @@ urlpatterns = [
     path("api/edit-view/bench-allocation/update/", edit_view.bench_allocation_update_api, name="bench_allocation_update"),
     path("api/edit-view/history-log/", edit_view.history_log_api, name="history_log"),
     path("api/edit-view/history-log/<str:history_log_id>/download/", edit_view.download_history_excel_api, name="download_history_excel"),
-    
+
+    # Forecast Reallocation endpoints
+    path("api/edit-view/forecast-reallocation/filters/", edit_view.forecast_reallocation_filters_api, name="forecast_reallocation_filters"),
+    path("api/edit-view/forecast-reallocation/data/", edit_view.forecast_reallocation_data_api, name="forecast_reallocation_data"),
+    path("api/edit-view/forecast-reallocation/preview/", edit_view.forecast_reallocation_preview_api, name="forecast_reallocation_preview"),
+    path("api/edit-view/forecast-reallocation/update/", edit_view.forecast_reallocation_update_api, name="forecast_reallocation_update"),
+
     # Cache Management API endpoints
     path('api/cache/stats/', cache_views.cache_stats_view, name='cache_stats'),
     path('api/cache/inspect/', cache_views.inspect_cache_view, name='cache_inspect'),
@@ -63,6 +69,26 @@ urlpatterns = [
     path('api/cache/clear/summary/', cache_views.clear_summary_cache_view, name='clear_summary_cache'),
     path('api/cache/clear/cascade/', cache_views.clear_cascade_caches_view, name='clear_cascade_caches'),
     path('api/cache/clear/all/', cache_views.clear_all_caches_view, name='clear_all_caches'),
+
+    # Configuration View endpoints
+    path("configuration/", configuration_view.configuration_view_page, name="configuration_view_page"),
+
+    # Month Configuration APIs
+    path("api/configuration/month-config/", configuration_view.month_config_list_api, name="month_config_list"),
+    path("api/configuration/month-config/create/", configuration_view.month_config_create_api, name="month_config_create"),
+    path("api/configuration/month-config/bulk/", configuration_view.month_config_bulk_create_api, name="month_config_bulk_create"),
+    path("api/configuration/month-config/<int:config_id>/", configuration_view.month_config_update_api, name="month_config_update"),
+    path("api/configuration/month-config/<int:config_id>/delete/", configuration_view.month_config_delete_api, name="month_config_delete"),
+    path("api/configuration/month-config/validate/", configuration_view.month_config_validate_api, name="month_config_validate"),
+
+    # Target CPH Configuration APIs
+    path("api/configuration/target-cph/", configuration_view.target_cph_list_api, name="target_cph_list"),
+    path("api/configuration/target-cph/create/", configuration_view.target_cph_create_api, name="target_cph_create"),
+    path("api/configuration/target-cph/bulk/", configuration_view.target_cph_bulk_create_api, name="target_cph_bulk_create"),
+    path("api/configuration/target-cph/<int:config_id>/", configuration_view.target_cph_update_api, name="target_cph_update"),
+    path("api/configuration/target-cph/<int:config_id>/delete/", configuration_view.target_cph_delete_api, name="target_cph_delete"),
+    path("api/configuration/target-cph/distinct/main-lobs/", configuration_view.target_cph_distinct_lobs_api, name="target_cph_distinct_lobs"),
+    path("api/configuration/target-cph/distinct/case-types/", configuration_view.target_cph_distinct_case_types_api, name="target_cph_distinct_case_types"),
 
     path('logout/', views.logout_view, name='logout'),
 ] 

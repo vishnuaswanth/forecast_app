@@ -650,12 +650,297 @@ def submit_target_cph_update(
         raise
 
 
+# ============================================================
+# FORECAST REALLOCATION SERVICE FUNCTIONS
+# ============================================================
+
+class ForecastReallocationService:
+    """Business logic for Forecast Reallocation operations"""
+
+    @staticmethod
+    def get_filter_options(month: str, year: int) -> dict:
+        """
+        Get filter options (LOBs, States, Case Types) for reallocation.
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+
+        Returns:
+            Dict with filter options:
+            {
+                'success': True,
+                'main_lobs': [...],
+                'states': [...],
+                'case_types': [...]
+            }
+
+        Raises:
+            Exception: On API failure
+
+        Example:
+            >>> service = ForecastReallocationService()
+            >>> filters = service.get_filter_options('April', 2025)
+            >>> len(filters['main_lobs']) > 0
+            True
+        """
+        logger.info(f"[Reallocation Service] Fetching filter options for {month} {year}")
+
+        try:
+            client = get_api_client()
+            response = client.get_reallocation_filter_options(month, year)
+
+            logger.info(
+                f"[Reallocation Service] Filter options retrieved - "
+                f"{len(response.get('main_lobs', []))} LOBs, "
+                f"{len(response.get('states', []))} States, "
+                f"{len(response.get('case_types', []))} Case Types"
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[Reallocation Service] Failed to fetch filter options: {e}")
+            raise
+
+    @staticmethod
+    def get_reallocation_data(
+        month: str,
+        year: int,
+        main_lobs: Optional[list] = None,
+        case_types: Optional[list] = None,
+        states: Optional[list] = None
+    ) -> dict:
+        """
+        Get editable forecast records for reallocation.
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            main_lobs: Optional list of Main LOBs to filter
+            case_types: Optional list of Case Types to filter
+            states: Optional list of States to filter
+
+        Returns:
+            Dict with forecast records and months mapping
+
+        Raises:
+            Exception: On API failure
+
+        Example:
+            >>> service = ForecastReallocationService()
+            >>> data = service.get_reallocation_data('April', 2025, main_lobs=['Medicaid'])
+            >>> len(data['data']) > 0
+            True
+        """
+        logger.info(
+            f"[Reallocation Service] Fetching data for {month} {year} "
+            f"(LOBs: {main_lobs}, States: {states}, CaseTypes: {case_types})"
+        )
+
+        try:
+            client = get_api_client()
+            response = client.get_reallocation_data(
+                month, year, main_lobs, case_types, states
+            )
+
+            # Check if response indicates an error
+            if not response.get('success', True):
+                error_msg = response.get('error') or response.get('message', 'Unknown error')
+                logger.warning(f"[Reallocation Service] Data fetch failed: {error_msg}")
+                return response
+
+            total = response.get('total', 0)
+            logger.info(f"[Reallocation Service] Retrieved {total} records")
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[Reallocation Service] Failed to fetch data: {e}")
+            raise
+
+    @staticmethod
+    def calculate_reallocation_preview(
+        month: str,
+        year: int,
+        modified_records: list
+    ) -> dict:
+        """
+        Calculate preview with user-edited values.
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            modified_records: List of modified record dictionaries
+
+        Returns:
+            Dict with preview data
+
+        Raises:
+            Exception: On API failure
+
+        Example:
+            >>> service = ForecastReallocationService()
+            >>> preview = service.calculate_reallocation_preview('April', 2025, [...])
+            >>> preview['total_modified']
+            15
+        """
+        logger.info(
+            f"[Reallocation Service] Calculating preview for {month} {year} "
+            f"({len(modified_records)} modified records)"
+        )
+
+        try:
+            client = get_api_client()
+            response = client.get_reallocation_preview(month, year, modified_records)
+
+            # Check if response indicates an error
+            if not response.get('success', True):
+                error_msg = response.get('error') or response.get('message', 'Unknown error')
+                recommendation = response.get('recommendation')
+
+                logger.warning(
+                    f"[Reallocation Service] Preview calculation failed: {error_msg}"
+                    + (f" | Recommendation: {recommendation}" if recommendation else "")
+                )
+                return response
+
+            total_modified = response.get('total_modified', 0)
+            logger.info(
+                f"[Reallocation Service] Preview calculated - {total_modified} modified records"
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[Reallocation Service] Preview calculation error: {e}")
+            raise
+
+    @staticmethod
+    def submit_reallocation_update(
+        month: str,
+        year: int,
+        months: dict,
+        modified_records: list,
+        user_notes: Optional[str] = None
+    ) -> dict:
+        """
+        Submit and save reallocation changes.
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            months: Month index mapping (month1-month6 to labels)
+            modified_records: List of modified record dictionaries
+            user_notes: Optional user description
+
+        Returns:
+            Success response
+
+        Raises:
+            Exception: On API failure
+
+        Example:
+            >>> service = ForecastReallocationService()
+            >>> months_map = {'month1': 'Jun-25', ...}
+            >>> response = service.submit_reallocation_update(
+            ...     'April', 2025, months_map, [...], 'Reallocated FTE'
+            ... )
+            >>> response['success']
+            True
+        """
+        records_count = len(modified_records)
+        logger.info(
+            f"[Reallocation Service] Submitting update for {month} {year} "
+            f"({records_count} records)"
+        )
+
+        try:
+            client = get_api_client()
+            response = client.submit_reallocation_update(
+                month,
+                year,
+                months,
+                modified_records,
+                user_notes or ''
+            )
+
+            # Check if response indicates an error
+            if not response.get('success', True):
+                error_msg = response.get('error') or response.get('message', 'Unknown error')
+                recommendation = response.get('recommendation')
+
+                logger.warning(
+                    f"[Reallocation Service] Update failed: {error_msg}"
+                    + (f" | Recommendation: {recommendation}" if recommendation else "")
+                )
+                return response
+
+            records_updated = response.get('records_updated', 0)
+            logger.info(
+                f"[Reallocation Service] Update successful - {records_updated} records updated"
+            )
+
+            return response
+
+        except Exception as e:
+            logger.error(f"[Reallocation Service] Update failed: {e}")
+            raise
+
+
+# Convenience functions for Forecast Reallocation
+def get_reallocation_filter_options(month: str, year: int) -> dict:
+    """Convenience function to get reallocation filter options."""
+    return ForecastReallocationService.get_filter_options(month, year)
+
+
+def get_reallocation_data(
+    month: str,
+    year: int,
+    main_lobs: Optional[list] = None,
+    case_types: Optional[list] = None,
+    states: Optional[list] = None
+) -> dict:
+    """Convenience function to get reallocation data."""
+    return ForecastReallocationService.get_reallocation_data(
+        month, year, main_lobs, case_types, states
+    )
+
+
+def calculate_reallocation_preview(
+    month: str,
+    year: int,
+    modified_records: list
+) -> dict:
+    """Convenience function to calculate reallocation preview."""
+    return ForecastReallocationService.calculate_reallocation_preview(
+        month, year, modified_records
+    )
+
+
+def submit_reallocation_update(
+    month: str,
+    year: int,
+    months: dict,
+    modified_records: list,
+    user_notes: Optional[str] = None
+) -> dict:
+    """Convenience function to submit reallocation update."""
+    return ForecastReallocationService.submit_reallocation_update(
+        month, year, months, modified_records, user_notes
+    )
+
+
 # Example usage:
 # from edit_service import (
 #     get_allocation_reports,
 #     calculate_bench_allocation_preview,
 #     submit_bench_allocation_update,
-#     get_history_log
+#     get_history_log,
+#     get_reallocation_filter_options,
+#     get_reallocation_data,
+#     calculate_reallocation_preview,
+#     submit_reallocation_update
 # )
 #
 # # Get dropdown options
@@ -669,3 +954,9 @@ def submit_target_cph_update(
 #
 # # Get history
 # history = get_history_log(month='April', year=2025, page=1)
+#
+# # Reallocation workflow
+# filters = get_reallocation_filter_options('April', 2025)
+# data = get_reallocation_data('April', 2025, main_lobs=['Medicaid'])
+# preview = calculate_reallocation_preview('April', 2025, data['modified_records'])
+# response = submit_reallocation_update('April', 2025, data['months'], data['modified_records'], 'Notes')

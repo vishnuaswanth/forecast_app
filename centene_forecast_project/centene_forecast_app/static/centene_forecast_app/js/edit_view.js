@@ -112,6 +112,40 @@
                 lobs: [],
                 caseTypes: []
             }
+        },
+
+        // Forecast Reallocation state
+        reallocation: {
+            currentSelectedReport: null,      // {month: "April", year: 2025}
+            allRecords: [],                   // All records from API
+            filteredRecords: [],              // After LOB/State/Case Type filters
+            modifiedRecords: new Map(),       // Map<case_id, modified_record> - only changed
+            visibleMonths: [],                // Array of visible month keys
+            allMonths: [],                    // All available months
+            monthsMapping: {},                // {month1: 'Jun-25', month2: 'Jul-25', ...}
+            currentPage: 1,
+            totalPages: 0,
+            filters: {
+                mainLobs: [],                 // Selected Main LOBs
+                states: [],                   // Selected States
+                caseTypes: []                 // Selected Case Types
+            },
+            filterOptions: {                  // Available filter options from API
+                mainLobs: [],
+                states: [],
+                caseTypes: []
+            },
+
+            // Preview state
+            previewData: null,
+            previewCurrentPage: 1,
+            previewTotalPages: 0,
+            allPreviewRecords: [],
+            filteredPreviewRecords: [],
+            previewFilters: {
+                lobs: [],
+                caseTypes: []
+            }
         }
     };
 
@@ -262,6 +296,75 @@
             dataAccess: {
                 monthDataPath: 'direct'  // FIX: Changed from 'nested' to 'direct'
             }
+        },
+
+        forecastReallocation: {
+            // DOM element references
+            dom: {
+                loading: 'reallocationPreviewLoading',
+                error: 'reallocationPreviewError',
+                errorMessage: 'reallocationPreviewErrorMessage',
+                container: 'reallocationPreviewContainer',
+                tableHead: 'reallocationPreviewTableHead',
+                tableBody: 'reallocationPreviewTableBody',
+                pagination: 'reallocationPreviewPagination',
+                filters: 'reallocationPreviewFilters',
+                lobFilter: 'reallocationPreviewLobFilter',
+                caseTypeFilter: 'reallocationPreviewCaseTypeFilter',
+                clearFiltersBtn: 'clearReallocationPreviewFiltersBtn',
+                modifiedCountBadge: 'reallocationPreviewModifiedCountBadge',
+                summaryText: 'reallocationSummaryText',
+                actionSummaryCount: 'reallocationActionSummaryCount',
+                overallChanges: 'reallocationOverallChanges',
+                monthChangesContainer: 'reallocation-month-changes-container'
+            },
+
+            // State path configuration
+            state: {
+                basePath: 'STATE.reallocation',
+                allRecords: 'allPreviewRecords',
+                filteredRecords: 'filteredPreviewRecords',
+                currentPage: 'previewCurrentPage',
+                totalPages: 'previewTotalPages',
+                filters: 'previewFilters'
+            },
+
+            // Field name mapping (canonical → actual field names)
+            fields: {
+                forecast: 'forecast',
+                fteReq: 'fte_req',
+                fteAvail: 'fte_avail',
+                capacity: 'capacity'
+            },
+
+            // Fixed columns configuration
+            fixedColumns: [
+                { key: 'main_lob', label: 'Main LOB', editable: false },
+                { key: 'state', label: 'State', editable: false },
+                { key: 'case_type', label: 'Case Type', editable: false },
+                { key: 'target_cph', label: 'Target CPH', editable: true, align: 'text-center' }
+            ],
+
+            // Month columns configuration
+            monthColumns: [
+                { key: 'forecast', label: 'CF', editable: false },
+                { key: 'fteReq', label: 'FTE Req', editable: false },
+                { key: 'fteAvail', label: 'FTE Avail', editable: true },
+                { key: 'capacity', label: 'Cap', editable: false }
+            ],
+
+            // Feature flags
+            features: {
+                showTotalsRow: true,
+                showMonthwiseSummary: true,
+                summaryStyle: 'cards',
+                cascadingFilters: true
+            },
+
+            // Data access pattern
+            dataAccess: {
+                monthDataPath: 'direct'
+            }
         }
     };
 
@@ -401,6 +504,56 @@
         DOM.cphForecastRowsCount = $('#cph-forecast-rows-count');
         DOM.cphRejectBtn = $('#cph-reject-btn');
         DOM.cphAcceptBtn = $('#cph-accept-btn');
+
+        // Forecast Reallocation tab elements
+        DOM.reallocationTabBtn = $('#forecast-reallocation-tab-btn');
+        DOM.reallocationReportSelect = $('#reallocation-report-select');
+        DOM.reallocationLobFilter = $('#reallocation-lob-filter');
+        DOM.reallocationCaseTypeFilter = $('#reallocation-case-type-filter');
+        DOM.reallocationStateFilter = $('#reallocation-state-filter');
+        DOM.loadReallocationDataBtn = $('#load-reallocation-data-btn');
+        DOM.reallocationDataLoading = $('#reallocation-data-loading');
+        DOM.reallocationDataError = $('#reallocation-data-error');
+        DOM.reallocationDataErrorMessage = $('#reallocation-data-error-message');
+        DOM.reallocationDataContainer = $('#reallocation-data-container');
+        DOM.reallocationTable = $('#reallocation-table');
+        DOM.reallocationTableHead = $('#reallocation-table-head');
+        DOM.reallocationTableBody = $('#reallocation-table-body');
+        DOM.reallocationPagination = $('#reallocation-pagination');
+        DOM.reallocationModifiedCountBadge = $('#reallocation-modified-count-badge');
+        DOM.showReallocationPreviewBtn = $('#show-reallocation-preview-btn');
+
+        // Reallocation month selector
+        DOM.reallocationMonthSelector = $('#reallocation-month-selector');
+        DOM.reallocationMonthCheckboxes = $('#reallocation-month-checkboxes');
+
+        // Reallocation preview elements
+        DOM.reallocationPreviewLoading = $('#reallocation-preview-loading');
+        DOM.reallocationPreviewError = $('#reallocation-preview-error');
+        DOM.reallocationPreviewErrorMessage = $('#reallocation-preview-error-message');
+        DOM.reallocationPreviewContainer = $('#reallocation-preview-container');
+        DOM.reallocationPreviewTableHead = $('#reallocation-preview-table-head');
+        DOM.reallocationPreviewTableBody = $('#reallocation-preview-table-body');
+        DOM.reallocationPreviewPagination = $('#reallocation-preview-pagination');
+        DOM.reallocationPreviewModifiedCountBadge = $('#reallocation-preview-modified-count-badge');
+        DOM.reallocationPreviewSummary = $('#reallocation-preview-summary');
+        DOM.reallocationSummaryText = $('#reallocation-summary-text');
+        DOM.reallocationOverallChanges = $('#reallocation-overall-changes');
+        DOM.reallocationMonthChangesContainer = $('#reallocation-month-changes-container');
+
+        // Reallocation preview filters
+        DOM.reallocationPreviewFilters = $('#reallocation-preview-filters');
+        DOM.reallocationPreviewLobFilter = $('#reallocation-preview-lob-filter');
+        DOM.reallocationPreviewCaseTypeFilter = $('#reallocation-preview-case-type-filter');
+        DOM.clearReallocationPreviewFiltersBtn = $('#clear-reallocation-preview-filters-btn');
+
+        // Reallocation actions section
+        DOM.reallocationActionsContainer = $('#reallocation-actions-container');
+        DOM.reallocationUserNotesInput = $('#reallocation-user-notes-input');
+        DOM.reallocationNotesCharCount = $('#reallocation-notes-char-count');
+        DOM.reallocationActionSummaryCount = $('#reallocation-action-summary-count');
+        DOM.reallocationRejectBtn = $('#reallocation-reject-btn');
+        DOM.reallocationAcceptBtn = $('#reallocation-accept-btn');
     }
 
     function initializeSelect2() {
@@ -521,11 +674,31 @@
         // History Log tab
         DOM.applyHistoryFiltersBtn.on('click', handleApplyHistoryFilters);
 
+        // Forecast Reallocation tab
+        DOM.loadReallocationDataBtn.on('click', handleLoadReallocationData);
+        DOM.showReallocationPreviewBtn.on('click', handleShowReallocationPreview);
+        DOM.reallocationRejectBtn.on('click', handleReallocationReject);
+        DOM.reallocationAcceptBtn.on('click', handleReallocationAccept);
+        DOM.reallocationUserNotesInput.on('input', handleReallocationNotesInput);
+
+        // Reallocation preview filters
+        DOM.reallocationPreviewLobFilter.on('select2:close', applyReallocationPreviewFilters);
+        DOM.reallocationPreviewCaseTypeFilter.on('select2:close', applyReallocationPreviewFilters);
+        DOM.clearReallocationPreviewFiltersBtn.on('click', clearReallocationPreviewFilters);
+
         // Tab switching
         DOM.historyLogTabBtn.on('shown.bs.tab', function() {
             // Load history when tab is activated (only first time)
             if (!STATE.currentHistoryData) {
                 loadHistoryLog();
+            }
+        });
+
+        // Reallocation tab - load filter options when activated
+        DOM.reallocationTabBtn.on('shown.bs.tab', function() {
+            // Populate report dropdown if not already done
+            if (DOM.reallocationReportSelect.find('option').length <= 1) {
+                populateReallocationReportDropdown();
             }
         });
 
@@ -538,6 +711,14 @@
         $(document).on('click', '.cph-decrement-btn', handleCphDecrement);
         $(document).on('input', '.cph-modified-input', handleCphInputChange);
         $(document).on('click', '.edit-view-cph-preview-pagination .edit-view-page-link', handleCphPreviewPageClick);
+
+        // Reallocation table events
+        $(document).on('click', '.edit-view-reallocation-pagination .edit-view-page-link', handleReallocationPageClick);
+        $(document).on('click', '.edit-view-reallocation-preview-pagination .edit-view-page-link', handleReallocationPreviewPageClick);
+        $(document).on('click', '.reallocation-increment-btn', handleReallocationIncrement);
+        $(document).on('click', '.reallocation-decrement-btn', handleReallocationDecrement);
+        $(document).on('input', '.reallocation-input', handleReallocationInputChange);
+        $(document).on('change', '.reallocation-month-checkbox', handleReallocationMonthVisibility);
 
         console.log('Edit View: Event listeners attached');
     }
@@ -3132,6 +3313,929 @@
         if (charCount > maxLength) {
             input.val(input.val().substring(0, maxLength));
             DOM.cphNotesCharCount.text(maxLength);
+        }
+    }
+
+    // ============================================================================
+    // FORECAST REALLOCATION HANDLERS
+    // ============================================================================
+
+    /**
+     * Populate the reallocation report dropdown with allocation reports
+     */
+    function populateReallocationReportDropdown() {
+        // Copy options from the main allocation report dropdown
+        const options = DOM.allocationReportSelect.find('option').clone();
+        DOM.reallocationReportSelect.empty().append(options);
+        DOM.reallocationReportSelect.trigger('change');
+    }
+
+    /**
+     * Load filter options for the reallocation tab
+     */
+    async function loadReallocationFilterOptions(month, year) {
+        try {
+            const url = `${CONFIG.urls.forecastReallocationFilters}?month=${encodeURIComponent(month)}&year=${year}`;
+            const response = await $.ajax({
+                url: url,
+                method: 'GET',
+                dataType: 'json'
+            });
+
+            if (response.success) {
+                STATE.reallocation.filterOptions = {
+                    mainLobs: response.main_lobs || [],
+                    states: response.states || [],
+                    caseTypes: response.case_types || []
+                };
+
+                // Populate filter dropdowns
+                populateReallocationFilterDropdowns();
+            }
+        } catch (error) {
+            console.error('Edit View: Failed to load reallocation filter options', error);
+        }
+    }
+
+    /**
+     * Populate the reallocation filter dropdowns
+     */
+    function populateReallocationFilterDropdowns() {
+        const { mainLobs, states, caseTypes } = STATE.reallocation.filterOptions;
+
+        // Main LOB filter
+        DOM.reallocationLobFilter.empty();
+        mainLobs.forEach(lob => {
+            DOM.reallocationLobFilter.append(new Option(lob, lob, false, false));
+        });
+        DOM.reallocationLobFilter.trigger('change');
+
+        // State filter
+        DOM.reallocationStateFilter.empty();
+        states.forEach(state => {
+            DOM.reallocationStateFilter.append(new Option(state, state, false, false));
+        });
+        DOM.reallocationStateFilter.trigger('change');
+
+        // Case Type filter
+        DOM.reallocationCaseTypeFilter.empty();
+        caseTypes.forEach(ct => {
+            DOM.reallocationCaseTypeFilter.append(new Option(ct, ct, false, false));
+        });
+        DOM.reallocationCaseTypeFilter.trigger('change');
+    }
+
+    /**
+     * Handle Load Data button click for reallocation
+     */
+    async function handleLoadReallocationData() {
+        const selectedValue = DOM.reallocationReportSelect.val();
+
+        if (!selectedValue) {
+            showErrorDialog('Selection Required', 'Please select a report month before loading data.');
+            return;
+        }
+
+        // Parse the selected value (format: "Month YYYY" e.g., "April 2025")
+        const parts = selectedValue.split(' ');
+        if (parts.length !== 2) {
+            showErrorDialog('Invalid Selection', 'Invalid report format. Please select a valid report.');
+            return;
+        }
+
+        const month = parts[0];
+        const year = parseInt(parts[1], 10);
+
+        // Store selected report
+        STATE.reallocation.currentSelectedReport = { month, year };
+
+        // Reset state
+        STATE.reallocation.allRecords = [];
+        STATE.reallocation.filteredRecords = [];
+        STATE.reallocation.modifiedRecords.clear();
+        STATE.reallocation.currentPage = 1;
+
+        // Load filter options first
+        await loadReallocationFilterOptions(month, year);
+
+        // Get selected filters
+        const mainLobs = DOM.reallocationLobFilter.val() || [];
+        const caseTypes = DOM.reallocationCaseTypeFilter.val() || [];
+        const states = DOM.reallocationStateFilter.val() || [];
+
+        // Load data
+        await loadReallocationData(month, year, mainLobs, caseTypes, states);
+    }
+
+    /**
+     * Load reallocation data from API
+     */
+    async function loadReallocationData(month, year, mainLobs, caseTypes, states) {
+        showElement(DOM.reallocationDataLoading);
+        hideElement(DOM.reallocationDataError);
+        hideElement(DOM.reallocationDataContainer);
+        hideElement(DOM.reallocationPreviewContainer);
+        hideElement(DOM.reallocationActionsContainer);
+
+        try {
+            // Build query params
+            let url = `${CONFIG.urls.forecastReallocationData}?month=${encodeURIComponent(month)}&year=${year}`;
+
+            mainLobs.forEach(lob => {
+                url += `&main_lobs[]=${encodeURIComponent(lob)}`;
+            });
+            caseTypes.forEach(ct => {
+                url += `&case_types[]=${encodeURIComponent(ct)}`;
+            });
+            states.forEach(s => {
+                url += `&states[]=${encodeURIComponent(s)}`;
+            });
+
+            const response = await $.ajax({
+                url: url,
+                method: 'GET',
+                dataType: 'json'
+            });
+
+            if (response.success !== false) {
+                STATE.reallocation.allRecords = response.data || [];
+                STATE.reallocation.filteredRecords = [...STATE.reallocation.allRecords];
+                STATE.reallocation.monthsMapping = response.months || {};
+
+                // Get all month keys
+                STATE.reallocation.allMonths = Object.keys(response.months || {}).map(key => response.months[key]);
+                STATE.reallocation.visibleMonths = [...STATE.reallocation.allMonths].slice(0, 6);
+
+                // Render month checkboxes
+                renderReallocationMonthCheckboxes();
+
+                // Render table
+                renderReallocationDataTable();
+
+                // Update modified count
+                updateReallocationModifiedCount();
+
+                showElement(DOM.reallocationDataContainer);
+
+                console.log(`Edit View: Loaded ${STATE.reallocation.allRecords.length} reallocation records`);
+            } else {
+                throw new Error(response.message || response.error || 'Failed to load data');
+            }
+
+        } catch (error) {
+            console.error('Edit View: Failed to load reallocation data', error);
+            DOM.reallocationDataErrorMessage.text(error.message || 'Failed to load reallocation data');
+            showElement(DOM.reallocationDataError);
+        } finally {
+            hideElement(DOM.reallocationDataLoading);
+        }
+    }
+
+    /**
+     * Render month visibility checkboxes
+     */
+    function renderReallocationMonthCheckboxes() {
+        DOM.reallocationMonthCheckboxes.empty();
+
+        STATE.reallocation.allMonths.forEach((monthLabel, idx) => {
+            const isChecked = STATE.reallocation.visibleMonths.includes(monthLabel);
+            const checkbox = $(`
+                <div class="edit-view-month-checkbox">
+                    <input type="checkbox" id="month-cb-${idx}" class="reallocation-month-checkbox"
+                           data-month="${monthLabel}" ${isChecked ? 'checked' : ''}>
+                    <label for="month-cb-${idx}">${monthLabel}</label>
+                </div>
+            `);
+            DOM.reallocationMonthCheckboxes.append(checkbox);
+        });
+    }
+
+    /**
+     * Handle month visibility checkbox change
+     */
+    function handleReallocationMonthVisibility(e) {
+        const checkbox = $(e.target);
+        const monthLabel = checkbox.data('month');
+        const isChecked = checkbox.is(':checked');
+
+        if (isChecked) {
+            if (!STATE.reallocation.visibleMonths.includes(monthLabel)) {
+                STATE.reallocation.visibleMonths.push(monthLabel);
+            }
+        } else {
+            STATE.reallocation.visibleMonths = STATE.reallocation.visibleMonths.filter(m => m !== monthLabel);
+        }
+
+        // Limit to 6 visible months
+        if (STATE.reallocation.visibleMonths.length > 6) {
+            STATE.reallocation.visibleMonths = STATE.reallocation.visibleMonths.slice(0, 6);
+            // Update checkboxes
+            renderReallocationMonthCheckboxes();
+            showToast('Maximum 6 months can be visible at once', 'warning');
+        }
+
+        // Re-render table with updated visibility
+        renderReallocationDataTable();
+    }
+
+    /**
+     * Render the reallocation data table
+     */
+    function renderReallocationDataTable() {
+        const records = STATE.reallocation.filteredRecords;
+        const pageSize = CONFIG.settings.previewPageSize;
+        const startIdx = (STATE.reallocation.currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageRecords = records.slice(startIdx, endIdx);
+
+        // Render table header
+        renderReallocationTableHeader();
+
+        // Render table body
+        const tbody = DOM.reallocationTableBody;
+        tbody.empty();
+
+        if (pageRecords.length === 0) {
+            tbody.append(`
+                <tr>
+                    <td colspan="100" class="text-center text-muted py-4">
+                        No records found. Try adjusting your filters.
+                    </td>
+                </tr>
+            `);
+        } else {
+            pageRecords.forEach(record => {
+                tbody.append(renderReallocationDataRow(record));
+            });
+        }
+
+        // Update pagination
+        STATE.reallocation.totalPages = Math.ceil(records.length / pageSize);
+        renderReallocationPagination();
+    }
+
+    /**
+     * Render the table header for reallocation
+     */
+    function renderReallocationTableHeader() {
+        const thead = DOM.reallocationTableHead;
+        thead.empty();
+
+        // Main header row
+        const headerRow = $('<tr></tr>');
+
+        // Fixed columns
+        headerRow.append('<th class="edit-view-frozen-col-1">Main LOB</th>');
+        headerRow.append('<th class="edit-view-frozen-col-2">State</th>');
+        headerRow.append('<th class="edit-view-frozen-col-3">Case Type</th>');
+        headerRow.append('<th class="edit-view-frozen-col-4">Target CPH</th>');
+
+        // Month columns (only visible months)
+        STATE.reallocation.visibleMonths.forEach(monthLabel => {
+            headerRow.append(`
+                <th colspan="4" class="edit-view-month-group-header">${monthLabel}</th>
+            `);
+        });
+
+        thead.append(headerRow);
+
+        // Sub-header row for month columns
+        const subHeaderRow = $('<tr></tr>');
+        subHeaderRow.append('<th></th><th></th><th></th><th></th>'); // Empty cells for frozen columns
+
+        STATE.reallocation.visibleMonths.forEach(() => {
+            subHeaderRow.append(`
+                <th class="edit-view-month-subheader">CF</th>
+                <th class="edit-view-month-subheader">FTE Req</th>
+                <th class="edit-view-month-subheader">FTE Avail</th>
+                <th class="edit-view-month-subheader">Cap</th>
+            `);
+        });
+
+        thead.append(subHeaderRow);
+    }
+
+    /**
+     * Render a single data row for reallocation table
+     */
+    function renderReallocationDataRow(record) {
+        const caseId = record.case_id;
+        const isModified = STATE.reallocation.modifiedRecords.has(caseId);
+        const modifiedRecord = isModified ? STATE.reallocation.modifiedRecords.get(caseId) : record;
+
+        const row = $(`<tr data-case-id="${caseId}" class="${isModified ? 'edit-view-reallocation-row-modified' : ''}"></tr>`);
+
+        // Fixed columns
+        row.append(`<td class="text-left">${escapeHtml(record.main_lob)}</td>`);
+        row.append(`<td class="text-center">${escapeHtml(record.state)}</td>`);
+        row.append(`<td class="text-center">${escapeHtml(record.case_type)}</td>`);
+
+        // Target CPH - editable
+        const targetCph = modifiedRecord.target_cph || record.target_cph || 0;
+        const originalCph = record.target_cph || 0;
+        const cphModified = targetCph !== originalCph;
+        row.append(`
+            <td class="${cphModified ? 'edit-view-cell-modified' : ''}">
+                <div class="edit-view-cell-controls">
+                    <button class="edit-view-btn-decrement reallocation-decrement-btn"
+                            data-case-id="${caseId}" data-field="target_cph" data-step="1">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                    <input type="number" class="edit-view-cell-input reallocation-input ${cphModified ? 'edit-view-cell-modified-input' : ''}"
+                           data-case-id="${caseId}" data-field="target_cph"
+                           value="${targetCph.toFixed(2)}" min="0" max="200" step="1">
+                    <button class="edit-view-btn-increment reallocation-increment-btn"
+                            data-case-id="${caseId}" data-field="target_cph" data-step="1">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </td>
+        `);
+
+        // Month columns
+        const months = modifiedRecord.months || record.months || {};
+        STATE.reallocation.visibleMonths.forEach(monthLabel => {
+            const monthData = months[monthLabel] || {};
+            const originalMonthData = (record.months || {})[monthLabel] || {};
+
+            // CF (not editable)
+            row.append(`<td class="text-center">${formatNumber(monthData.forecast || 0)}</td>`);
+
+            // FTE Req (not editable)
+            row.append(`<td class="text-center">${formatNumber(monthData.fte_req || 0)}</td>`);
+
+            // FTE Avail (editable)
+            const fteAvail = monthData.fte_avail ?? 0;
+            const originalFte = originalMonthData.fte_avail ?? 0;
+            const fteModified = fteAvail !== originalFte;
+            row.append(`
+                <td class="${fteModified ? 'edit-view-cell-modified' : ''}">
+                    <div class="edit-view-cell-controls">
+                        <button class="edit-view-btn-decrement reallocation-decrement-btn"
+                                data-case-id="${caseId}" data-field="fte_avail" data-month="${monthLabel}" data-step="1">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <input type="number" class="edit-view-cell-input reallocation-input ${fteModified ? 'edit-view-cell-modified-input' : ''}"
+                               data-case-id="${caseId}" data-field="fte_avail" data-month="${monthLabel}"
+                               value="${fteAvail}" min="0" max="999" step="1">
+                        <button class="edit-view-btn-increment reallocation-increment-btn"
+                                data-case-id="${caseId}" data-field="fte_avail" data-month="${monthLabel}" data-step="1">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </td>
+            `);
+
+            // Capacity (not editable)
+            row.append(`<td class="text-center">${formatNumber(monthData.capacity || 0)}</td>`);
+        });
+
+        return row;
+    }
+
+    /**
+     * Render pagination for reallocation data table
+     */
+    function renderReallocationPagination() {
+        const totalPages = STATE.reallocation.totalPages;
+        const currentPage = STATE.reallocation.currentPage;
+
+        if (totalPages <= 1) {
+            hideElement(DOM.reallocationPagination);
+            return;
+        }
+
+        const paginationHtml = renderPaginationHtml(currentPage, totalPages, 'edit-view-reallocation-pagination');
+        DOM.reallocationPagination.find('ul').html(paginationHtml);
+        showElement(DOM.reallocationPagination);
+    }
+
+    /**
+     * Handle page click for reallocation data table
+     */
+    function handleReallocationPageClick(e) {
+        e.preventDefault();
+        const page = parseInt($(e.currentTarget).data('page'), 10);
+        if (page && page !== STATE.reallocation.currentPage) {
+            STATE.reallocation.currentPage = page;
+            renderReallocationDataTable();
+        }
+    }
+
+    /**
+     * Handle increment button click
+     */
+    function handleReallocationIncrement(e) {
+        const btn = $(e.currentTarget);
+        const caseId = btn.data('case-id');
+        const field = btn.data('field');
+        const month = btn.data('month');
+        const step = parseFloat(btn.data('step') || 1);
+
+        updateReallocationValue(caseId, field, month, step);
+    }
+
+    /**
+     * Handle decrement button click
+     */
+    function handleReallocationDecrement(e) {
+        const btn = $(e.currentTarget);
+        const caseId = btn.data('case-id');
+        const field = btn.data('field');
+        const month = btn.data('month');
+        const step = parseFloat(btn.data('step') || 1);
+
+        updateReallocationValue(caseId, field, month, -step);
+    }
+
+    /**
+     * Handle input change
+     */
+    function handleReallocationInputChange(e) {
+        const input = $(e.target);
+        const caseId = input.data('case-id');
+        const field = input.data('field');
+        const month = input.data('month');
+        const newValue = parseFloat(input.val()) || 0;
+
+        setReallocationValue(caseId, field, month, newValue);
+    }
+
+    /**
+     * Update a reallocation value by delta
+     */
+    function updateReallocationValue(caseId, field, month, delta) {
+        const originalRecord = STATE.reallocation.allRecords.find(r => r.case_id === caseId);
+        if (!originalRecord) return;
+
+        let modifiedRecord = STATE.reallocation.modifiedRecords.get(caseId);
+        if (!modifiedRecord) {
+            modifiedRecord = JSON.parse(JSON.stringify(originalRecord));
+            modifiedRecord.modified_fields = [];
+        }
+
+        let currentValue, newValue, min, max;
+
+        if (field === 'target_cph') {
+            currentValue = modifiedRecord.target_cph || originalRecord.target_cph || 0;
+            min = 0;
+            max = 200;
+            newValue = Math.max(min, Math.min(max, currentValue + delta));
+            modifiedRecord.target_cph = parseFloat(newValue.toFixed(2));
+            modifiedRecord.target_cph_change = modifiedRecord.target_cph - (originalRecord.target_cph || 0);
+
+            if (!modifiedRecord.modified_fields.includes('target_cph')) {
+                modifiedRecord.modified_fields.push('target_cph');
+            }
+        } else if (field === 'fte_avail' && month) {
+            if (!modifiedRecord.months) modifiedRecord.months = {};
+            if (!modifiedRecord.months[month]) {
+                modifiedRecord.months[month] = JSON.parse(JSON.stringify(originalRecord.months[month] || {}));
+            }
+
+            currentValue = modifiedRecord.months[month].fte_avail ?? 0;
+            min = 0;
+            max = 999;
+            newValue = Math.max(min, Math.min(max, Math.round(currentValue + delta)));
+            modifiedRecord.months[month].fte_avail = newValue;
+
+            const originalFte = (originalRecord.months[month] || {}).fte_avail ?? 0;
+            modifiedRecord.months[month].fte_avail_change = newValue - originalFte;
+
+            const fieldKey = `${month}.fte_avail`;
+            if (!modifiedRecord.modified_fields.includes(fieldKey)) {
+                modifiedRecord.modified_fields.push(fieldKey);
+            }
+        }
+
+        // Check if record is actually modified from original
+        const isActuallyModified = checkRecordModified(originalRecord, modifiedRecord);
+
+        if (isActuallyModified) {
+            STATE.reallocation.modifiedRecords.set(caseId, modifiedRecord);
+        } else {
+            STATE.reallocation.modifiedRecords.delete(caseId);
+        }
+
+        // Update the row
+        const row = DOM.reallocationTableBody.find(`tr[data-case-id="${caseId}"]`);
+        row.replaceWith(renderReallocationDataRow(
+            STATE.reallocation.modifiedRecords.get(caseId) || originalRecord
+        ));
+
+        updateReallocationModifiedCount();
+    }
+
+    /**
+     * Set a reallocation value directly
+     */
+    function setReallocationValue(caseId, field, month, newValue) {
+        const originalRecord = STATE.reallocation.allRecords.find(r => r.case_id === caseId);
+        if (!originalRecord) return;
+
+        let modifiedRecord = STATE.reallocation.modifiedRecords.get(caseId);
+        if (!modifiedRecord) {
+            modifiedRecord = JSON.parse(JSON.stringify(originalRecord));
+            modifiedRecord.modified_fields = [];
+        }
+
+        if (field === 'target_cph') {
+            newValue = Math.max(0, Math.min(200, newValue));
+            modifiedRecord.target_cph = parseFloat(newValue.toFixed(2));
+            modifiedRecord.target_cph_change = modifiedRecord.target_cph - (originalRecord.target_cph || 0);
+
+            if (!modifiedRecord.modified_fields.includes('target_cph')) {
+                modifiedRecord.modified_fields.push('target_cph');
+            }
+        } else if (field === 'fte_avail' && month) {
+            if (!modifiedRecord.months) modifiedRecord.months = {};
+            if (!modifiedRecord.months[month]) {
+                modifiedRecord.months[month] = JSON.parse(JSON.stringify(originalRecord.months[month] || {}));
+            }
+
+            newValue = Math.max(0, Math.min(999, Math.round(newValue)));
+            modifiedRecord.months[month].fte_avail = newValue;
+
+            const originalFte = (originalRecord.months[month] || {}).fte_avail ?? 0;
+            modifiedRecord.months[month].fte_avail_change = newValue - originalFte;
+
+            const fieldKey = `${month}.fte_avail`;
+            if (!modifiedRecord.modified_fields.includes(fieldKey)) {
+                modifiedRecord.modified_fields.push(fieldKey);
+            }
+        }
+
+        const isActuallyModified = checkRecordModified(originalRecord, modifiedRecord);
+
+        if (isActuallyModified) {
+            STATE.reallocation.modifiedRecords.set(caseId, modifiedRecord);
+        } else {
+            STATE.reallocation.modifiedRecords.delete(caseId);
+        }
+
+        updateReallocationModifiedCount();
+    }
+
+    /**
+     * Check if a record is actually modified from the original
+     */
+    function checkRecordModified(original, modified) {
+        // Check target_cph
+        if (modified.target_cph !== original.target_cph) {
+            return true;
+        }
+
+        // Check each month's fte_avail
+        if (modified.months) {
+            for (const month in modified.months) {
+                const origFte = (original.months[month] || {}).fte_avail ?? 0;
+                const modFte = modified.months[month].fte_avail ?? 0;
+                if (origFte !== modFte) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Update the modified count badge
+     */
+    function updateReallocationModifiedCount() {
+        const count = STATE.reallocation.modifiedRecords.size;
+        DOM.reallocationModifiedCountBadge.text(`${count} modified`);
+
+        // Enable/disable preview button
+        DOM.showReallocationPreviewBtn.prop('disabled', count === 0);
+    }
+
+    /**
+     * Handle Show Preview button click
+     */
+    async function handleShowReallocationPreview() {
+        if (STATE.reallocation.modifiedRecords.size === 0) {
+            showErrorDialog('No Changes', 'Please make some changes before generating a preview.');
+            return;
+        }
+
+        const { month, year } = STATE.reallocation.currentSelectedReport;
+        const modifiedRecords = Array.from(STATE.reallocation.modifiedRecords.values());
+
+        showElement(DOM.reallocationPreviewLoading);
+        hideElement(DOM.reallocationPreviewError);
+        hideElement(DOM.reallocationPreviewContainer);
+        hideElement(DOM.reallocationActionsContainer);
+
+        try {
+            const response = await $.ajax({
+                url: CONFIG.urls.forecastReallocationPreview,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    month: month,
+                    year: year,
+                    modified_records: modifiedRecords
+                })
+            });
+
+            if (response.success !== false) {
+                STATE.reallocation.previewData = response;
+                STATE.reallocation.allPreviewRecords = response.modified_records || [];
+                STATE.reallocation.filteredPreviewRecords = [...STATE.reallocation.allPreviewRecords];
+                STATE.reallocation.previewCurrentPage = 1;
+
+                // Render preview
+                renderReallocationPreview();
+
+                showElement(DOM.reallocationPreviewContainer);
+                showElement(DOM.reallocationActionsContainer);
+
+                // Update counts
+                DOM.reallocationPreviewModifiedCountBadge.text(`${STATE.reallocation.allPreviewRecords.length} records modified`);
+                DOM.reallocationActionSummaryCount.text(STATE.reallocation.allPreviewRecords.length);
+
+                console.log('Edit View: Reallocation preview generated');
+            } else {
+                throw new Error(response.message || response.error || 'Failed to generate preview');
+            }
+
+        } catch (error) {
+            console.error('Edit View: Failed to generate reallocation preview', error);
+            DOM.reallocationPreviewErrorMessage.text(error.message || 'Failed to generate preview');
+            showElement(DOM.reallocationPreviewError);
+        } finally {
+            hideElement(DOM.reallocationPreviewLoading);
+        }
+    }
+
+    /**
+     * Render the reallocation preview using generic preview system
+     */
+    function renderReallocationPreview() {
+        // Use the generic preview rendering system
+        const config = PREVIEW_CONFIGS.forecastReallocation;
+        const records = STATE.reallocation.filteredPreviewRecords;
+        const pageSize = CONFIG.settings.previewPageSize;
+        const currentPage = STATE.reallocation.previewCurrentPage;
+        const startIdx = (currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageRecords = records.slice(startIdx, endIdx);
+
+        // Get months mapping from state
+        const monthsMapping = STATE.reallocation.monthsMapping || {};
+
+        // Render using generic preview table
+        renderGenericPreviewTable(
+            config,
+            pageRecords,
+            monthsMapping,
+            DOM.reallocationPreviewTableHead,
+            DOM.reallocationPreviewTableBody
+        );
+
+        // Update pagination
+        STATE.reallocation.previewTotalPages = Math.ceil(records.length / pageSize);
+        renderReallocationPreviewPagination();
+
+        // Update summary
+        DOM.reallocationSummaryText.text(`${records.length} records will be modified`);
+
+        // Populate preview filters
+        populateReallocationPreviewFilters();
+    }
+
+    /**
+     * Render preview pagination
+     */
+    function renderReallocationPreviewPagination() {
+        const totalPages = STATE.reallocation.previewTotalPages;
+        const currentPage = STATE.reallocation.previewCurrentPage;
+
+        if (totalPages <= 1) {
+            hideElement(DOM.reallocationPreviewPagination);
+            return;
+        }
+
+        const paginationHtml = renderPaginationHtml(currentPage, totalPages, 'edit-view-reallocation-preview-pagination');
+        DOM.reallocationPreviewPagination.find('ul').html(paginationHtml);
+        showElement(DOM.reallocationPreviewPagination);
+    }
+
+    /**
+     * Handle preview page click
+     */
+    function handleReallocationPreviewPageClick(e) {
+        e.preventDefault();
+        const page = parseInt($(e.currentTarget).data('page'), 10);
+        if (page && page !== STATE.reallocation.previewCurrentPage) {
+            STATE.reallocation.previewCurrentPage = page;
+            renderReallocationPreview();
+        }
+    }
+
+    /**
+     * Populate preview filters with unique values
+     */
+    function populateReallocationPreviewFilters() {
+        const records = STATE.reallocation.allPreviewRecords;
+
+        // Get unique LOBs and Case Types
+        const lobs = [...new Set(records.map(r => r.main_lob))].sort();
+        const caseTypes = [...new Set(records.map(r => r.case_type))].sort();
+
+        // Populate LOB filter
+        DOM.reallocationPreviewLobFilter.empty();
+        lobs.forEach(lob => {
+            DOM.reallocationPreviewLobFilter.append(new Option(lob, lob, false, false));
+        });
+        DOM.reallocationPreviewLobFilter.trigger('change');
+
+        // Populate Case Type filter
+        DOM.reallocationPreviewCaseTypeFilter.empty();
+        caseTypes.forEach(ct => {
+            DOM.reallocationPreviewCaseTypeFilter.append(new Option(ct, ct, false, false));
+        });
+        DOM.reallocationPreviewCaseTypeFilter.trigger('change');
+
+        if (lobs.length > 1 || caseTypes.length > 1) {
+            showElement(DOM.reallocationPreviewFilters);
+        }
+    }
+
+    /**
+     * Apply preview filters
+     */
+    function applyReallocationPreviewFilters() {
+        const selectedLobs = DOM.reallocationPreviewLobFilter.val() || [];
+        const selectedCaseTypes = DOM.reallocationPreviewCaseTypeFilter.val() || [];
+
+        let filtered = [...STATE.reallocation.allPreviewRecords];
+
+        if (selectedLobs.length > 0) {
+            filtered = filtered.filter(r => selectedLobs.includes(r.main_lob));
+        }
+
+        if (selectedCaseTypes.length > 0) {
+            filtered = filtered.filter(r => selectedCaseTypes.includes(r.case_type));
+        }
+
+        STATE.reallocation.filteredPreviewRecords = filtered;
+        STATE.reallocation.previewCurrentPage = 1;
+
+        renderReallocationPreview();
+    }
+
+    /**
+     * Clear preview filters
+     */
+    function clearReallocationPreviewFilters() {
+        DOM.reallocationPreviewLobFilter.val(null).trigger('change');
+        DOM.reallocationPreviewCaseTypeFilter.val(null).trigger('change');
+
+        STATE.reallocation.filteredPreviewRecords = [...STATE.reallocation.allPreviewRecords];
+        STATE.reallocation.previewCurrentPage = 1;
+
+        renderReallocationPreview();
+    }
+
+    /**
+     * Handle Reject button click
+     */
+    function handleReallocationReject() {
+        Swal.fire({
+            title: 'Reject Changes?',
+            text: 'Are you sure you want to discard all changes?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, discard',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Clear modified records
+                STATE.reallocation.modifiedRecords.clear();
+
+                // Hide preview and actions
+                hideElement(DOM.reallocationPreviewContainer);
+                hideElement(DOM.reallocationActionsContainer);
+
+                // Clear user notes
+                DOM.reallocationUserNotesInput.val('');
+                DOM.reallocationNotesCharCount.text('0');
+
+                // Re-render table
+                renderReallocationDataTable();
+                updateReallocationModifiedCount();
+
+                showToast('Changes discarded', 'info');
+            }
+        });
+    }
+
+    /**
+     * Handle Accept button click
+     */
+    async function handleReallocationAccept() {
+        if (STATE.isSubmitting) return;
+
+        const modifiedCount = STATE.reallocation.modifiedRecords.size;
+        if (modifiedCount === 0) {
+            showErrorDialog('No Changes', 'There are no changes to submit.');
+            return;
+        }
+
+        const result = await Swal.fire({
+            title: 'Confirm Changes',
+            html: `
+                <p>You are about to update <strong>${modifiedCount}</strong> records.</p>
+                <p>This action cannot be undone.</p>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#198754',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, update',
+            cancelButtonText: 'Cancel'
+        });
+
+        if (!result.isConfirmed) return;
+
+        STATE.isSubmitting = true;
+        const { month, year } = STATE.reallocation.currentSelectedReport;
+        const modifiedRecords = Array.from(STATE.reallocation.modifiedRecords.values());
+        const userNotes = DOM.reallocationUserNotesInput.val().trim();
+
+        try {
+            showSubmittingDialog('Submitting reallocation changes...');
+
+            const response = await $.ajax({
+                url: CONFIG.urls.forecastReallocationUpdate,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    month: month,
+                    year: year,
+                    months: STATE.reallocation.monthsMapping,
+                    modified_records: modifiedRecords,
+                    user_notes: userNotes
+                })
+            });
+
+            Swal.close();
+
+            if (response.success !== false) {
+                showSuccessDialog(
+                    'Update Successful',
+                    `Successfully updated ${response.records_updated || modifiedCount} records.`
+                );
+
+                // Clear state
+                STATE.reallocation.modifiedRecords.clear();
+                STATE.reallocation.previewData = null;
+
+                // Clear user notes
+                DOM.reallocationUserNotesInput.val('');
+                DOM.reallocationNotesCharCount.text('0');
+
+                // Hide preview and actions
+                hideElement(DOM.reallocationPreviewContainer);
+                hideElement(DOM.reallocationActionsContainer);
+
+                // Reload data
+                await loadReallocationData(month, year, [], [], []);
+
+                console.log('Edit View: Reallocation update successful');
+            } else {
+                throw new Error(response.message || response.error || 'Update failed');
+            }
+
+        } catch (error) {
+            console.error('Edit View: Error submitting reallocation update', error);
+            showErrorDialog(
+                'Update Failed',
+                'The reallocation update could not be completed.',
+                `Error: ${error.message}`
+            );
+        } finally {
+            STATE.isSubmitting = false;
+        }
+    }
+
+    /**
+     * Handle user notes input
+     */
+    function handleReallocationNotesInput(e) {
+        const input = $(e.target);
+        const charCount = input.val().length;
+        const maxLength = CONFIG.settings.maxUserNotesLength;
+
+        DOM.reallocationNotesCharCount.text(charCount);
+
+        if (charCount > maxLength) {
+            input.val(input.val().substring(0, maxLength));
+            DOM.reallocationNotesCharCount.text(maxLength);
         }
     }
 

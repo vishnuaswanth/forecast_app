@@ -1,0 +1,565 @@
+{% extends 'index.html' %}
+{% load static %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content2 %}
+<!-- Select2 CSS for searchable dropdowns -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+
+<!-- SweetAlert2 CSS -->
+<link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet" />
+
+<!-- Configuration View Custom CSS -->
+<link rel="stylesheet" href="{% static 'centene_forecast_app/css/configuration_view.css' %}">
+
+<!-- Config passed to JavaScript -->
+{{ config|json_script:"configuration-view-config" }}
+
+<div class="config-view-container">
+    <!-- Header -->
+    <div class="config-view-header config-view-mb-4">
+        <h2 class="config-view-mb-0">
+            <i class="fas fa-cog config-view-me-2"></i>Configuration Management
+        </h2>
+    </div>
+
+    <!-- Tab Navigation -->
+    <ul class="nav nav-tabs config-view-tabs" id="config-view-tabs" role="tablist">
+        <li class="nav-item config-view-nav-item" role="presentation">
+            <button class="nav-link active config-view-nav-link" id="month-config-tab-btn" data-bs-toggle="tab"
+                    data-bs-target="#month-config-tab" type="button" role="tab"
+                    aria-controls="month-config-tab" aria-selected="true">
+                <i class="fas fa-calendar-alt config-view-me-2"></i>Month Configuration
+            </button>
+        </li>
+        <li class="nav-item config-view-nav-item" role="presentation">
+            <button class="nav-link config-view-nav-link" id="target-cph-config-tab-btn" data-bs-toggle="tab"
+                    data-bs-target="#target-cph-config-tab" type="button" role="tab"
+                    aria-controls="target-cph-config-tab" aria-selected="false">
+                <i class="fas fa-tachometer-alt config-view-me-2"></i>Target CPH Configuration
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content config-view-tab-content config-view-mt-3" id="config-view-tab-content">
+
+        <!-- ========================================== -->
+        <!-- MONTH CONFIGURATION TAB -->
+        <!-- ========================================== -->
+        <div class="tab-pane fade show active config-view-tab-pane" id="month-config-tab" role="tabpanel"
+             aria-labelledby="month-config-tab-btn">
+
+            <!-- Filter Section -->
+            <div class="config-view-card config-view-filter-card">
+                <div class="config-view-card-body">
+                    <h5 class="config-view-mb-3">
+                        <i class="fas fa-filter config-view-me-2"></i>Filters
+                    </h5>
+                    <div class="config-view-row config-view-align-end">
+                        <div class="config-view-col-3">
+                            <label class="config-view-form-label" for="month-config-year-filter">
+                                Year:
+                            </label>
+                            <select class="config-view-form-select config-view-select2" id="month-config-year-filter"
+                                    data-placeholder="All Years">
+                                <option value="">All Years</option>
+                                <!-- Options populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="config-view-col-3">
+                            <label class="config-view-form-label" for="month-config-month-filter">
+                                Month:
+                            </label>
+                            <select class="config-view-form-select config-view-select2" id="month-config-month-filter"
+                                    data-placeholder="All Months">
+                                <option value="">All Months</option>
+                                <!-- Options populated by JavaScript from config.month_names -->
+                            </select>
+                        </div>
+                        <div class="config-view-col-3">
+                            <label class="config-view-form-label" for="month-config-worktype-filter">
+                                Work Type:
+                            </label>
+                            <select class="config-view-form-select config-view-select2" id="month-config-worktype-filter"
+                                    data-placeholder="All Types">
+                                <option value="">All Types</option>
+                                <!-- Options populated by JavaScript from config.work_types -->
+                            </select>
+                        </div>
+                        <div class="config-view-col-3">
+                            <button class="config-view-btn config-view-btn-primary config-view-me-2" id="month-config-apply-filters-btn">
+                                <i class="fas fa-search config-view-me-1"></i>Apply
+                            </button>
+                            <button class="config-view-btn config-view-btn-outline-secondary" id="month-config-clear-filters-btn">
+                                <i class="fas fa-times config-view-me-1"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Bar -->
+            <div class="config-view-actions-bar config-view-mt-3">
+                <div class="config-view-flex config-view-justify-between config-view-align-center">
+                    <div>
+                        <button class="config-view-btn config-view-btn-success config-view-me-2" id="month-config-add-btn">
+                            <i class="fas fa-plus config-view-me-1"></i>Add New
+                        </button>
+                        <button class="config-view-btn config-view-btn-outline-success config-view-me-2" id="month-config-bulk-add-btn">
+                            <i class="fas fa-plus-circle config-view-me-1"></i>Bulk Add
+                        </button>
+                        <button class="config-view-btn config-view-btn-outline-primary" id="month-config-validate-btn">
+                            <i class="fas fa-check-circle config-view-me-1"></i>Validate Data
+                        </button>
+                    </div>
+                    <div class="config-view-badge config-view-badge-info" id="month-config-count-badge">
+                        0 configurations
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="config-view-loading config-view-text-center config-view-mt-3" id="month-config-loading" style="display: none;">
+                <div class="config-view-spinner config-view-text-primary" role="status">
+                    <span class="config-view-visually-hidden">Loading...</span>
+                </div>
+                <p class="config-view-mt-2">Loading configurations...</p>
+            </div>
+
+            <!-- Error Alert -->
+            <div class="config-view-alert config-view-alert-danger config-view-error-alert config-view-mt-3" id="month-config-error" style="display: none;">
+                <i class="fas fa-exclamation-circle config-view-me-2"></i>
+                <span id="month-config-error-message">An error occurred</span>
+            </div>
+
+            <!-- Data Table -->
+            <div class="config-view-card config-view-mt-3" id="month-config-table-container">
+                <div class="config-view-card-body">
+                    <div class="config-view-table-container">
+                        <table class="config-view-table" id="month-config-table">
+                            <thead>
+                                <tr>
+                                    <th class="config-view-col-id">ID</th>
+                                    <th class="config-view-col-month">Month</th>
+                                    <th class="config-view-col-year">Year</th>
+                                    <th class="config-view-col-worktype">Work Type</th>
+                                    <th class="config-view-col-workdays">Working Days</th>
+                                    <th class="config-view-col-occupancy">Occupancy</th>
+                                    <th class="config-view-col-shrinkage">Shrinkage</th>
+                                    <th class="config-view-col-workhours">Work Hours</th>
+                                    <th class="config-view-col-updatedby">Updated By</th>
+                                    <th class="config-view-col-updateddate">Updated Date</th>
+                                    <th class="config-view-col-actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="month-config-table-body">
+                                <!-- Rows populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- No Results Message -->
+                    <div class="config-view-alert config-view-alert-info config-view-text-center config-view-mt-3" id="month-config-no-results" style="display: none;">
+                        <i class="fas fa-info-circle config-view-me-2"></i>
+                        No configurations found. Click "Add New" to create one.
+                    </div>
+
+                    <!-- Pagination -->
+                    <nav id="month-config-pagination" class="config-view-mt-3" style="display: none;">
+                        <ul class="config-view-pagination config-view-pagination-sm config-view-justify-end">
+                            <!-- Pagination items populated by JavaScript -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ========================================== -->
+        <!-- TARGET CPH CONFIGURATION TAB -->
+        <!-- ========================================== -->
+        <div class="tab-pane fade config-view-tab-pane" id="target-cph-config-tab" role="tabpanel"
+             aria-labelledby="target-cph-config-tab-btn">
+
+            <!-- Filter Section -->
+            <div class="config-view-card config-view-filter-card">
+                <div class="config-view-card-body">
+                    <h5 class="config-view-mb-3">
+                        <i class="fas fa-filter config-view-me-2"></i>Filters
+                    </h5>
+                    <div class="config-view-row config-view-align-end">
+                        <div class="config-view-col-4">
+                            <label class="config-view-form-label" for="target-cph-lob-filter">
+                                Main LOB:
+                            </label>
+                            <select class="config-view-form-select config-view-select2" id="target-cph-lob-filter"
+                                    data-placeholder="All LOBs">
+                                <option value="">All LOBs</option>
+                                <!-- Options populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="config-view-col-4">
+                            <label class="config-view-form-label" for="target-cph-casetype-filter">
+                                Case Type:
+                            </label>
+                            <select class="config-view-form-select config-view-select2" id="target-cph-casetype-filter"
+                                    data-placeholder="All Case Types">
+                                <option value="">All Case Types</option>
+                                <!-- Options populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="config-view-col-4">
+                            <button class="config-view-btn config-view-btn-primary config-view-me-2" id="target-cph-apply-filters-btn">
+                                <i class="fas fa-search config-view-me-1"></i>Apply
+                            </button>
+                            <button class="config-view-btn config-view-btn-outline-secondary" id="target-cph-clear-filters-btn">
+                                <i class="fas fa-times config-view-me-1"></i>Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions Bar -->
+            <div class="config-view-actions-bar config-view-mt-3">
+                <div class="config-view-flex config-view-justify-between config-view-align-center">
+                    <div>
+                        <button class="config-view-btn config-view-btn-success config-view-me-2" id="target-cph-add-btn">
+                            <i class="fas fa-plus config-view-me-1"></i>Add New
+                        </button>
+                        <button class="config-view-btn config-view-btn-outline-success" id="target-cph-bulk-add-btn">
+                            <i class="fas fa-plus-circle config-view-me-1"></i>Bulk Add
+                        </button>
+                    </div>
+                    <div class="config-view-badge config-view-badge-info" id="target-cph-count-badge">
+                        0 configurations
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div class="config-view-loading config-view-text-center config-view-mt-3" id="target-cph-loading" style="display: none;">
+                <div class="config-view-spinner config-view-text-primary" role="status">
+                    <span class="config-view-visually-hidden">Loading...</span>
+                </div>
+                <p class="config-view-mt-2">Loading configurations...</p>
+            </div>
+
+            <!-- Error Alert -->
+            <div class="config-view-alert config-view-alert-danger config-view-error-alert config-view-mt-3" id="target-cph-error" style="display: none;">
+                <i class="fas fa-exclamation-circle config-view-me-2"></i>
+                <span id="target-cph-error-message">An error occurred</span>
+            </div>
+
+            <!-- Data Table -->
+            <div class="config-view-card config-view-mt-3" id="target-cph-table-container">
+                <div class="config-view-card-body">
+                    <div class="config-view-table-container">
+                        <table class="config-view-table" id="target-cph-table">
+                            <thead>
+                                <tr>
+                                    <th class="config-view-col-id">ID</th>
+                                    <th class="config-view-col-lob">Main LOB</th>
+                                    <th class="config-view-col-casetype">Case Type</th>
+                                    <th class="config-view-col-targetcph">Target CPH</th>
+                                    <th class="config-view-col-updatedby">Updated By</th>
+                                    <th class="config-view-col-updateddate">Updated Date</th>
+                                    <th class="config-view-col-actions">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="target-cph-table-body">
+                                <!-- Rows populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- No Results Message -->
+                    <div class="config-view-alert config-view-alert-info config-view-text-center config-view-mt-3" id="target-cph-no-results" style="display: none;">
+                        <i class="fas fa-info-circle config-view-me-2"></i>
+                        No configurations found. Click "Add New" to create one.
+                    </div>
+
+                    <!-- Pagination -->
+                    <nav id="target-cph-pagination" class="config-view-mt-3" style="display: none;">
+                        <ul class="config-view-pagination config-view-pagination-sm config-view-justify-end">
+                            <!-- Pagination items populated by JavaScript -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- MODALS -->
+<!-- ========================================== -->
+
+<!-- Month Configuration Add/Edit Modal -->
+<div class="modal fade" id="month-config-modal" tabindex="-1" aria-labelledby="month-config-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content config-view-modal-content">
+            <div class="modal-header config-view-modal-header">
+                <h5 class="modal-title" id="month-config-modal-label">
+                    <i class="fas fa-calendar-alt config-view-me-2"></i>
+                    <span id="month-config-modal-title">Add Month Configuration</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body config-view-modal-body">
+                <form id="month-config-form">
+                    <input type="hidden" id="month-config-form-id">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label" for="month-config-form-month">Month <span class="text-danger">*</span></label>
+                            <select class="form-select" id="month-config-form-month" required>
+                                <option value="">Select Month</option>
+                                <!-- Options populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label" for="month-config-form-year">Year <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="month-config-form-year"
+                                   min="2020" max="2100" required>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label" for="month-config-form-worktype">Work Type <span class="text-danger">*</span></label>
+                            <select class="form-select" id="month-config-form-worktype" required>
+                                <option value="">Select Type</option>
+                                <!-- Options populated by JavaScript -->
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label" for="month-config-form-workdays">Working Days <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="month-config-form-workdays"
+                                   min="1" max="31" step="1" required>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label" for="month-config-form-occupancy">Occupancy <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="month-config-form-occupancy"
+                                       min="0" max="100" step="0.1" required>
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <small class="form-text text-muted">0-100%</small>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label" for="month-config-form-shrinkage">Shrinkage <span class="text-danger">*</span></label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" id="month-config-form-shrinkage"
+                                       min="0" max="100" step="0.1" required>
+                                <span class="input-group-text">%</span>
+                            </div>
+                            <small class="form-text text-muted">0-100%</small>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label" for="month-config-form-workhours">Work Hours <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="month-config-form-workhours"
+                                   min="1" max="24" step="0.5" required>
+                            <small class="form-text text-muted">1-24 hours</small>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer config-view-modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="month-config-save-btn">
+                    <i class="fas fa-save config-view-me-1"></i>Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Month Configuration Bulk Add Modal -->
+<div class="modal fade" id="month-config-bulk-modal" tabindex="-1" aria-labelledby="month-config-bulk-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content config-view-modal-content">
+            <div class="modal-header config-view-modal-header">
+                <h5 class="modal-title" id="month-config-bulk-modal-label">
+                    <i class="fas fa-plus-circle config-view-me-2"></i>Bulk Add Month Configurations
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body config-view-modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle config-view-me-2"></i>
+                    Add multiple configurations at once. Each row will create one configuration.
+                </div>
+                <div id="month-config-bulk-rows">
+                    <!-- Dynamic rows will be added here by JavaScript -->
+                </div>
+                <button type="button" class="btn btn-outline-success mt-3" id="month-config-add-row-btn">
+                    <i class="fas fa-plus config-view-me-1"></i>Add Row
+                </button>
+            </div>
+            <div class="modal-footer config-view-modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="month-config-bulk-save-btn">
+                    <i class="fas fa-save config-view-me-1"></i>Save All
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Validation Results Modal -->
+<div class="modal fade" id="validation-modal" tabindex="-1" aria-labelledby="validation-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content config-view-modal-content">
+            <div class="modal-header config-view-modal-header">
+                <h5 class="modal-title" id="validation-modal-label">
+                    <i class="fas fa-check-circle config-view-me-2"></i>Data Validation Results
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body config-view-modal-body" id="validation-modal-body">
+                <!-- Content populated by JavaScript -->
+            </div>
+            <div class="modal-footer config-view-modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Target CPH Add/Edit Modal -->
+<div class="modal fade" id="target-cph-modal" tabindex="-1" aria-labelledby="target-cph-modal-label" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content config-view-modal-content">
+            <div class="modal-header config-view-modal-header">
+                <h5 class="modal-title" id="target-cph-modal-label">
+                    <i class="fas fa-tachometer-alt config-view-me-2"></i>
+                    <span id="target-cph-modal-title">Add Target CPH Configuration</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body config-view-modal-body">
+                <form id="target-cph-form">
+                    <input type="hidden" id="target-cph-form-id">
+                    <div class="mb-3">
+                        <label class="form-label" for="target-cph-form-lob">Main LOB <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="target-cph-form-lob"
+                               maxlength="255" required placeholder="Enter Main LOB">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="target-cph-form-casetype">Case Type <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="target-cph-form-casetype"
+                               maxlength="255" required placeholder="Enter Case Type">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="target-cph-form-targetcph">Target CPH <span class="text-danger">*</span></label>
+                        <input type="number" class="form-control" id="target-cph-form-targetcph"
+                               min="0" step="0.1" required placeholder="Enter Target CPH">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer config-view-modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="target-cph-save-btn">
+                    <i class="fas fa-save config-view-me-1"></i>Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Target CPH Bulk Add Modal -->
+<div class="modal fade" id="target-cph-bulk-modal" tabindex="-1" aria-labelledby="target-cph-bulk-modal-label" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content config-view-modal-content">
+            <div class="modal-header config-view-modal-header">
+                <h5 class="modal-title" id="target-cph-bulk-modal-label">
+                    <i class="fas fa-plus-circle config-view-me-2"></i>Bulk Add Target CPH Configurations
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body config-view-modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle config-view-me-2"></i>
+                    Add multiple configurations at once. Each row will create one configuration.
+                </div>
+                <div id="target-cph-bulk-rows">
+                    <!-- Dynamic rows will be added here by JavaScript -->
+                </div>
+                <button type="button" class="btn btn-outline-success mt-3" id="target-cph-add-row-btn">
+                    <i class="fas fa-plus config-view-me-1"></i>Add Row
+                </button>
+            </div>
+            <div class="modal-footer config-view-modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="target-cph-bulk-save-btn">
+                    <i class="fas fa-save config-view-me-1"></i>Save All
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<!-- jQuery (required for Select2) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- Select2 JS for searchable dropdowns -->
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<!-- SweetAlert2 JS -->
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<!-- Configuration View Configuration from Django -->
+<script>
+    // Pass Django context to JavaScript
+    const DJANGO_CONFIG = JSON.parse(document.getElementById('configuration-view-config').textContent);
+
+    window.CONFIGURATION_VIEW_CONFIG = {
+        urls: {
+            // Month Configuration URLs
+            monthConfigList: '{% url "forecast_app:month_config_list" %}',
+            monthConfigCreate: '{% url "forecast_app:month_config_create" %}',
+            monthConfigBulkCreate: '{% url "forecast_app:month_config_bulk_create" %}',
+            monthConfigUpdate: '{% url "forecast_app:month_config_update" config_id=0 %}'.replace('/0/', '/{id}/'),
+            monthConfigDelete: '{% url "forecast_app:month_config_delete" config_id=0 %}'.replace('/0/', '/{id}/'),
+            monthConfigValidate: '{% url "forecast_app:month_config_validate" %}',
+            // Target CPH Configuration URLs
+            targetCphList: '{% url "forecast_app:target_cph_list" %}',
+            targetCphCreate: '{% url "forecast_app:target_cph_create" %}',
+            targetCphBulkCreate: '{% url "forecast_app:target_cph_bulk_create" %}',
+            targetCphUpdate: '{% url "forecast_app:target_cph_update" config_id=0 %}'.replace('/0/', '/{id}/'),
+            targetCphDelete: '{% url "forecast_app:target_cph_delete" config_id=0 %}'.replace('/0/', '/{id}/'),
+            targetCphDistinctLobs: '{% url "forecast_app:target_cph_distinct_lobs" %}',
+            targetCphDistinctCaseTypes: '{% url "forecast_app:target_cph_distinct_case_types" %}'
+        },
+        settings: {
+            pageSize: DJANGO_CONFIG.page_size || 25,
+            maxBulkRecords: DJANGO_CONFIG.max_bulk_records || 100,
+            minYear: DJANGO_CONFIG.min_year || 2020,
+            maxYear: DJANGO_CONFIG.max_year || 2100,
+            monthNames: DJANGO_CONFIG.month_names || [],
+            workTypes: DJANGO_CONFIG.work_types || [],
+            minWorkingDays: DJANGO_CONFIG.min_working_days || 1,
+            maxWorkingDays: DJANGO_CONFIG.max_working_days || 31,
+            minOccupancy: DJANGO_CONFIG.min_occupancy || 0,
+            maxOccupancy: DJANGO_CONFIG.max_occupancy || 1,
+            minShrinkage: DJANGO_CONFIG.min_shrinkage || 0,
+            maxShrinkage: DJANGO_CONFIG.max_shrinkage || 1,
+            minWorkHours: DJANGO_CONFIG.min_work_hours || 1,
+            maxWorkHours: DJANGO_CONFIG.max_work_hours || 24,
+            minTargetCph: DJANGO_CONFIG.min_target_cph || 0,
+            maxLobLength: DJANGO_CONFIG.max_lob_length || 255,
+            maxCaseTypeLength: DJANGO_CONFIG.max_case_type_length || 255
+        }
+    };
+</script>
+
+<!-- Configuration View JavaScript -->
+<script src="{% static 'centene_forecast_app/js/configuration_view.js' %}"></script>
+{% endblock %}

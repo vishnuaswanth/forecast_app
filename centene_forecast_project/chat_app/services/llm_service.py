@@ -321,6 +321,28 @@ class LLMService:
         if classification.requires_clarification or classification.confidence < 0.7:
             return await self._handle_clarification(classification, context, user_text)
 
+        # Handle CLEAR_CONTEXT intent - directly execute without confirmation
+        if classification.category == IntentCategory.CLEAR_CONTEXT:
+            return await self.execute_clear_context(conversation_id)
+
+        # Handle UPDATE_CONTEXT intent - directly execute without confirmation
+        if classification.category == IntentCategory.UPDATE_CONTEXT:
+            # Extract operation from classification (default to reset_all_filters)
+            operation = 'reset_all_filters'
+            specific_filter = None
+
+            # Try to get extracted parameters if the LLM populated them
+            extracted = getattr(classification, 'extracted_parameters', {}) or {}
+            if extracted:
+                operation = extracted.get('operation', 'reset_all_filters')
+                specific_filter = extracted.get('specific_filter')
+
+            return await self.execute_update_context(
+                conversation_id=conversation_id,
+                operation=operation,
+                parameters={'specific_filter': specific_filter, 'keep_month_year': True}
+            )
+
         # Handle FTE/CPH intents with selected row
         if classification.category == IntentCategory.GET_FTE_DETAILS:
             if selected_row:
@@ -619,6 +641,196 @@ Be specific about what's needed.
             'ui_component': generate_clarification_ui(clarification_text),
             'metadata': {'original_classification': classification.model_dump(mode='json') if classification else {}}
         }
+
+    async def execute_clear_context(
+        self,
+        conversation_id: str
+    ) -> Dict:
+        """
+        Clear conversation context and return confirmation UI.
+
+        Clears all filters, selected rows, and cached data from the
+        conversation context across all storage layers (Redis, cache, DB).
+
+        Args:
+            conversation_id: Conversation identifier
+
+        Returns:
+            Dictionary with:
+                - success: Boolean
+                - category: 'clear_context'
+                - message: Confirmation message
+                - ui_component: HTML confirmation card
+                - metadata: Additional info
+        """
+        from chat_app.services.tools.ui_tools import generate_clear_context_ui
+
+        correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
+
+        logger.info(f"[LLM Service] Clearing context for conversation: {conversation_id}")
+
+        try:
+            await self.context_manager.clear_context(conversation_id)
+
+            logger.info(f"[LLM Service] Context cleared successfully for: {conversation_id}")
+
+            return {
+                'success': True,
+                'category': 'clear_context',
+                'confidence': 1.0,
+                'message': 'Context cleared successfully. All filters and selections have been reset.',
+                'ui_component': generate_clear_context_ui(),
+                'response_type': 'assistant_response',
+                'metadata': {
+                    'context_cleared': True,
+                    'correlation_id': correlation_id
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"[LLM Service] Error clearing context: {str(e)}", exc_info=True)
+
+            return {
+                'success': False,
+                'category': 'clear_context',
+                'confidence': 1.0,
+                'message': 'Failed to clear context.',
+                'ui_component': generate_error_ui(
+                    "Failed to clear context. Please try again.",
+                    error_type="context",
+                    admin_contact=False,
+                    error_code="CONTEXT_CLEAR_ERROR"
+                ),
+                'response_type': 'assistant_response',
+                'metadata': {
+                    'error': True,
+                    'correlation_id': correlation_id
+                }
+            }
+
+    async def execute_update_context(
+        self,
+        conversation_id: str,
+        operation: str,
+        parameters: dict = None
+    ) -> Dict:
+        """
+        Update context selectively based on operation.
+
+        Different from clear_context - this resets filters while preserving
+        month/year. Use for "get all data", "reset filters", "show all platforms".
+
+        Args:
+            conversation_id: Conversation identifier
+            operation: "reset_all_filters" | "reset_specific"
+            parameters: Optional - specific_filter, keep_month_year
+
+        Returns:
+            Dict with success, message, ui_component, metadata
+        """
+        from chat_app.services.tools.ui_tools import generate_context_update_ui
+
+        correlation_id = get_correlation_id() or create_correlation_id(conversation_id)
+
+        params = parameters or {}
+        keep_month_year = params.get('keep_month_year', True)
+        specific_filter = params.get('specific_filter')
+
+        logger.info(
+            f"[LLM Service] Updating context for {conversation_id}: "
+            f"operation={operation}, keep_month_year={keep_month_year}"
+        )
+
+        try:
+            if operation == 'reset_all_filters':
+                updated_context = await self.context_manager.reset_filters(
+                    conversation_id,
+                    keep_month_year=keep_month_year
+                )
+                message = "All filters have been reset."
+
+            elif operation == 'reset_specific' and specific_filter:
+                # Reset only the specified filter
+                context = await self.context_manager.get_context(conversation_id)
+
+                # Map filter name to field
+                filter_field_map = {
+                    'platforms': 'active_platforms',
+                    'markets': 'active_markets',
+                    'localities': 'active_localities',
+                    'states': 'active_states',
+                    'case_types': 'active_case_types',
+                }
+
+                field_name = filter_field_map.get(specific_filter, f'active_{specific_filter}')
+                if hasattr(context, field_name):
+                    setattr(context, field_name, [])
+                    context.sync_legacy_fields()
+                    await self.context_manager.save_context(context)
+                    updated_context = context
+                    message = f"{specific_filter.replace('_', ' ').title()} filter has been reset."
+                else:
+                    # Unknown filter, just reset all
+                    updated_context = await self.context_manager.reset_filters(
+                        conversation_id,
+                        keep_month_year=True
+                    )
+                    message = "Filters have been reset."
+
+            else:
+                # Default: reset all filters
+                updated_context = await self.context_manager.reset_filters(
+                    conversation_id,
+                    keep_month_year=True
+                )
+                message = "Filters have been reset."
+
+            # Build summary of what's preserved
+            preserved_items = []
+            if updated_context.forecast_report_month and updated_context.forecast_report_year:
+                month_name = calendar.month_name[updated_context.forecast_report_month]
+                preserved_items.append(f"Report Period: {month_name} {updated_context.forecast_report_year}")
+
+            logger.info(
+                f"[LLM Service] Context updated for {conversation_id}: "
+                f"{message}, preserved: {preserved_items}"
+            )
+
+            return {
+                'success': True,
+                'category': 'update_context',
+                'confidence': 1.0,
+                'message': message,
+                'ui_component': generate_context_update_ui(message, preserved_items),
+                'response_type': 'assistant_response',
+                'metadata': {
+                    'operation': operation,
+                    'preserved': preserved_items,
+                    'context_summary': updated_context.get_context_summary_for_llm(),
+                    'correlation_id': correlation_id
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"[LLM Service] Error updating context: {str(e)}", exc_info=True)
+
+            return {
+                'success': False,
+                'category': 'update_context',
+                'confidence': 1.0,
+                'message': 'Failed to update context.',
+                'ui_component': generate_error_ui(
+                    "Failed to update context. Please try again.",
+                    error_type="context",
+                    admin_contact=False,
+                    error_code="CONTEXT_UPDATE_ERROR"
+                ),
+                'response_type': 'assistant_response',
+                'metadata': {
+                    'error': True,
+                    'correlation_id': correlation_id
+                }
+            }
 
     async def execute_available_reports_query(
         self,

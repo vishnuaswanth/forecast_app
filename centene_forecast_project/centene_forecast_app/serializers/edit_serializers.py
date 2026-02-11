@@ -496,13 +496,148 @@ def serialize_target_cph_update_response(data: Dict) -> Dict[str, Any]:
         return serialize_error_response("Failed to serialize CPH update response")
 
 
+# ============================================================
+# FORECAST REALLOCATION SERIALIZERS
+# ============================================================
+
+def serialize_reallocation_data_response(data: Dict) -> Dict[str, Any]:
+    """
+    Serialize reallocation data response.
+
+    Args:
+        data: Raw data from repository
+
+    Returns:
+        Formatted response dict
+
+    Example:
+        >>> data = {'success': True, 'months': {...}, 'data': [...], 'total': 50}
+        >>> response = serialize_reallocation_data_response(data)
+        >>> response['timestamp']
+        '2024-12-06T...'
+    """
+    try:
+        response = {
+            'success': data.get('success', True),
+            'months': data.get('months', {}),
+            'data': data.get('data', []),
+            'total': data.get('total', len(data.get('data', []))),
+            'timestamp': _get_timestamp()
+        }
+
+        logger.debug(f"[Serializer] Reallocation data: {response['total']} records")
+        return response
+
+    except Exception as e:
+        logger.error(f"[Serializer] Error serializing reallocation data: {e}")
+        return serialize_error_response("Failed to serialize reallocation data")
+
+
+def serialize_reallocation_preview_response(data: Dict) -> Dict[str, Any]:
+    """
+    Serialize reallocation preview response.
+
+    This reuses the bench allocation preview serializer since
+    the data structure is identical.
+
+    Args:
+        data: Raw preview data from repository
+
+    Returns:
+        Formatted response dict
+
+    Example:
+        >>> data = {'success': True, 'modified_records': [...], 'total_modified': 15}
+        >>> response = serialize_reallocation_preview_response(data)
+        >>> response['total_modified']
+        15
+    """
+    # Reuse bench allocation preview serializer
+    return serialize_preview_response(data)
+
+
+def serialize_reallocation_update_response(data: Dict) -> Dict[str, Any]:
+    """
+    Serialize reallocation update response.
+
+    Args:
+        data: Raw update response from repository
+
+    Returns:
+        Formatted response dict
+
+    Example:
+        >>> data = {'success': True, 'records_updated': 15}
+        >>> response = serialize_reallocation_update_response(data)
+        >>> response['success']
+        True
+    """
+    try:
+        response = {
+            'success': data.get('success', True),
+            'message': data.get('message', 'Forecast reallocation updated successfully'),
+            'records_updated': data.get('records_updated', 0),
+            'history_log_id': data.get('history_log_id'),
+            'timestamp': _get_timestamp()
+        }
+
+        logger.debug(f"[Serializer] Reallocation update: {response['records_updated']} records")
+        return response
+
+    except Exception as e:
+        logger.error(f"[Serializer] Error serializing reallocation update: {e}")
+        return serialize_error_response("Failed to serialize reallocation update response")
+
+
+def serialize_reallocation_filters_response(data: Dict) -> Dict[str, Any]:
+    """
+    Serialize reallocation filter options response.
+
+    Args:
+        data: Raw filter data from repository
+
+    Returns:
+        Formatted response dict
+
+    Example:
+        >>> data = {'success': True, 'main_lobs': [...], 'states': [...], 'case_types': [...]}
+        >>> response = serialize_reallocation_filters_response(data)
+        >>> len(response['main_lobs']) > 0
+        True
+    """
+    try:
+        response = {
+            'success': data.get('success', True),
+            'main_lobs': data.get('main_lobs', []),
+            'states': data.get('states', []),
+            'case_types': data.get('case_types', []),
+            'timestamp': _get_timestamp()
+        }
+
+        logger.debug(
+            f"[Serializer] Reallocation filters: "
+            f"{len(response['main_lobs'])} LOBs, "
+            f"{len(response['states'])} States, "
+            f"{len(response['case_types'])} Case Types"
+        )
+        return response
+
+    except Exception as e:
+        logger.error(f"[Serializer] Error serializing reallocation filters: {e}")
+        return serialize_error_response("Failed to serialize reallocation filters")
+
+
 # Example usage:
 # from edit_serializers import (
 #     serialize_allocation_reports_response,
 #     serialize_preview_response,
 #     serialize_update_response,
 #     serialize_history_log_response,
-#     serialize_error_response
+#     serialize_error_response,
+#     serialize_reallocation_data_response,
+#     serialize_reallocation_preview_response,
+#     serialize_reallocation_update_response,
+#     serialize_reallocation_filters_response
 # )
 #
 # # Serialize allocation reports
@@ -515,3 +650,7 @@ def serialize_target_cph_update_response(data: Dict) -> Dict[str, Any]:
 #
 # # Serialize error
 # error_response = serialize_error_response('Validation failed', 400)
+#
+# # Serialize reallocation data
+# realloc_data = {'success': True, 'months': {...}, 'data': [...], 'total': 50}
+# realloc_response = serialize_reallocation_data_response(realloc_data)

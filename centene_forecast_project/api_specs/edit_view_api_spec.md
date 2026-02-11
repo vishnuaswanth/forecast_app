@@ -376,6 +376,7 @@ APIs for bench allocation and Target CPH management with preview/approval workfl
 |-------------|-------------|-------|
 | `Bench Allocation` | Bench capacity allocation changes | Used when allocating bench FTEs to cases |
 | `CPH Update` | Target CPH (Claims Per Hour) updates | Used when modifying target CPH values |
+| `Forecast Reallocation` | Manual edits to Target CPH and FTE Available | Used when manually reallocating forecast resources |
 | `Manual Update` | Manual adjustments by user | Ad-hoc manual modifications to any field |
 | `Forecast Update` | Forecast volume changes after allocation through file uploads | Modifications to forecast values or creation of new data |
 
@@ -385,6 +386,7 @@ APIs for bench allocation and Target CPH management with preview/approval workfl
 CHANGE_TYPES = [
     "Bench Allocation",
     "CPH Update",
+    "Forecast Reallocation",
     "Manual Update",
     "Forecast Update"
 ]

@@ -74,23 +74,48 @@ of what's available without requesting specific data.
 
 ## OTHER CATEGORIES (Only use when NOT about forecast data)
 
-2. **reallocate_forecast_data**: Move resources between forecasts
+2. **clear_context**: User wants to COMPLETELY reset/clear conversation context, start fresh, forget EVERYTHING
+   - Keywords: "clear context", "reset context", "start over", "forget everything", "fresh start", "wipe context"
+   - Examples: "Clear my context", "Reset everything", "Start fresh", "Forget what I said", "Wipe my context"
+   - NO required parameters - clears ALL stored context INCLUDING month/year
+   - IMPORTANT: This clears EVERYTHING. For selective filter reset, use update_context instead.
+
+3. **update_context**: User wants to modify context SELECTIVELY (reset filters but KEEP report period)
+   - Keywords: "get all data", "show all", "show everything", "reset filters", "remove filters",
+     "no filters", "all platforms", "all states", "all markets", "remove all filters", "clear filters"
+   - Trigger phrases:
+     - "get all data" / "show all data" / "show everything" → reset all filters, keep month/year
+     - "reset filters" / "clear filters" / "remove all filters" → reset filters only, keep month/year
+     - "show all platforms" / "all markets" / "all states" → reset specific filter type
+   - Parameters:
+     - operation: "reset_all_filters" | "reset_specific"
+     - keep_month_year: true (default) | false
+     - specific_filter: optional - which filter to reset (platforms, markets, states, localities, case_types)
+   - Examples:
+     - "Get all data for March 2025" → operation=reset_all_filters, month=3, year=2025
+     - "Show all platforms" → operation=reset_specific, specific_filter=platforms
+     - "Remove all filters" → operation=reset_all_filters
+     - "Reset my filters" → operation=reset_all_filters
+   - IMPORTANT: This is DIFFERENT from clear_context which clears EVERYTHING including month/year.
+     Use update_context when user wants to KEEP their report period but reset filters.
+
+4. **reallocate_forecast_data**: Move resources between forecasts
    - Keywords: "reallocate", "move resources", "transfer FTEs", "shift staff"
    - Required: source location/platform, target location/platform, FTE count
 
-3. **allocate_ramp_ftes**: Allocate ramping/training employees
+5. **allocate_ramp_ftes**: Allocate ramping/training employees
    - Keywords: "ramp", "onboarding", "new hires", "allocate training", "ramp-up"
    - Required: target assignment (platform, case type, or LOB)
 
-4. **get_roster_data**: View team/roster information
+6. **get_roster_data**: View team/roster information
    - Keywords: "roster", "team", "who is working", "staff list", "employees"
    - Required: month, year (for roster period)
 
-5. **modify_roster_data**: Update roster information
+7. **modify_roster_data**: Update roster information
    - Keywords: "update roster", "change team", "add member", "remove from roster"
    - Required: action (add/remove/update), employee details
 
-6. **show_allocated_resources**: See resource allocation
+8. **show_allocated_resources**: See resource allocation
    - Keywords: "allocated resources", "who is assigned", "resource allocation", "staffing allocation"
    - Optional: filters (month, platform, etc.)
 

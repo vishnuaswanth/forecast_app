@@ -2038,6 +2038,318 @@
     }
 }
 
+/* ============================================================================
+   FORECAST REALLOCATION STYLES
+   ============================================================================ */
+
+/* Frozen Columns Container */
+.edit-view-table-frozen-container {
+    position: relative;
+    overflow-x: auto;
+    overflow-y: visible;
+    max-width: 100%;
+}
+
+/* Reallocation Table with Frozen Columns */
+.edit-view-reallocation-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    table-layout: auto;
+}
+
+.edit-view-reallocation-table thead th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    padding: 0.5rem 0.4rem;
+    border-bottom: 2px solid #dee2e6;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.edit-view-reallocation-table tbody td {
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid #dee2e6;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.edit-view-reallocation-table tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Frozen columns (first 4 columns: Main LOB, State, Case Type, Target CPH) */
+.edit-view-table-frozen th:nth-child(-n+4),
+.edit-view-table-frozen td:nth-child(-n+4) {
+    position: sticky;
+    background-color: #f8f9fa;
+    z-index: 20;
+}
+
+.edit-view-table-frozen th:nth-child(1),
+.edit-view-table-frozen td:nth-child(1) {
+    left: 0;
+    min-width: 120px;
+    text-align: left;
+}
+
+.edit-view-table-frozen th:nth-child(2),
+.edit-view-table-frozen td:nth-child(2) {
+    left: 120px;
+    min-width: 60px;
+}
+
+.edit-view-table-frozen th:nth-child(3),
+.edit-view-table-frozen td:nth-child(3) {
+    left: 180px;
+    min-width: 100px;
+}
+
+.edit-view-table-frozen th:nth-child(4),
+.edit-view-table-frozen td:nth-child(4) {
+    left: 280px;
+    min-width: 140px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+}
+
+/* Ensure frozen columns maintain background on hover */
+.edit-view-table-frozen tbody tr:hover td:nth-child(-n+4) {
+    background-color: #e9ecef;
+}
+
+/* Modified row highlight */
+.edit-view-reallocation-row-modified {
+    background-color: #fff3cd !important;
+}
+
+.edit-view-reallocation-row-modified:hover {
+    background-color: #ffe69c !important;
+}
+
+.edit-view-reallocation-row-modified td:nth-child(-n+4) {
+    background-color: #fff3cd !important;
+}
+
+/* Editable Cell Controls */
+.edit-view-cell-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.edit-view-btn-decrement,
+.edit-view-btn-increment {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    border: 1px solid #ced4da;
+    background-color: #ffffff;
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    flex-shrink: 0;
+    font-size: 0.7rem;
+}
+
+.edit-view-btn-increment:hover {
+    background-color: #198754;
+    border-color: #198754;
+    color: #ffffff;
+}
+
+.edit-view-btn-decrement:hover {
+    background-color: #dc3545;
+    border-color: #dc3545;
+    color: #ffffff;
+}
+
+.edit-view-btn-increment:active,
+.edit-view-btn-decrement:active {
+    transform: scale(0.95);
+}
+
+/* Editable Input in Cell */
+.edit-view-cell-input {
+    width: 55px;
+    text-align: center;
+    padding: 0.15rem 0.25rem;
+    border: 1px solid #ced4da;
+    border-radius: 3px;
+    font-size: 0.8rem;
+    background-color: #ffffff;
+}
+
+.edit-view-cell-input:focus {
+    outline: none;
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+}
+
+/* Modified cell highlight */
+.edit-view-cell-modified {
+    background-color: #fff3cd !important;
+    border-color: #ffc107 !important;
+}
+
+.edit-view-cell-modified-input {
+    background-color: #fff3cd !important;
+    border-color: #ffc107 !important;
+}
+
+/* Month Selector Checkboxes */
+.edit-view-month-selector {
+    padding: 0.75rem 1rem;
+    background-color: #f8f9fa;
+    border-radius: 0.375rem;
+    border: 1px solid #dee2e6;
+}
+
+.edit-view-month-checkboxes {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.edit-view-month-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.edit-view-month-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.edit-view-month-checkbox label {
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+/* Month Column Groups in Table Header */
+.edit-view-month-group-header {
+    background-color: #e9ecef !important;
+    font-weight: 600;
+    text-align: center;
+}
+
+.edit-view-month-subheader {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Hidden month columns */
+.edit-view-month-hidden {
+    display: none !important;
+}
+
+/* Reallocation Pagination */
+.edit-view-reallocation-pagination .edit-view-pagination {
+    margin: 0;
+}
+
+.edit-view-reallocation-preview-pagination .edit-view-pagination {
+    margin: 0;
+}
+
+/* Modified Count Badge */
+#reallocation-modified-count-badge {
+    background-color: #ffc107;
+    color: #000;
+    font-weight: 600;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.25rem;
+}
+
+#reallocation-modified-count-badge:empty {
+    display: none;
+}
+
+/* Reallocation Preview Modified Count Badge */
+#reallocation-preview-modified-count-badge {
+    background-color: #17a2b8;
+    color: #ffffff;
+    font-weight: 600;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.25rem;
+}
+
+/* Reallocation Actions Container */
+#reallocation-actions-container {
+    border-top: 2px solid #dee2e6;
+}
+
+#reallocation-action-summary-count {
+    font-weight: 600;
+    color: #0d6efd;
+}
+
+/* Responsive Design for Reallocation Tab */
+@media (max-width: 1400px) {
+    .edit-view-table-frozen th:nth-child(1),
+    .edit-view-table-frozen td:nth-child(1) {
+        min-width: 100px;
+    }
+
+    .edit-view-table-frozen th:nth-child(2),
+    .edit-view-table-frozen td:nth-child(2) {
+        left: 100px;
+        min-width: 50px;
+    }
+
+    .edit-view-table-frozen th:nth-child(3),
+    .edit-view-table-frozen td:nth-child(3) {
+        left: 150px;
+        min-width: 80px;
+    }
+
+    .edit-view-table-frozen th:nth-child(4),
+    .edit-view-table-frozen td:nth-child(4) {
+        left: 230px;
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 992px) {
+    .edit-view-reallocation-table {
+        font-size: 0.8rem;
+    }
+
+    .edit-view-cell-input {
+        width: 50px;
+        font-size: 0.75rem;
+    }
+
+    .edit-view-btn-decrement,
+    .edit-view-btn-increment {
+        width: 20px;
+        height: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .edit-view-month-checkboxes {
+        gap: 8px;
+    }
+
+    .edit-view-month-checkbox label {
+        font-size: 0.8rem;
+    }
+
+    .edit-view-cell-controls {
+        flex-direction: column;
+        gap: 1px;
+    }
+}
+
 /* CPH Data Container */
 #cph-data-container .edit-view-card-header {
     background-color: #f8f9fa;

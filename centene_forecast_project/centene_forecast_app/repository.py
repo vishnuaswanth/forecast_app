@@ -9,11 +9,17 @@ from urllib3.util.retry import Retry
 from django.conf import settings
 
 # Import mock data (will be replaced with API calls)
-from centene_forecast_app.mock_data import get_available_change_types
+from centene_forecast_app.mock_data import (
+    get_available_change_types,
+    get_reallocation_filter_options as mock_get_reallocation_filter_options,
+    get_reallocation_data as mock_get_reallocation_data,
+    get_reallocation_preview as mock_get_reallocation_preview,
+    submit_reallocation_update as mock_submit_reallocation_update
+)
 
 # Import caching utilities
 from centene_forecast_app.app_utils.cache_utils import cache_with_ttl
-from core.config import ForecastCacheConfig, ManagerViewConfig, ExecutionMonitoringConfig, EditViewConfig
+from core.config import ForecastCacheConfig, ManagerViewConfig, ExecutionMonitoringConfig, EditViewConfig, ConfigurationViewConfig
 
 logger = logging.getLogger('django')
 
@@ -1516,6 +1522,566 @@ class APIClient:
 
         # MOCK: Using mock change types data for now
         return get_available_change_types()
+
+    # ============================================================
+    # FORECAST REALLOCATION API METHODS
+    # ============================================================
+
+    @cache_with_ttl(ttl=300, key_prefix='reallocation:filters')
+    def get_reallocation_filter_options(self, month: str, year: int) -> Dict:
+        """
+        Get available filter options (LOBs, States, Case Types) for forecast reallocation.
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+
+        Returns:
+            Dictionary with filter options:
+            {
+                'success': True,
+                'main_lobs': ['Medicaid', 'Medicare', ...],
+                'states': ['MO', 'TX', 'FL', ...],
+                'case_types': ['Appeals', 'Claims', ...]
+            }
+
+        Example:
+            >>> client = get_api_client()
+            >>> filters = client.get_reallocation_filter_options('April', 2025)
+            >>> len(filters['main_lobs'])
+            5
+        """
+        # TODO: Replace with actual API call when endpoint is ready
+        # endpoint = "/api/edit-view/forecast-reallocation/filters/"
+        # params = {'month': month, 'year': year}
+        # response = self._make_request('GET', endpoint, params=params)
+        # return response
+
+        # MOCK: Using mock data for now
+        return mock_get_reallocation_filter_options(month, year)
+
+    @cache_with_ttl(ttl=900, key_prefix='reallocation:data')
+    def get_reallocation_data(
+        self,
+        month: str,
+        year: int,
+        main_lobs: Optional[List[str]] = None,
+        case_types: Optional[List[str]] = None,
+        states: Optional[List[str]] = None
+    ) -> Dict:
+        """
+        Get editable forecast records for reallocation.
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            main_lobs: Optional list of Main LOBs to filter
+            case_types: Optional list of Case Types to filter
+            states: Optional list of States to filter
+
+        Returns:
+            Dictionary with forecast records:
+            {
+                'success': True,
+                'months': {'month1': 'Jun-25', ..., 'month6': 'Nov-25'},
+                'data': [{
+                    'case_id': 'uuid',
+                    'main_lob': 'Medicaid',
+                    'state': 'MO',
+                    'case_type': 'Appeals',
+                    'target_cph': 100,
+                    'months': {
+                        'Jun-25': {'forecast': 12500, 'fte_req': 11, 'fte_avail': 8, 'capacity': 400},
+                        ...
+                    }
+                }],
+                'total': 150
+            }
+
+        Example:
+            >>> client = get_api_client()
+            >>> data = client.get_reallocation_data('April', 2025, main_lobs=['Medicaid'])
+            >>> len(data['data'])
+            50
+        """
+        # TODO: Replace with actual API call when endpoint is ready
+        # endpoint = "/api/edit-view/forecast-reallocation/data/"
+        # params = {'month': month, 'year': year}
+        # if main_lobs:
+        #     params['main_lobs[]'] = main_lobs
+        # if case_types:
+        #     params['case_types[]'] = case_types
+        # if states:
+        #     params['states[]'] = states
+        # response = self._make_request('GET', endpoint, params=params)
+        # return response
+
+        # MOCK: Using mock data for now
+        return mock_get_reallocation_data(month, year, main_lobs, case_types, states)
+
+    def get_reallocation_preview(
+        self,
+        month: str,
+        year: int,
+        modified_records: list
+    ) -> Dict:
+        """
+        Calculate preview with user-edited values (NO CACHE - calculation).
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            modified_records: List of modified record dictionaries
+
+        Returns:
+            Dictionary with preview data (same structure as bench allocation):
+            {
+                'success': True,
+                'months': {'month1': 'Jun-25', ...},
+                'modified_records': [...],
+                'total_modified': 15,
+                'summary': {...}
+            }
+
+        Example:
+            >>> client = get_api_client()
+            >>> preview = client.get_reallocation_preview('April', 2025, [...])
+            >>> preview['total_modified']
+            15
+        """
+        # TODO: Replace with actual API call when endpoint is ready
+        # endpoint = "/api/edit-view/forecast-reallocation/preview/"
+        # data = {
+        #     'month': month,
+        #     'year': year,
+        #     'modified_records': modified_records
+        # }
+        # response = self._make_request('POST', endpoint, data=data)
+        # return response
+
+        # MOCK: Using mock data for now
+        return mock_get_reallocation_preview(month, year, modified_records)
+
+    def submit_reallocation_update(
+        self,
+        month: str,
+        year: int,
+        months: dict,
+        modified_records: list,
+        user_notes: str
+    ) -> Dict:
+        """
+        Submit and save reallocation changes (NO CACHE - write operation).
+
+        Args:
+            month: Month name (e.g., 'April')
+            year: Year (e.g., 2025)
+            months: Month index mapping (month1-month6 to labels)
+            modified_records: List of modified record dictionaries
+            user_notes: User-provided description
+
+        Returns:
+            Success response:
+            {
+                'success': True,
+                'message': 'Forecast reallocation updated successfully',
+                'records_updated': 15,
+                'history_log_id': 'uuid-string'
+            }
+
+        Example:
+            >>> client = get_api_client()
+            >>> months_map = {'month1': 'Jun-25', 'month2': 'Jul-25', ...}
+            >>> response = client.submit_reallocation_update(
+            ...     'April', 2025, months_map, [...], 'Reallocated FTE for Q2'
+            ... )
+            >>> response['success']
+            True
+        """
+        # TODO: Replace with actual API call when endpoint is ready
+        # endpoint = "/api/edit-view/forecast-reallocation/update/"
+        # data = {
+        #     'month': month,
+        #     'year': year,
+        #     'months': months,
+        #     'modified_records': modified_records,
+        #     'user_notes': user_notes
+        # }
+        # timeout = 60  # Update timeout
+        # response = self._make_request('POST', endpoint, data=data, timeout=timeout)
+
+        # MOCK: Using mock data for now
+        response = mock_submit_reallocation_update(month, year, months, modified_records, user_notes)
+
+        # Clear reallocation caches after successful update
+        try:
+            from centene_forecast_app.app_utils.cache_utils import delete_pattern
+
+            # Clear reallocation data cache
+            data_cleared = delete_pattern('reallocation:data:*')
+
+            # Clear reallocation filter cache
+            filter_cleared = delete_pattern('reallocation:filters:*')
+
+            # Also clear bench allocation preview since data changed
+            bench_cleared = delete_pattern('bench_allocation:*')
+
+            logger.info(
+                f"[Reallocation Update] Cleared {data_cleared} data cache entries, "
+                f"{filter_cleared} filter cache entries, {bench_cleared} bench allocation entries"
+            )
+        except Exception as e:
+            logger.warning(f"[Reallocation Update] Failed to clear caches: {e}")
+
+        return response
+
+    # ============================================================
+    # CONFIGURATION VIEW API METHODS
+    # ============================================================
+
+    # --- Month Configuration Methods ---
+
+    @cache_with_ttl(ttl=ConfigurationViewConfig.LIST_CACHE_TTL, key_prefix='config:month_list')
+    def get_month_configurations(
+        self,
+        month: Optional[str] = None,
+        year: Optional[int] = None,
+        work_type: Optional[str] = None
+    ) -> Dict:
+        """
+        Get month configurations with optional filtering.
+
+        Args:
+            month: Optional month name filter (e.g., 'January')
+            year: Optional year filter (e.g., 2025)
+            work_type: Optional work type filter ('Domestic' or 'Global')
+
+        Returns:
+            Dictionary with configurations:
+            {
+                'success': True,
+                'data': [...],
+                'total': 50
+            }
+        """
+        endpoint = "/api/configuration/month-config"
+        params = {}
+
+        if month:
+            params['month'] = month
+        if year:
+            params['year'] = year
+        if work_type:
+            params['work_type'] = work_type
+
+        logger.debug(f"[Month Config] Fetching with params: {params}")
+        response = self._make_request('GET', endpoint, params=params)
+        logger.info(f"[Month Config] Fetched {len(response.get('data', []))} configurations")
+        return response
+
+    def create_month_configuration(self, data: Dict) -> Dict:
+        """
+        Create a new month configuration.
+
+        Args:
+            data: Configuration data with month, year, work_type, working_days,
+                  occupancy, shrinkage, work_hours, updated_by
+
+        Returns:
+            Success response with created configuration
+        """
+        endpoint = "/api/configuration/month-config"
+        logger.info(f"[Month Config] Creating: {data.get('month')} {data.get('year')} {data.get('work_type')}")
+        response = self._make_request('POST', endpoint, data=data)
+
+        # Clear cache after successful creation
+        if response.get('success', True):
+            self._clear_month_config_cache()
+
+        return response
+
+    def bulk_create_month_configurations(
+        self,
+        configs: List[Dict],
+        created_by: str,
+        skip_validation: bool = False
+    ) -> Dict:
+        """
+        Bulk create month configurations.
+
+        Args:
+            configs: List of configuration dictionaries
+            created_by: Username creating the configs
+            skip_validation: Whether to skip duplicate validation
+
+        Returns:
+            Success response with created count
+        """
+        endpoint = "/api/configuration/month-config/bulk"
+        data = {
+            'configs': configs,
+            'created_by': created_by,
+            'skip_validation': skip_validation
+        }
+        logger.info(f"[Month Config] Bulk creating {len(configs)} configurations")
+        response = self._make_request('POST', endpoint, data=data)
+
+        # Clear cache after successful creation
+        if response.get('success', True):
+            self._clear_month_config_cache()
+
+        return response
+
+    def update_month_configuration(self, config_id: int, data: Dict) -> Dict:
+        """
+        Update an existing month configuration.
+
+        Args:
+            config_id: ID of the configuration to update
+            data: Updated configuration data
+
+        Returns:
+            Success response with updated configuration
+        """
+        endpoint = f"/api/configuration/month-config/{config_id}"
+        logger.info(f"[Month Config] Updating ID: {config_id}")
+        response = self._make_request('PUT', endpoint, data=data)
+
+        # Clear cache after successful update
+        if response.get('success', True):
+            self._clear_month_config_cache()
+
+        return response
+
+    def delete_month_configuration(self, config_id: int, allow_orphan: bool = False) -> Dict:
+        """
+        Delete a month configuration.
+
+        Args:
+            config_id: ID of the configuration to delete
+            allow_orphan: Whether to allow deletion even if it creates orphan
+
+        Returns:
+            Success response or error with orphan warning
+        """
+        endpoint = f"/api/configuration/month-config/{config_id}"
+        params = {'allow_orphan': allow_orphan} if allow_orphan else {}
+        logger.info(f"[Month Config] Deleting ID: {config_id}, allow_orphan: {allow_orphan}")
+        response = self._make_request('DELETE', endpoint, params=params)
+
+        # Clear cache after successful deletion
+        if response.get('success', True):
+            self._clear_month_config_cache()
+
+        return response
+
+    def validate_month_configurations(self) -> Dict:
+        """
+        Validate month configurations for orphaned records.
+
+        Returns:
+            Validation result with orphaned records list
+        """
+        endpoint = "/api/configuration/month-config/validate"
+        logger.info("[Month Config] Running validation check")
+        response = self._make_request('GET', endpoint)
+        return response
+
+    def _clear_month_config_cache(self):
+        """Clear month configuration cache after modifications."""
+        try:
+            from centene_forecast_app.app_utils.cache_utils import delete_pattern
+            cleared = delete_pattern('config:month_list:*')
+            logger.info(f"[Month Config] Cleared {cleared} cache entries")
+        except Exception as e:
+            logger.warning(f"[Month Config] Failed to clear cache: {e}")
+
+    # --- Target CPH Configuration Methods ---
+
+    @cache_with_ttl(ttl=ConfigurationViewConfig.LIST_CACHE_TTL, key_prefix='config:target_cph_list')
+    def get_target_cph_configurations(
+        self,
+        main_lob: Optional[str] = None,
+        case_type: Optional[str] = None
+    ) -> Dict:
+        """
+        Get Target CPH configurations with optional filtering.
+
+        Args:
+            main_lob: Optional Main LOB filter
+            case_type: Optional Case Type filter
+
+        Returns:
+            Dictionary with configurations:
+            {
+                'success': True,
+                'data': [...],
+                'total': 50
+            }
+        """
+        endpoint = "/api/configuration/target-cph"
+        params = {}
+
+        if main_lob:
+            params['main_lob'] = main_lob
+        if case_type:
+            params['case_type'] = case_type
+
+        logger.debug(f"[Target CPH Config] Fetching with params: {params}")
+        response = self._make_request('GET', endpoint, params=params)
+        logger.info(f"[Target CPH Config] Fetched {len(response.get('data', []))} configurations")
+        return response
+
+    def get_target_cph_by_id(self, config_id: int) -> Dict:
+        """
+        Get a specific Target CPH configuration by ID.
+
+        Args:
+            config_id: Configuration ID
+
+        Returns:
+            Configuration data or error response
+        """
+        endpoint = f"/api/configuration/target-cph/{config_id}"
+        logger.debug(f"[Target CPH Config] Fetching ID: {config_id}")
+        response = self._make_request('GET', endpoint)
+        return response
+
+    def create_target_cph_configuration(self, data: Dict) -> Dict:
+        """
+        Create a new Target CPH configuration.
+
+        Args:
+            data: Configuration data with main_lob, case_type, target_cph, updated_by
+
+        Returns:
+            Success response with created configuration
+        """
+        endpoint = "/api/configuration/target-cph"
+        logger.info(f"[Target CPH Config] Creating: {data.get('main_lob')} / {data.get('case_type')}")
+        response = self._make_request('POST', endpoint, data=data)
+
+        # Clear cache after successful creation
+        if response.get('success', True):
+            self._clear_target_cph_config_cache()
+
+        return response
+
+    def bulk_create_target_cph_configurations(self, configs: List[Dict]) -> Dict:
+        """
+        Bulk create Target CPH configurations.
+
+        Args:
+            configs: List of configuration dictionaries
+
+        Returns:
+            Success response with created count
+        """
+        endpoint = "/api/configuration/target-cph/bulk"
+        data = {'configs': configs}
+        logger.info(f"[Target CPH Config] Bulk creating {len(configs)} configurations")
+        response = self._make_request('POST', endpoint, data=data)
+
+        # Clear cache after successful creation
+        if response.get('success', True):
+            self._clear_target_cph_config_cache()
+
+        return response
+
+    def update_target_cph_configuration(self, config_id: int, data: Dict) -> Dict:
+        """
+        Update an existing Target CPH configuration.
+
+        Args:
+            config_id: ID of the configuration to update
+            data: Updated configuration data
+
+        Returns:
+            Success response with updated configuration
+        """
+        endpoint = f"/api/configuration/target-cph/{config_id}"
+        logger.info(f"[Target CPH Config] Updating ID: {config_id}")
+        response = self._make_request('PUT', endpoint, data=data)
+
+        # Clear cache after successful update
+        if response.get('success', True):
+            self._clear_target_cph_config_cache()
+
+        return response
+
+    def delete_target_cph_configuration(self, config_id: int) -> Dict:
+        """
+        Delete a Target CPH configuration.
+
+        Args:
+            config_id: ID of the configuration to delete
+
+        Returns:
+            Success response
+        """
+        endpoint = f"/api/configuration/target-cph/{config_id}"
+        logger.info(f"[Target CPH Config] Deleting ID: {config_id}")
+        response = self._make_request('DELETE', endpoint)
+
+        # Clear cache after successful deletion
+        if response.get('success', True):
+            self._clear_target_cph_config_cache()
+
+        return response
+
+    @cache_with_ttl(ttl=ConfigurationViewConfig.DISTINCT_VALUES_TTL, key_prefix='config:distinct_lobs')
+    def get_distinct_main_lobs(self) -> Dict:
+        """
+        Get distinct Main LOB values for dropdown.
+
+        Returns:
+            Dictionary with distinct values:
+            {
+                'success': True,
+                'data': [{'value': 'LOB1', 'display': 'LOB1'}, ...],
+                'total': 10
+            }
+        """
+        endpoint = "/api/configuration/target-cph/distinct/main-lobs"
+        logger.debug("[Target CPH Config] Fetching distinct Main LOBs")
+        response = self._make_request('GET', endpoint)
+        return response
+
+    @cache_with_ttl(ttl=ConfigurationViewConfig.DISTINCT_VALUES_TTL, key_prefix='config:distinct_case_types')
+    def get_distinct_case_types(self, main_lob: Optional[str] = None) -> Dict:
+        """
+        Get distinct Case Type values for dropdown.
+
+        Args:
+            main_lob: Optional Main LOB to filter case types
+
+        Returns:
+            Dictionary with distinct values
+        """
+        endpoint = "/api/configuration/target-cph/distinct/case-types"
+        params = {'main_lob': main_lob} if main_lob else {}
+        logger.debug(f"[Target CPH Config] Fetching distinct Case Types for LOB: {main_lob}")
+        response = self._make_request('GET', endpoint, params=params)
+        return response
+
+    def _clear_target_cph_config_cache(self):
+        """Clear Target CPH configuration cache after modifications."""
+        try:
+            from centene_forecast_app.app_utils.cache_utils import delete_pattern
+
+            # Clear list cache
+            list_cleared = delete_pattern('config:target_cph_list:*')
+
+            # Clear distinct values cache
+            lob_cleared = delete_pattern('config:distinct_lobs:*')
+            case_type_cleared = delete_pattern('config:distinct_case_types:*')
+
+            logger.info(
+                f"[Target CPH Config] Cleared cache - list: {list_cleared}, "
+                f"lobs: {lob_cleared}, case_types: {case_type_cleared}"
+            )
+        except Exception as e:
+            logger.warning(f"[Target CPH Config] Failed to clear cache: {e}")
 
     def close(self):
         """Close the session and cleanup resources."""

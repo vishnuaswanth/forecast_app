@@ -1016,10 +1016,387 @@ except ValueError as e:
     raise RuntimeError(f"Invalid TargetCPHConfig: {e}")
 
 
+class ConfigurationViewConfig:
+    """
+    Configuration View Page Configuration
+
+    Controls display, validation, and caching behavior for the
+    Month Configuration and Target CPH Configuration management page.
+    """
+
+    # Display settings
+    PAGE_SIZE: int = 25
+    """
+    Number of records to display per page in configuration tables.
+    Default: 25 records per page
+    """
+
+    MAX_BULK_RECORDS: int = 100
+    """
+    Maximum number of records that can be created in a single bulk operation.
+    Default: 100 records
+    """
+
+    # Cache TTLs (seconds)
+    LIST_CACHE_TTL: int = 300
+    """
+    Cache timeout for configuration list API responses.
+    Default: 300 seconds (5 minutes)
+    """
+
+    DISTINCT_VALUES_TTL: int = 900
+    """
+    Cache timeout for distinct values (LOBs, Case Types) API responses.
+    Default: 900 seconds (15 minutes)
+    """
+
+    # Validation ranges
+    MIN_YEAR: int = 2020
+    """Minimum allowed year for month configurations"""
+
+    MAX_YEAR: int = 2100
+    """Maximum allowed year for month configurations"""
+
+    # Month names for dropdowns
+    MONTH_NAMES: list = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ]
+    """List of valid month names for dropdown selection"""
+
+    # Work types
+    WORK_TYPES: list = ['Domestic', 'Global']
+    """List of valid work types for month configuration"""
+
+    # Validation ranges for month configuration fields
+    MIN_WORKING_DAYS: int = 1
+    MAX_WORKING_DAYS: int = 31
+    MIN_OCCUPANCY: float = 0.0
+    MAX_OCCUPANCY: float = 1.0
+    MIN_SHRINKAGE: float = 0.0
+    MAX_SHRINKAGE: float = 1.0
+    MIN_WORK_HOURS: float = 1.0
+    MAX_WORK_HOURS: float = 24.0
+
+    # Target CPH validation
+    MIN_TARGET_CPH: float = 0.0
+    """Minimum allowed Target CPH value (must be non-negative)"""
+
+    MAX_LOB_LENGTH: int = 255
+    """Maximum length for Main LOB field"""
+
+    MAX_CASE_TYPE_LENGTH: int = 255
+    """Maximum length for Case Type field"""
+
+    # Validation Methods
+    @classmethod
+    def validate(cls) -> None:
+        """
+        Validate configuration values.
+        Raises ValueError if any configuration is invalid.
+        """
+        # Validate page size
+        if not isinstance(cls.PAGE_SIZE, int) or cls.PAGE_SIZE < 1:
+            raise ValueError(f"PAGE_SIZE must be a positive integer, got {cls.PAGE_SIZE}")
+
+        # Validate max bulk records
+        if not isinstance(cls.MAX_BULK_RECORDS, int) or cls.MAX_BULK_RECORDS < 1:
+            raise ValueError(f"MAX_BULK_RECORDS must be a positive integer, got {cls.MAX_BULK_RECORDS}")
+
+        # Validate year range
+        if not isinstance(cls.MIN_YEAR, int) or cls.MIN_YEAR < 1900:
+            raise ValueError(f"MIN_YEAR must be >= 1900, got {cls.MIN_YEAR}")
+
+        if not isinstance(cls.MAX_YEAR, int) or cls.MAX_YEAR <= cls.MIN_YEAR:
+            raise ValueError(f"MAX_YEAR must be > MIN_YEAR, got {cls.MAX_YEAR}")
+
+        # Validate month names
+        if not isinstance(cls.MONTH_NAMES, list) or len(cls.MONTH_NAMES) != 12:
+            raise ValueError("MONTH_NAMES must be a list of 12 month names")
+
+        # Validate work types
+        if not isinstance(cls.WORK_TYPES, list) or len(cls.WORK_TYPES) == 0:
+            raise ValueError("WORK_TYPES must be a non-empty list")
+
+        # Validate working days range
+        if cls.MIN_WORKING_DAYS < 1 or cls.MAX_WORKING_DAYS > 31:
+            raise ValueError("Working days range must be 1-31")
+
+        # Validate percentage ranges
+        if cls.MIN_OCCUPANCY < 0 or cls.MAX_OCCUPANCY > 1:
+            raise ValueError("Occupancy range must be 0.0-1.0")
+
+        if cls.MIN_SHRINKAGE < 0 or cls.MAX_SHRINKAGE > 1:
+            raise ValueError("Shrinkage range must be 0.0-1.0")
+
+        # Validate work hours range
+        if cls.MIN_WORK_HOURS < 1 or cls.MAX_WORK_HOURS > 24:
+            raise ValueError("Work hours range must be 1-24")
+
+    @classmethod
+    def get_config_dict(cls) -> dict:
+        """
+        Get all configuration as a dictionary.
+        Useful for passing to templates or APIs.
+
+        Returns:
+            Dictionary of all configuration values
+        """
+        return {
+            'page_size': cls.PAGE_SIZE,
+            'max_bulk_records': cls.MAX_BULK_RECORDS,
+            'list_cache_ttl': cls.LIST_CACHE_TTL,
+            'distinct_values_ttl': cls.DISTINCT_VALUES_TTL,
+            'min_year': cls.MIN_YEAR,
+            'max_year': cls.MAX_YEAR,
+            'month_names': cls.MONTH_NAMES,
+            'work_types': cls.WORK_TYPES,
+            'min_working_days': cls.MIN_WORKING_DAYS,
+            'max_working_days': cls.MAX_WORKING_DAYS,
+            'min_occupancy': cls.MIN_OCCUPANCY,
+            'max_occupancy': cls.MAX_OCCUPANCY,
+            'min_shrinkage': cls.MIN_SHRINKAGE,
+            'max_shrinkage': cls.MAX_SHRINKAGE,
+            'min_work_hours': cls.MIN_WORK_HOURS,
+            'max_work_hours': cls.MAX_WORK_HOURS,
+            'min_target_cph': cls.MIN_TARGET_CPH,
+            'max_lob_length': cls.MAX_LOB_LENGTH,
+            'max_case_type_length': cls.MAX_CASE_TYPE_LENGTH,
+        }
+
+
+# Validate configuration view configuration on module import
+try:
+    ConfigurationViewConfig.validate()
+except ValueError as e:
+    raise RuntimeError(f"Invalid ConfigurationViewConfig: {e}")
+
+
+class ForecastReallocationConfig:
+    """
+    Forecast Reallocation Configuration
+
+    Controls display, validation, and caching behavior for the
+    Forecast Reallocation tab in Edit View. Allows manual editing
+    of target_cph and fte_avail values with preview and update workflow.
+    """
+
+    # Display Configuration
+    MAX_MONTHS_DISPLAY: int = 6
+    """
+    Maximum number of months to display in the reallocation table.
+    Default: 6 months
+
+    Users can select which months to show using checkboxes.
+    """
+
+    RECORDS_PER_PAGE: int = 25
+    """
+    Number of records to display per page in the data table.
+    Default: 25 records per page
+
+    Balances between scrolling and pagination performance.
+    """
+
+    PREVIEW_PAGE_SIZE: int = 25
+    """
+    Number of preview records to display per page.
+    Default: 25 records per page
+
+    Matches bench allocation preview pagination for consistency.
+    """
+
+    # Validation Configuration - Target CPH
+    MIN_TARGET_CPH: float = 0.0
+    """
+    Minimum allowed Target CPH value.
+    Default: 0.0 (allows zero CPH)
+
+    CPH must be non-negative but can be zero for certain cases.
+    """
+
+    MAX_TARGET_CPH: float = 200.0
+    """
+    Maximum allowed Target CPH value.
+    Default: 200.0
+
+    Prevents unrealistic CPH values per API specification.
+    """
+
+    CPH_INCREMENT_UNIT: float = 1.0
+    """
+    Default CPH increment/decrement unit for ± buttons.
+    Default: 1.0 (whole number increments)
+    """
+
+    CPH_DECIMAL_PLACES: int = 2
+    """
+    Number of decimal places for CPH values.
+    Default: 2 decimal places (e.g., 125.45)
+    """
+
+    # Validation Configuration - FTE Available
+    MIN_FTE_AVAIL: int = 0
+    """
+    Minimum allowed FTE Available value.
+    Default: 0 (allows zero FTE)
+    """
+
+    MAX_FTE_AVAIL: int = 999
+    """
+    Maximum allowed FTE Available value.
+    Default: 999
+
+    Prevents unrealistic FTE values.
+    """
+
+    FTE_INCREMENT_UNIT: int = 1
+    """
+    Default FTE increment/decrement unit for ± buttons.
+    Default: 1 (whole number increments)
+    """
+
+    # Cache Configuration
+    DATA_CACHE_TTL: int = 900
+    """
+    Cache timeout for reallocation data API in seconds.
+    Default: 900 seconds (15 minutes)
+    """
+
+    FILTER_CACHE_TTL: int = 300
+    """
+    Cache timeout for filter options (LOBs, States, Case Types) in seconds.
+    Default: 300 seconds (5 minutes)
+    """
+
+    PREVIEW_CACHE_TTL: int = 300
+    """
+    Cache timeout for preview calculations in seconds.
+    Default: 300 seconds (5 minutes)
+    """
+
+    # UI Configuration
+    FROZEN_COLUMNS_COUNT: int = 4
+    """
+    Number of columns to freeze on the left side of the table.
+    Default: 4 (Main LOB, State, Case Type, Target CPH)
+    """
+
+    MAX_USER_NOTES_LENGTH: int = 500
+    """
+    Maximum length of user notes field.
+    Default: 500 characters
+    """
+
+    # Validation Methods
+    @classmethod
+    def validate(cls) -> None:
+        """
+        Validate configuration values.
+        Raises ValueError if any configuration is invalid.
+        """
+        # Validate display settings
+        if not isinstance(cls.MAX_MONTHS_DISPLAY, int) or cls.MAX_MONTHS_DISPLAY < 1:
+            raise ValueError(
+                f"MAX_MONTHS_DISPLAY must be a positive integer, got {cls.MAX_MONTHS_DISPLAY}"
+            )
+
+        if not isinstance(cls.RECORDS_PER_PAGE, int) or cls.RECORDS_PER_PAGE < 1:
+            raise ValueError(
+                f"RECORDS_PER_PAGE must be a positive integer, got {cls.RECORDS_PER_PAGE}"
+            )
+
+        if not isinstance(cls.PREVIEW_PAGE_SIZE, int) or cls.PREVIEW_PAGE_SIZE < 1:
+            raise ValueError(
+                f"PREVIEW_PAGE_SIZE must be a positive integer, got {cls.PREVIEW_PAGE_SIZE}"
+            )
+
+        # Validate CPH range
+        if not isinstance(cls.MIN_TARGET_CPH, (int, float)) or cls.MIN_TARGET_CPH < 0:
+            raise ValueError(
+                f"MIN_TARGET_CPH must be non-negative, got {cls.MIN_TARGET_CPH}"
+            )
+
+        if not isinstance(cls.MAX_TARGET_CPH, (int, float)) or cls.MAX_TARGET_CPH <= 0:
+            raise ValueError(
+                f"MAX_TARGET_CPH must be positive, got {cls.MAX_TARGET_CPH}"
+            )
+
+        if cls.MIN_TARGET_CPH >= cls.MAX_TARGET_CPH:
+            raise ValueError(
+                f"MIN_TARGET_CPH ({cls.MIN_TARGET_CPH}) must be less than "
+                f"MAX_TARGET_CPH ({cls.MAX_TARGET_CPH})"
+            )
+
+        # Validate FTE range
+        if not isinstance(cls.MIN_FTE_AVAIL, int) or cls.MIN_FTE_AVAIL < 0:
+            raise ValueError(
+                f"MIN_FTE_AVAIL must be non-negative integer, got {cls.MIN_FTE_AVAIL}"
+            )
+
+        if not isinstance(cls.MAX_FTE_AVAIL, int) or cls.MAX_FTE_AVAIL <= 0:
+            raise ValueError(
+                f"MAX_FTE_AVAIL must be positive integer, got {cls.MAX_FTE_AVAIL}"
+            )
+
+        if cls.MIN_FTE_AVAIL >= cls.MAX_FTE_AVAIL:
+            raise ValueError(
+                f"MIN_FTE_AVAIL ({cls.MIN_FTE_AVAIL}) must be less than "
+                f"MAX_FTE_AVAIL ({cls.MAX_FTE_AVAIL})"
+            )
+
+        # Validate cache TTLs
+        if not isinstance(cls.DATA_CACHE_TTL, int) or cls.DATA_CACHE_TTL < 0:
+            raise ValueError(
+                f"DATA_CACHE_TTL must be non-negative, got {cls.DATA_CACHE_TTL}"
+            )
+
+        if not isinstance(cls.FILTER_CACHE_TTL, int) or cls.FILTER_CACHE_TTL < 0:
+            raise ValueError(
+                f"FILTER_CACHE_TTL must be non-negative, got {cls.FILTER_CACHE_TTL}"
+            )
+
+    @classmethod
+    def get_config_dict(cls) -> dict:
+        """
+        Get all configuration as a dictionary.
+        Useful for passing to templates or APIs.
+
+        Returns:
+            Dictionary of all configuration values
+        """
+        return {
+            'max_months_display': cls.MAX_MONTHS_DISPLAY,
+            'records_per_page': cls.RECORDS_PER_PAGE,
+            'preview_page_size': cls.PREVIEW_PAGE_SIZE,
+            'min_target_cph': cls.MIN_TARGET_CPH,
+            'max_target_cph': cls.MAX_TARGET_CPH,
+            'cph_increment_unit': cls.CPH_INCREMENT_UNIT,
+            'cph_decimal_places': cls.CPH_DECIMAL_PLACES,
+            'min_fte_avail': cls.MIN_FTE_AVAIL,
+            'max_fte_avail': cls.MAX_FTE_AVAIL,
+            'fte_increment_unit': cls.FTE_INCREMENT_UNIT,
+            'data_cache_ttl': cls.DATA_CACHE_TTL,
+            'filter_cache_ttl': cls.FILTER_CACHE_TTL,
+            'preview_cache_ttl': cls.PREVIEW_CACHE_TTL,
+            'frozen_columns_count': cls.FROZEN_COLUMNS_COUNT,
+            'max_user_notes_length': cls.MAX_USER_NOTES_LENGTH,
+        }
+
+
+# Validate Forecast Reallocation configuration on module import
+try:
+    ForecastReallocationConfig.validate()
+except ValueError as e:
+    raise RuntimeError(f"Invalid ForecastReallocationConfig: {e}")
+
+
 # Example usage in code:
-# from core.config import ManagerViewConfig, ExecutionMonitoringConfig, EditViewConfig
+# from core.config import ManagerViewConfig, ExecutionMonitoringConfig, EditViewConfig, ConfigurationViewConfig, ForecastReallocationConfig
 #
 # months_count = ManagerViewConfig.get_months_to_display(request.user)
 # kpi_index = ManagerViewConfig.get_kpi_month_index(request.user)
 # exec_config = ExecutionMonitoringConfig.get_config_dict()
 # edit_config = EditViewConfig.get_config_dict()
+# config_config = ConfigurationViewConfig.get_config_dict()
+# reallocation_config = ForecastReallocationConfig.get_config_dict()

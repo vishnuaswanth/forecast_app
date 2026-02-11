@@ -427,6 +427,18 @@ LOGGING = {
             'level': 'DEBUG',
             'propagate': True,
         },
+        # Capture HTTP 500 errors with full traceback in production
+        'django.request': {
+            'handlers': ['console', 'file'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        # Capture server errors
+        'django.server': {
+            'handlers': ['console', 'file'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
         'llm_workflow': {
             'handlers': ['console', 'llm_file'],
             'level': 'DEBUG' if DEBUG else 'INFO',

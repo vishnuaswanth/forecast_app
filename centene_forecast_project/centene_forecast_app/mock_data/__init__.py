@@ -50,6 +50,14 @@ from mock_data.target_cph import (
     get_target_cph_preview
 )
 
+# Forecast Reallocation exports
+from mock_data.forecast_reallocation import (
+    get_reallocation_filter_options,
+    get_reallocation_data,
+    get_reallocation_preview,
+    submit_reallocation_update
+)
+
 __all__ = [
     # Manager View
     'get_report_months',
@@ -75,4 +83,10 @@ __all__ = [
     # Target CPH
     'get_target_cph_data',
     'get_target_cph_preview',
+
+    # Forecast Reallocation
+    'get_reallocation_filter_options',
+    'get_reallocation_data',
+    'get_reallocation_preview',
+    'submit_reallocation_update',
 ]

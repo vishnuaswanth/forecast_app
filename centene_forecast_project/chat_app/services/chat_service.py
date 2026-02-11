@@ -559,6 +559,17 @@ class ChatService:
                     parameters=parameters,
                     conversation_id=conversation_id
                 )
+            elif category == 'clear_context':
+                return await self.llm_service.execute_clear_context(
+                    conversation_id=conversation_id
+                )
+            elif category == 'update_context':
+                operation = parameters.get('operation', 'reset_all_filters')
+                return await self.llm_service.execute_update_context(
+                    conversation_id=conversation_id,
+                    operation=operation,
+                    parameters=parameters
+                )
             # Legacy Phase 1 categories (mock mode)
             elif category == 'forecast_query':
                 return self._handle_forecast_query(parameters)

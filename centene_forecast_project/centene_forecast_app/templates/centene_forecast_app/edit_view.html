@@ -53,6 +53,13 @@
             </button>
         </li>
         <li class="nav-item edit-view-nav-item" role="presentation">
+            <button class="nav-link edit-view-nav-link" id="forecast-reallocation-tab-btn" data-bs-toggle="tab"
+                    data-bs-target="#forecast-reallocation-tab" type="button" role="tab"
+                    aria-controls="forecast-reallocation-tab" aria-selected="false">
+                <i class="fas fa-exchange-alt edit-view-me-2"></i>Forecast Reallocation
+            </button>
+        </li>
+        <li class="nav-item edit-view-nav-item" role="presentation">
             <button class="nav-link edit-view-nav-link" id="history-log-tab-btn" data-bs-toggle="tab"
                     data-bs-target="#history-log-tab" type="button" role="tab"
                     aria-controls="history-log-tab" aria-selected="false">
@@ -533,6 +540,280 @@
         </div>
 
         <!-- ========================================== -->
+        <!-- FORECAST REALLOCATION TAB -->
+        <!-- ========================================== -->
+        <div class="tab-pane fade edit-view-tab-pane" id="forecast-reallocation-tab" role="tabpanel"
+             aria-labelledby="forecast-reallocation-tab-btn">
+
+            <!-- Filter Section -->
+            <div class="edit-view-card edit-view-filter-card">
+                <div class="edit-view-card-body">
+                    <h5 class="edit-view-mb-3">
+                        <i class="fas fa-filter edit-view-me-2"></i>Forecast Reallocation - Data Selection
+                    </h5>
+                    <div class="edit-view-row edit-view-align-end">
+                        <div class="edit-view-col-3">
+                            <label class="edit-view-form-label" for="reallocation-report-select">
+                                Select Report Month:
+                            </label>
+                            <select class="edit-view-form-select edit-view-select2" id="reallocation-report-select"
+                                    data-placeholder="-- Select Report Month --">
+                                <option value="">-- Select Report Month --</option>
+                            </select>
+                        </div>
+                        <div class="edit-view-col-2">
+                            <label class="edit-view-form-label" for="reallocation-lob-filter">
+                                Main LOB:
+                            </label>
+                            <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                    id="reallocation-lob-filter" multiple
+                                    data-placeholder="All LOBs">
+                            </select>
+                        </div>
+                        <div class="edit-view-col-2">
+                            <label class="edit-view-form-label" for="reallocation-case-type-filter">
+                                Case Type:
+                            </label>
+                            <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                    id="reallocation-case-type-filter" multiple
+                                    data-placeholder="All Case Types">
+                            </select>
+                        </div>
+                        <div class="edit-view-col-2">
+                            <label class="edit-view-form-label" for="reallocation-state-filter">
+                                State:
+                            </label>
+                            <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                    id="reallocation-state-filter" multiple
+                                    data-placeholder="All States">
+                            </select>
+                        </div>
+                        <div class="edit-view-col-2">
+                            <button class="edit-view-btn edit-view-btn-primary" id="load-reallocation-data-btn">
+                                <i class="fas fa-download edit-view-me-1"></i>Load Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Alert -->
+            <div class="edit-view-alert edit-view-alert-info edit-view-info-alert edit-view-mt-3">
+                <i class="fas fa-info-circle edit-view-me-2"></i>
+                <strong>How it works:</strong> Load data for a selected report, edit <strong>Target CPH</strong> and
+                <strong>FTE Available</strong> values using the input fields or ± buttons, then generate a preview
+                to see the impact before submitting. Use the month visibility checkboxes to show/hide specific months.
+            </div>
+
+            <!-- Loading Spinner for Reallocation Data -->
+            <div class="edit-view-loading edit-view-text-center" id="reallocation-data-loading" style="display: none;">
+                <div class="edit-view-spinner edit-view-text-primary" role="status">
+                    <span class="edit-view-visually-hidden">Loading...</span>
+                </div>
+                <p class="edit-view-mt-2">Loading reallocation data...</p>
+            </div>
+
+            <!-- Error Alert for Reallocation Data -->
+            <div class="edit-view-alert edit-view-alert-danger edit-view-error-alert" id="reallocation-data-error" style="display: none;">
+                <i class="fas fa-exclamation-circle edit-view-me-2"></i>
+                <span id="reallocation-data-error-message">An error occurred</span>
+            </div>
+
+            <!-- Reallocation Data Table Section -->
+            <div class="edit-view-card edit-view-mt-3" id="reallocation-data-container" style="display: none;">
+                <div class="edit-view-card-header">
+                    <div class="edit-view-flex edit-view-justify-between edit-view-align-center">
+                        <h5 class="edit-view-mb-0">
+                            <i class="fas fa-table edit-view-me-2"></i>Editable Forecast Data
+                        </h5>
+                        <span class="edit-view-badge edit-view-badge-warning" id="reallocation-modified-count-badge">0 modified</span>
+                    </div>
+                </div>
+                <div class="edit-view-card-body">
+                    <!-- Month Visibility Checkboxes -->
+                    <div class="edit-view-month-selector edit-view-mb-3" id="reallocation-month-selector">
+                        <label class="edit-view-form-label"><strong>Visible Months:</strong></label>
+                        <div class="edit-view-month-checkboxes" id="reallocation-month-checkboxes">
+                            <!-- Checkboxes will be populated by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Reallocation Table with Frozen Columns -->
+                    <div class="edit-view-table-container edit-view-table-frozen-container">
+                        <table class="edit-view-reallocation-table edit-view-table-frozen" id="reallocation-table">
+                            <thead id="reallocation-table-head">
+                                <!-- Headers will be populated by JavaScript -->
+                            </thead>
+                            <tbody id="reallocation-table-body">
+                                <!-- Rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <nav id="reallocation-pagination" class="edit-view-mt-3" style="display: none;">
+                        <ul class="edit-view-pagination edit-view-reallocation-pagination edit-view-pagination-sm edit-view-justify-end">
+                            <!-- Pagination items will be populated by JavaScript -->
+                        </ul>
+                    </nav>
+
+                    <!-- Submit Button -->
+                    <div class="edit-view-text-center edit-view-mt-4">
+                        <button class="edit-view-btn edit-view-btn-success" id="show-reallocation-preview-btn" disabled>
+                            <i class="fas fa-eye edit-view-me-1"></i>Show Preview
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner for Reallocation Preview -->
+            <div class="edit-view-loading edit-view-text-center edit-view-mt-3" id="reallocation-preview-loading" style="display: none;">
+                <div class="edit-view-spinner edit-view-text-primary" role="status">
+                    <span class="edit-view-visually-hidden">Loading...</span>
+                </div>
+                <p class="edit-view-mt-2">Calculating reallocation preview...</p>
+            </div>
+
+            <!-- Error Alert for Reallocation Preview -->
+            <div class="edit-view-alert edit-view-alert-danger edit-view-error-alert edit-view-mt-3" id="reallocation-preview-error" style="display: none;">
+                <i class="fas fa-exclamation-circle edit-view-me-2"></i>
+                <span id="reallocation-preview-error-message">An error occurred</span>
+            </div>
+
+            <!-- Reallocation Preview Section -->
+            <div class="edit-view-card edit-view-preview-container edit-view-mt-3" id="reallocation-preview-container" style="display: none;">
+                <div class="edit-view-card-header edit-view-preview-header">
+                    <div class="edit-view-flex edit-view-justify-between edit-view-align-center">
+                        <h5 class="edit-view-mb-0">
+                            <i class="fas fa-eye edit-view-me-2"></i>Preview of Changes
+                        </h5>
+                        <span class="edit-view-badge edit-view-badge-info" id="reallocation-preview-modified-count-badge">0 records modified</span>
+                    </div>
+                    <p class="edit-view-text-muted edit-view-mb-0 edit-view-mt-2">
+                        The following rows will be modified based on your changes.
+                    </p>
+                </div>
+                <div class="edit-view-card-body">
+                    <!-- Reallocation Preview Filters -->
+                    <div class="edit-view-preview-filters edit-view-mb-3" id="reallocation-preview-filters" style="display: none;">
+                        <div class="edit-view-row edit-view-align-end">
+                            <div class="edit-view-col-4">
+                                <label class="edit-view-form-label" for="reallocation-preview-lob-filter">
+                                    Filter by LOB:
+                                </label>
+                                <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                        id="reallocation-preview-lob-filter" multiple
+                                        data-placeholder="All LOBs">
+                                </select>
+                            </div>
+                            <div class="edit-view-col-4">
+                                <label class="edit-view-form-label" for="reallocation-preview-case-type-filter">
+                                    Filter by Case Type:
+                                </label>
+                                <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                        id="reallocation-preview-case-type-filter" multiple
+                                        data-placeholder="All Case Types">
+                                </select>
+                            </div>
+                            <div class="edit-view-col-2">
+                                <button class="edit-view-btn edit-view-btn-outline-secondary edit-view-btn-sm"
+                                        id="clear-reallocation-preview-filters-btn">
+                                    <i class="fas fa-times edit-view-me-1"></i>Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Summary Alert -->
+                    <div class="edit-view-alert edit-view-alert-success edit-view-mt-3" id="reallocation-preview-summary">
+                        <strong>Summary:</strong> <span id="reallocation-summary-text">0 records modified</span>
+                    </div>
+
+                    <!-- Reallocation Preview Table -->
+                    <div class="edit-view-table-container">
+                        <table class="edit-view-preview-table edit-view-preview-table-fixed" id="reallocation-preview-table">
+                            <thead id="reallocation-preview-table-head">
+                                <!-- Headers will be populated by JavaScript -->
+                            </thead>
+                            <tbody id="reallocation-preview-table-body">
+                                <!-- Rows will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Month-wise Changes Summary -->
+                    <div class="edit-view-overall-changes edit-view-mt-3" id="reallocation-overall-changes" style="display: none;">
+                        <div class="edit-view-row">
+                            <div class="edit-view-col-8">
+                                <div class="edit-view-summary-card">
+                                    <h6>Month-wise Changes Summary</h6>
+                                    <div class="edit-view-month-changes-container" id="reallocation-month-changes-container">
+                                        <!-- Month-wise changes will be populated by JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="edit-view-col-4">
+                                <div class="edit-view-legend-card">
+                                    <h6>Abbreviations</h6>
+                                    <ul>
+                                        <li><strong>CF:</strong> Client Forecast</li>
+                                        <li><strong>FTE Req:</strong> FTE Required</li>
+                                        <li><strong>FTE Avail:</strong> FTE Available</li>
+                                        <li><strong>Cap:</strong> Capacity</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    <nav id="reallocation-preview-pagination" class="edit-view-reallocation-preview-pagination" style="display: none;">
+                        <ul class="edit-view-pagination edit-view-pagination-sm edit-view-justify-end">
+                            <!-- Pagination items will be populated by JavaScript -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+
+            <!-- Reallocation Actions Section (Accept/Reject) -->
+            <div class="edit-view-card edit-view-actions-container edit-view-mt-3" id="reallocation-actions-container" style="display: none;">
+                <div class="edit-view-card-body">
+                    <h5 class="edit-view-mb-3">
+                        <i class="fas fa-check-circle edit-view-me-2"></i>Review and Submit Reallocation Changes
+                    </h5>
+
+                    <!-- User Notes Textarea -->
+                    <div class="edit-view-mb-3">
+                        <label class="edit-view-form-label" for="reallocation-user-notes-input">
+                            Change Description (Optional):
+                        </label>
+                        <textarea class="edit-view-form-input" id="reallocation-user-notes-input" rows="3"
+                                  maxlength="500" placeholder="Add notes about this reallocation (max 500 characters)..."></textarea>
+                        <small class="edit-view-form-text edit-view-text-muted">
+                            <span id="reallocation-notes-char-count">0</span> / 500 characters
+                        </small>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="edit-view-flex edit-view-justify-between edit-view-align-center">
+                        <div>
+                            <strong>Total Modified Records:</strong> <span id="reallocation-action-summary-count">0</span>
+                        </div>
+                        <div>
+                            <button class="edit-view-btn edit-view-btn-outline-secondary edit-view-me-2" id="reallocation-reject-btn">
+                                <i class="fas fa-times edit-view-me-1"></i>Reject
+                            </button>
+                            <button class="edit-view-btn edit-view-btn-success" id="reallocation-accept-btn">
+                                <i class="fas fa-check edit-view-me-1"></i>Accept & Update
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ========================================== -->
         <!-- HISTORY LOG TAB -->
         <!-- ========================================== -->
         <div class="tab-pane fade edit-view-tab-pane" id="history-log-tab" role="tabpanel"
@@ -637,6 +918,10 @@
                 targetCphData: '{% url "forecast_app:target_cph_data" %}',
                 targetCphPreview: '{% url "forecast_app:target_cph_preview" %}',
                 targetCphUpdate: '{% url "forecast_app:target_cph_update" %}',
+                forecastReallocationFilters: '{% url "forecast_app:forecast_reallocation_filters" %}',
+                forecastReallocationData: '{% url "forecast_app:forecast_reallocation_data" %}',
+                forecastReallocationPreview: '{% url "forecast_app:forecast_reallocation_preview" %}',
+                forecastReallocationUpdate: '{% url "forecast_app:forecast_reallocation_update" %}',
                 historyLog: '{% url "forecast_app:history_log" %}',
                 downloadHistoryExcel: '{% url "forecast_app:download_history_excel" history_log_id="PLACEHOLDER" %}'.replace('PLACEHOLDER', '{id}'),
                 availableChangeTypes: '{% url "forecast_app:available_change_types" %}'

@@ -448,6 +448,7 @@ def get_available_change_types() -> Dict:
     change_types = [
         'Bench Allocation',
         'CPH Update',
+        'Forecast Reallocation',
         'Manual Update',
         'Forecast Update'
     ]
