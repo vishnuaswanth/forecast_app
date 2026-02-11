@@ -211,12 +211,99 @@
 .config-view-container .select2-container--bootstrap-5 .select2-selection {
     min-height: 38px;
     border-color: #ced4da;
+    display: flex !important;
+    align-items: center !important;
 }
 
 .config-view-container .select2-container--bootstrap-5 .select2-selection:focus,
 .config-view-container .select2-container--bootstrap-5.select2-container--focus .select2-selection {
     border-color: #86b7fe;
     box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Multi-select styling */
+.config-view-container .select2-container--bootstrap-5 .select2-selection--multiple {
+    min-height: 38px !important;
+    padding: 0.25rem 0.75rem !important;
+    box-sizing: border-box !important;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__rendered {
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 0.25rem !important;
+    min-height: 26px !important;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
+    background-color: #e3f2fd;
+    border-color: #bbdefb;
+    color: #1565c0;
+    padding: 0.2rem 0.4rem;
+    margin: 0;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    display: inline-flex;
+    align-items: center;
+    white-space: normal;
+    word-wrap: break-word;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove {
+    color: #1565c0;
+    margin-right: 4px;
+    font-size: 0.7rem;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice__remove:hover {
+    color: #dc3545;
+    background-color: rgba(220, 53, 69, 0.1);
+    border-radius: 50%;
+}
+
+/* Select All option styling */
+.select2-results__option.select-all-option {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+    color: #495057;
+}
+
+.select2-results__option.select-all-option:hover {
+    background-color: #e9ecef !important;
+    color: #212529 !important;
+}
+
+/* Dropdown styling */
+.config-view-container .select2-container--bootstrap-5 .select2-dropdown {
+    border: 1px solid #ced4da;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    z-index: 1056;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-results__option--highlighted,
+.config-view-container .select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: #f3e5f5 !important;
+    color: #4a148c !important;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-results__option:hover {
+    background-color: #f3e5f5 !important;
+    color: #4a148c !important;
+}
+
+.config-view-container .select2-container--bootstrap-5 .select2-results__option[aria-selected=true] {
+    background-color: #e1bee7 !important;
+    color: #4a148c !important;
+    font-weight: 500;
 }
 
 /* ============================================================
@@ -582,27 +669,38 @@
     text-decoration: none;
     cursor: pointer;
     border-radius: 4px;
-    transition: background-color 0.15s, border-color 0.15s;
+    transition: all 0.2s ease;
 }
 
-.config-view-page-link:hover {
-    background-color: #e9ecef;
-    border-color: #dee2e6;
-    color: #0d6efd;
+.config-view-page-link:hover:not(.config-view-page-item-disabled .config-view-page-link) {
+    background-color: #0a58ca;
+    border-color: #0a58ca;
+    color: #ffffff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.config-view-page-item.active .config-view-page-link {
+.config-view-page-item-active .config-view-page-link {
     background-color: #0d6efd;
     border-color: #0d6efd;
     color: #ffffff;
+    font-weight: 600;
 }
 
-.config-view-page-item.disabled .config-view-page-link {
+.config-view-page-item-active .config-view-page-link:hover {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #ffffff;
+    transform: none;
+}
+
+.config-view-page-item-disabled .config-view-page-link {
     color: #6c757d;
-    background-color: #ffffff;
+    background-color: #f8f9fa;
     border-color: #dee2e6;
     cursor: not-allowed;
     opacity: 0.65;
+    pointer-events: none;
 }
 
 /* ============================================================

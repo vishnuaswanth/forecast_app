@@ -278,12 +278,51 @@
     function initSelect2() {
         // Initialize Select2 for filter dropdowns
         if (jQuery && jQuery.fn.select2) {
+            // Single-select dropdowns
             jQuery('.config-view-select2').select2({
                 theme: 'bootstrap-5',
                 width: '100%',
-                allowClear: true
+                allowClear: true,
+                minimumResultsForSearch: 5
+            });
+
+            // Multi-select dropdowns
+            jQuery('.config-view-select2-multi').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Select options...',
+                allowClear: true,
+                closeOnSelect: false,
+                width: '100%'
+            });
+
+            // Multi-select with checkboxes
+            jQuery('.config-view-select2-multi-checkbox').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Select options...',
+                allowClear: true,
+                closeOnSelect: false,
+                width: '100%'
             });
         }
+
+        // Add Select All functionality for multi-checkbox dropdowns
+        jQuery(document).on('select2:open', '.config-view-select2-multi-checkbox', function() {
+            const container = jQuery('.select2-results__options');
+            if (container.find('.select-all-option').length === 0) {
+                container.prepend(
+                    '<li class="select2-results__option select-all-option" role="option">Select All</li>'
+                );
+            }
+        });
+
+        jQuery(document).on('click', '.select-all-option', function(e) {
+            e.stopPropagation();
+            const select = jQuery('.select2-hidden-accessible:focus');
+            const allValues = select.find('option').map(function() {
+                return jQuery(this).val();
+            }).get();
+            select.val(allValues).trigger('change');
+        });
     }
 
     function bindEvents() {
@@ -434,7 +473,14 @@
 
         hideElement(DOM.monthConfig.noResults);
 
-        const rows = STATE.monthConfig.data.map(config => {
+        // Calculate pagination
+        const pageSize = SETTINGS.pageSize || 25;
+        const startIdx = (STATE.monthConfig.currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageData = STATE.monthConfig.data.slice(startIdx, endIdx);
+        STATE.monthConfig.totalPages = Math.ceil(STATE.monthConfig.data.length / pageSize);
+
+        const rows = pageData.map(config => {
             const workTypeClass = config.work_type === 'Domestic'
                 ? 'config-view-worktype-domestic'
                 : 'config-view-worktype-global';
@@ -470,12 +516,63 @@
         }).join('');
 
         tbody.innerHTML = rows;
+
+        // Render pagination
+        renderMonthConfigPagination();
+    }
+
+    function renderMonthConfigPagination() {
+        if (!DOM.monthConfig.pagination || STATE.monthConfig.totalPages <= 1) {
+            hideElement(DOM.monthConfig.pagination);
+            return;
+        }
+
+        const currentPage = STATE.monthConfig.currentPage;
+        const totalPages = STATE.monthConfig.totalPages;
+        const paginationHtml = [];
+
+        // Previous button
+        paginationHtml.push(`
+            <li class="config-view-page-item ${currentPage === 1 ? 'config-view-page-item-disabled' : ''}">
+                <a class="config-view-page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+            </li>
+        `);
+
+        // Page numbers
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                paginationHtml.push(`
+                    <li class="config-view-page-item ${i === currentPage ? 'config-view-page-item-active' : ''}">
+                        <a class="config-view-page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `);
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                paginationHtml.push(`
+                    <li class="config-view-page-item config-view-page-item-disabled">
+                        <span class="config-view-page-link">...</span>
+                    </li>
+                `);
+            }
+        }
+
+        // Next button
+        paginationHtml.push(`
+            <li class="config-view-page-item ${currentPage === totalPages ? 'config-view-page-item-disabled' : ''}">
+                <a class="config-view-page-link" href="#" data-page="${currentPage + 1}">Next</a>
+            </li>
+        `);
+
+        DOM.monthConfig.pagination.querySelector('ul').innerHTML = paginationHtml.join('');
+        showElement(DOM.monthConfig.pagination);
     }
 
     function updateMonthConfigCount() {
         if (DOM.monthConfig.countBadge) {
             const count = STATE.monthConfig.data.length;
-            DOM.monthConfig.countBadge.textContent = `${count} configuration${count !== 1 ? 's' : ''}`;
+            const startIdx = (STATE.monthConfig.currentPage - 1) * (SETTINGS.pageSize || 25);
+            const endIdx = Math.min(startIdx + (SETTINGS.pageSize || 25), count);
+            const showing = count > 0 ? `${startIdx + 1}-${endIdx} of ${count}` : '0';
+            DOM.monthConfig.countBadge.textContent = `${showing} configuration${count !== 1 ? 's' : ''}`;
         }
     }
 
@@ -971,7 +1068,14 @@
 
         hideElement(DOM.targetCph.noResults);
 
-        const rows = STATE.targetCph.data.map(config => `
+        // Calculate pagination
+        const pageSize = SETTINGS.pageSize || 25;
+        const startIdx = (STATE.targetCph.currentPage - 1) * pageSize;
+        const endIdx = startIdx + pageSize;
+        const pageData = STATE.targetCph.data.slice(startIdx, endIdx);
+        STATE.targetCph.totalPages = Math.ceil(STATE.targetCph.data.length / pageSize);
+
+        const rows = pageData.map(config => `
             <tr data-id="${config.id}">
                 <td class="config-view-col-id">${config.id}</td>
                 <td class="config-view-col-lob">${escapeHtml(config.main_lob)}</td>
@@ -995,12 +1099,63 @@
         `).join('');
 
         tbody.innerHTML = rows;
+
+        // Render pagination
+        renderTargetCphPagination();
+    }
+
+    function renderTargetCphPagination() {
+        if (!DOM.targetCph.pagination || STATE.targetCph.totalPages <= 1) {
+            hideElement(DOM.targetCph.pagination);
+            return;
+        }
+
+        const currentPage = STATE.targetCph.currentPage;
+        const totalPages = STATE.targetCph.totalPages;
+        const paginationHtml = [];
+
+        // Previous button
+        paginationHtml.push(`
+            <li class="config-view-page-item ${currentPage === 1 ? 'config-view-page-item-disabled' : ''}">
+                <a class="config-view-page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+            </li>
+        `);
+
+        // Page numbers
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                paginationHtml.push(`
+                    <li class="config-view-page-item ${i === currentPage ? 'config-view-page-item-active' : ''}">
+                        <a class="config-view-page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `);
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                paginationHtml.push(`
+                    <li class="config-view-page-item config-view-page-item-disabled">
+                        <span class="config-view-page-link">...</span>
+                    </li>
+                `);
+            }
+        }
+
+        // Next button
+        paginationHtml.push(`
+            <li class="config-view-page-item ${currentPage === totalPages ? 'config-view-page-item-disabled' : ''}">
+                <a class="config-view-page-link" href="#" data-page="${currentPage + 1}">Next</a>
+            </li>
+        `);
+
+        DOM.targetCph.pagination.querySelector('ul').innerHTML = paginationHtml.join('');
+        showElement(DOM.targetCph.pagination);
     }
 
     function updateTargetCphCount() {
         if (DOM.targetCph.countBadge) {
             const count = STATE.targetCph.data.length;
-            DOM.targetCph.countBadge.textContent = `${count} configuration${count !== 1 ? 's' : ''}`;
+            const startIdx = (STATE.targetCph.currentPage - 1) * (SETTINGS.pageSize || 25);
+            const endIdx = Math.min(startIdx + (SETTINGS.pageSize || 25), count);
+            const showing = count > 0 ? `${startIdx + 1}-${endIdx} of ${count}` : '0';
+            DOM.targetCph.countBadge.textContent = `${showing} configuration${count !== 1 ? 's' : ''}`;
         }
     }
 
@@ -1366,6 +1521,35 @@
             });
         } catch (e) {
             return dateStr;
+        }
+    }
+
+    // ============================================================
+    // PAGINATION HANDLERS
+    // ============================================================
+    function handlePaginationClick(e) {
+        if (!e.target.matches('.config-view-page-link')) return;
+        
+        e.preventDefault();
+        const page = parseInt(e.target.getAttribute('data-page'));
+        if (isNaN(page)) return;
+
+        // Determine which pagination was clicked
+        const paginationContainer = e.target.closest('#month-config-pagination, #target-cph-pagination');
+        if (!paginationContainer) return;
+
+        if (paginationContainer.id === 'month-config-pagination') {
+            if (page >= 1 && page <= STATE.monthConfig.totalPages && page !== STATE.monthConfig.currentPage) {
+                STATE.monthConfig.currentPage = page;
+                renderMonthConfigTable();
+                updateMonthConfigCount();
+            }
+        } else if (paginationContainer.id === 'target-cph-pagination') {
+            if (page >= 1 && page <= STATE.targetCph.totalPages && page !== STATE.targetCph.currentPage) {
+                STATE.targetCph.currentPage = page;
+                renderTargetCphTable();
+                updateTargetCphCount();
+            }
         }
     }
 
