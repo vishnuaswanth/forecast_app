@@ -31,7 +31,8 @@
         // Target CPH state
         targetCph: {
             data: [],
-            filters: { mainLob: '', caseType: '' },
+            allData: [],  // Store unfiltered data for client-side filtering
+            filters: { mainLob: [], caseType: [] },  // Arrays for multi-select
             currentPage: 1,
             totalPages: 1,
             isLoading: false,
@@ -328,41 +329,64 @@
     }
 
     function populateTargetCphFiltersFromData() {
-        // Populate Main LOB filter from distinct values
+        // Populate Main LOB filter from distinct values (multi-select - no "All" option needed)
         if (DOM.targetCph.lobFilter && STATE.targetCph.distinctLobs.length > 0) {
             const lobOptions = STATE.targetCph.distinctLobs.map(item => {
                 const value = typeof item === 'object' ? item.value : item;
                 const display = typeof item === 'object' ? item.display : item;
                 return `<option value="${escapeHtml(value)}">${escapeHtml(display)}</option>`;
             }).join('');
-            DOM.targetCph.lobFilter.innerHTML = '<option value="">All LOBs</option>' + lobOptions;
-            // Restore selected value
-            if (STATE.targetCph.filters.mainLob) {
-                DOM.targetCph.lobFilter.value = STATE.targetCph.filters.mainLob;
+            DOM.targetCph.lobFilter.innerHTML = lobOptions;
+
+            // Restore selected values for multi-select
+            if (jQuery && jQuery.fn.select2 && STATE.targetCph.filters.mainLob && STATE.targetCph.filters.mainLob.length > 0) {
+                jQuery(DOM.targetCph.lobFilter).val(STATE.targetCph.filters.mainLob).trigger('change.select2');
             }
         }
 
-        // Populate Case Type filter from distinct values
+        // Populate Case Type filter from distinct values (multi-select - no "All" option needed)
         if (DOM.targetCph.caseTypeFilter && STATE.targetCph.distinctCaseTypes.length > 0) {
             const caseTypeOptions = STATE.targetCph.distinctCaseTypes.map(item => {
                 const value = typeof item === 'object' ? item.value : item;
                 const display = typeof item === 'object' ? item.display : item;
                 return `<option value="${escapeHtml(value)}">${escapeHtml(display)}</option>`;
             }).join('');
-            DOM.targetCph.caseTypeFilter.innerHTML = '<option value="">All Case Types</option>' + caseTypeOptions;
-            // Restore selected value
-            if (STATE.targetCph.filters.caseType) {
-                DOM.targetCph.caseTypeFilter.value = STATE.targetCph.filters.caseType;
+            DOM.targetCph.caseTypeFilter.innerHTML = caseTypeOptions;
+
+            // Restore selected values for multi-select
+            if (jQuery && jQuery.fn.select2 && STATE.targetCph.filters.caseType && STATE.targetCph.filters.caseType.length > 0) {
+                jQuery(DOM.targetCph.caseTypeFilter).val(STATE.targetCph.filters.caseType).trigger('change.select2');
             }
         }
 
-        // Refresh Select2 if initialized
+        // Refresh Select2 to show updated options
         if (jQuery && jQuery.fn.select2) {
+            // Destroy and reinitialize Select2 to pick up new options
             if (DOM.targetCph.lobFilter) {
-                jQuery(DOM.targetCph.lobFilter).trigger('change.select2');
+                const $lob = jQuery(DOM.targetCph.lobFilter);
+                if ($lob.hasClass('select2-hidden-accessible')) {
+                    $lob.select2('destroy');
+                }
+                $lob.select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Select LOBs...',
+                    allowClear: true,
+                    closeOnSelect: false,
+                    width: '100%'
+                });
             }
             if (DOM.targetCph.caseTypeFilter) {
-                jQuery(DOM.targetCph.caseTypeFilter).trigger('change.select2');
+                const $caseType = jQuery(DOM.targetCph.caseTypeFilter);
+                if ($caseType.hasClass('select2-hidden-accessible')) {
+                    $caseType.select2('destroy');
+                }
+                $caseType.select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Select Case Types...',
+                    allowClear: true,
+                    closeOnSelect: false,
+                    width: '100%'
+                });
             }
         }
     }
@@ -524,7 +548,7 @@
                 // Load filter options and data
                 loadDistinctLobs();
                 loadDistinctCaseTypes();
-                loadTargetCphConfigurations();
+                loadTargetCphConfigurations(true); // First load needs to fetch from server
             }
         }
     }
@@ -1143,7 +1167,7 @@
         }
     }
 
-    async function loadTargetCphConfigurations() {
+    async function loadTargetCphConfigurations(forceRefresh = false) {
         if (STATE.targetCph.isLoading) return;
 
         STATE.targetCph.isLoading = true;
@@ -1151,19 +1175,21 @@
         hideError(DOM.targetCph);
 
         try {
-            const params = new URLSearchParams();
-            if (STATE.targetCph.filters.mainLob) params.append('main_lob', STATE.targetCph.filters.mainLob);
-            if (STATE.targetCph.filters.caseType) params.append('case_type', STATE.targetCph.filters.caseType);
+            // Only fetch from server if we don't have data or forceRefresh is true
+            if (forceRefresh || STATE.targetCph.allData.length === 0) {
+                // Fetch all data without filters (client-side filtering for multi-select)
+                const response = await fetch(URLS.targetCphList);
+                const data = await response.json();
 
-            const url = URLS.targetCphList + (params.toString() ? '?' + params.toString() : '');
-            const response = await fetch(url);
-            const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to load configurations');
+                }
 
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Failed to load configurations');
+                STATE.targetCph.allData = data.data || [];
             }
 
-            STATE.targetCph.data = data.data || [];
+            // Apply client-side filtering for multi-select
+            STATE.targetCph.data = applyTargetCphFilters(STATE.targetCph.allData);
             renderTargetCphTable();
             updateTargetCphCount();
 
@@ -1174,6 +1200,28 @@
             STATE.targetCph.isLoading = false;
             hideLoading(DOM.targetCph);
         }
+    }
+
+    function applyTargetCphFilters(data) {
+        const { mainLob, caseType } = STATE.targetCph.filters;
+
+        return data.filter(item => {
+            // Filter by Main LOB (if any selected)
+            if (mainLob && mainLob.length > 0) {
+                if (!mainLob.includes(item.main_lob)) {
+                    return false;
+                }
+            }
+
+            // Filter by Case Type (if any selected)
+            if (caseType && caseType.length > 0) {
+                if (!caseType.includes(item.case_type)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
     }
 
     function renderTargetCphTable() {
@@ -1281,21 +1329,36 @@
     }
 
     function handleTargetCphApplyFilters() {
-        STATE.targetCph.filters.mainLob = DOM.targetCph.lobFilter?.value || '';
-        STATE.targetCph.filters.caseType = DOM.targetCph.caseTypeFilter?.value || '';
+        // Multi-select: use jQuery.val() which returns an array, or fallback to getting selected options
+        if (jQuery && jQuery.fn.select2) {
+            STATE.targetCph.filters.mainLob = jQuery(DOM.targetCph.lobFilter).val() || [];
+            STATE.targetCph.filters.caseType = jQuery(DOM.targetCph.caseTypeFilter).val() || [];
+        } else {
+            // Fallback for native multi-select
+            STATE.targetCph.filters.mainLob = DOM.targetCph.lobFilter
+                ? Array.from(DOM.targetCph.lobFilter.selectedOptions).map(o => o.value).filter(v => v)
+                : [];
+            STATE.targetCph.filters.caseType = DOM.targetCph.caseTypeFilter
+                ? Array.from(DOM.targetCph.caseTypeFilter.selectedOptions).map(o => o.value).filter(v => v)
+                : [];
+        }
         STATE.targetCph.currentPage = 1;
         loadTargetCphConfigurations();
     }
 
     function handleTargetCphClearFilters() {
-        STATE.targetCph.filters = { mainLob: '', caseType: '' };
+        STATE.targetCph.filters = { mainLob: [], caseType: [] };
 
         if (jQuery && jQuery.fn.select2) {
-            jQuery(DOM.targetCph.lobFilter).val('').trigger('change.select2');
-            jQuery(DOM.targetCph.caseTypeFilter).val('').trigger('change.select2');
+            jQuery(DOM.targetCph.lobFilter).val(null).trigger('change.select2');
+            jQuery(DOM.targetCph.caseTypeFilter).val(null).trigger('change.select2');
         } else {
-            if (DOM.targetCph.lobFilter) DOM.targetCph.lobFilter.value = '';
-            if (DOM.targetCph.caseTypeFilter) DOM.targetCph.caseTypeFilter.value = '';
+            if (DOM.targetCph.lobFilter) {
+                Array.from(DOM.targetCph.lobFilter.options).forEach(o => o.selected = false);
+            }
+            if (DOM.targetCph.caseTypeFilter) {
+                Array.from(DOM.targetCph.caseTypeFilter.options).forEach(o => o.selected = false);
+            }
         }
 
         // Reset to all case types when clearing filters
@@ -1306,18 +1369,26 @@
     }
 
     function handleLobFilterChange(e) {
-        const selectedLob = e.target.value || '';
+        // For multi-select, get all selected values
+        let selectedLobs = [];
+        if (jQuery && jQuery.fn.select2) {
+            selectedLobs = jQuery(DOM.targetCph.lobFilter).val() || [];
+        } else if (DOM.targetCph.lobFilter) {
+            selectedLobs = Array.from(DOM.targetCph.lobFilter.selectedOptions).map(o => o.value).filter(v => v);
+        }
 
         // Reset case type filter when LOB changes
         if (DOM.targetCph.caseTypeFilter) {
             DOM.targetCph.caseTypeFilter.innerHTML = '<option value="">Loading...</option>';
             if (jQuery && jQuery.fn.select2) {
-                jQuery(DOM.targetCph.caseTypeFilter).val('').trigger('change.select2');
+                jQuery(DOM.targetCph.caseTypeFilter).val(null).trigger('change.select2');
             }
         }
 
-        // Load case types filtered by selected LOB (or all if none selected)
-        loadDistinctCaseTypes(selectedLob || null);
+        // Load case types filtered by first selected LOB (or all if none selected)
+        // For simplicity, use first LOB or null for all
+        const filterLob = selectedLobs.length === 1 ? selectedLobs[0] : null;
+        loadDistinctCaseTypes(filterLob);
     }
 
     function handleTargetCphAdd() {
@@ -1390,7 +1461,7 @@
             hideModal('target-cph-modal');
             showSuccess(STATE.modal.mode === 'edit' ? 'Configuration updated successfully' : 'Configuration created successfully');
             loadDistinctLobs(); // Refresh LOB list
-            loadTargetCphConfigurations();
+            loadTargetCphConfigurations(true); // Force refresh from server
 
         } catch (error) {
             console.error('Failed to save configuration:', error);
@@ -1425,7 +1496,7 @@
 
             showSuccess('Configuration deleted successfully');
             loadDistinctLobs();
-            loadTargetCphConfigurations();
+            loadTargetCphConfigurations(true); // Force refresh from server
 
         } catch (error) {
             console.error('Failed to delete configuration:', error);
@@ -1543,7 +1614,7 @@
             hideModal('target-cph-bulk-modal');
             showSuccess(`Successfully created ${result.created_count} configuration(s)`);
             loadDistinctLobs();
-            loadTargetCphConfigurations();
+            loadTargetCphConfigurations(true); // Force refresh from server
 
         } catch (error) {
             console.error('Bulk create failed:', error);

@@ -817,6 +817,57 @@
         });
     }
 
+    /**
+     * Show success dialog using SweetAlert
+     * @param {string} title - Dialog title
+     * @param {string} message - Success message
+     */
+    function showSuccessDialog(title, message) {
+        Swal.fire({
+            icon: 'success',
+            title: title,
+            html: `<p>${message}</p>`,
+            confirmButtonColor: '#198754',
+            confirmButtonText: 'OK'
+        });
+    }
+
+    /**
+     * Show submitting/loading dialog using SweetAlert
+     * @param {string} message - Loading message to display
+     */
+    function showSubmittingDialog(message) {
+        Swal.fire({
+            title: message,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+    }
+
+    /**
+     * Show toast notification using SweetAlert
+     * @param {string} message - Toast message
+     * @param {string} icon - Toast icon ('success', 'error', 'warning', 'info')
+     */
+    function showToast(message, icon = 'info') {
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
+
+        Toast.fire({
+            icon: icon,
+            title: message
+        });
+    }
+
     // ============================================================================
     // ALLOCATION REPORTS (DROPDOWN)
     // ============================================================================
@@ -1425,6 +1476,50 @@
         paginationUl.append(nextLi);
     }
 
+    /**
+     * Render pagination HTML string for simple pagination needs
+     * @param {number} currentPage - Current page number
+     * @param {number} totalPages - Total number of pages
+     * @param {string} paginationClass - CSS class for the pagination container
+     * @returns {string} HTML string for pagination list items
+     */
+    function renderPaginationHtml(currentPage, totalPages, paginationClass) {
+        const items = [];
+
+        // Previous button
+        items.push(`
+            <li class="edit-view-page-item ${currentPage === 1 ? 'edit-view-disabled' : ''}">
+                <a class="edit-view-page-link" href="#" data-page="${currentPage - 1}">Previous</a>
+            </li>
+        `);
+
+        // Page numbers (with ellipsis for large page counts)
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+                items.push(`
+                    <li class="edit-view-page-item ${i === currentPage ? 'edit-view-active' : ''}">
+                        <a class="edit-view-page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `);
+            } else if (i === currentPage - 3 || i === currentPage + 3) {
+                items.push(`
+                    <li class="edit-view-page-item edit-view-disabled">
+                        <span class="edit-view-page-link">...</span>
+                    </li>
+                `);
+            }
+        }
+
+        // Next button
+        items.push(`
+            <li class="edit-view-page-item ${currentPage === totalPages ? 'edit-view-disabled' : ''}">
+                <a class="edit-view-page-link" href="#" data-page="${currentPage + 1}">Next</a>
+            </li>
+        `);
+
+        return items.join('');
+    }
+
     // ============================================================================
     // GENERIC PREVIEW SYSTEM - FILTER FUNCTIONS
     // ============================================================================
@@ -1845,14 +1940,24 @@
     // ACCEPT & REJECT ACTIONS
     // ============================================================================
 
-    function handleNotesInput() {
-        const currentLength = DOM.userNotesInput.val().length;
-        DOM.notesCharCount.text(currentLength);
+    /**
+     * Generic handler for notes input character counting
+     * @param {jQuery} inputElement - The textarea/input element
+     * @param {jQuery} charCountElement - The element to display character count
+     * @param {number} maxLength - Maximum allowed characters (defaults to CONFIG.settings.maxUserNotesLength)
+     */
+    function handleGenericNotesInput(inputElement, charCountElement, maxLength = CONFIG.settings.maxUserNotesLength) {
+        const currentLength = inputElement.val().length;
+        charCountElement.text(currentLength);
 
-        if (currentLength > CONFIG.settings.maxUserNotesLength) {
-            DOM.userNotesInput.val(DOM.userNotesInput.val().substring(0, CONFIG.settings.maxUserNotesLength));
-            DOM.notesCharCount.text(CONFIG.settings.maxUserNotesLength);
+        if (currentLength > maxLength) {
+            inputElement.val(inputElement.val().substring(0, maxLength));
+            charCountElement.text(maxLength);
         }
+    }
+
+    function handleNotesInput() {
+        handleGenericNotesInput(DOM.userNotesInput, DOM.notesCharCount);
     }
 
     function handleReject() {
@@ -2682,36 +2787,8 @@
             return;
         }
 
-        const paginationHtml = [];
-        paginationHtml.push(`
-            <li class="edit-view-page-item ${currentPage === 1 ? 'edit-view-disabled' : ''}">
-                <a class="edit-view-page-link" href="#" data-page="${currentPage - 1}">Previous</a>
-            </li>
-        `);
-
-        for (let i = 1; i <= totalPages; i++) {
-            if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
-                paginationHtml.push(`
-                    <li class="edit-view-page-item ${i === currentPage ? 'edit-view-active' : ''}">
-                        <a class="edit-view-page-link" href="#" data-page="${i}">${i}</a>
-                    </li>
-                `);
-            } else if (i === currentPage - 3 || i === currentPage + 3) {
-                paginationHtml.push(`
-                    <li class="edit-view-page-item edit-view-disabled">
-                        <span class="edit-view-page-link">...</span>
-                    </li>
-                `);
-            }
-        }
-
-        paginationHtml.push(`
-            <li class="edit-view-page-item ${currentPage === totalPages ? 'edit-view-disabled' : ''}">
-                <a class="edit-view-page-link" href="#" data-page="${currentPage + 1}">Next</a>
-            </li>
-        `);
-
-        DOM.cphPagination.find('ul').html(paginationHtml.join(''));
+        const paginationHtml = renderPaginationHtml(currentPage, totalPages, 'edit-view-cph-pagination');
+        DOM.cphPagination.find('ul').html(paginationHtml);
         showElement(DOM.cphPagination);
     }
 
@@ -3305,17 +3382,8 @@
         }
     }
 
-    function handleCphNotesInput(e) {
-        const input = $(e.target);
-        const charCount = input.val().length;
-        const maxLength = CONFIG.settings.maxUserNotesLength;
-
-        DOM.cphNotesCharCount.text(charCount);
-
-        if (charCount > maxLength) {
-            input.val(input.val().substring(0, maxLength));
-            DOM.cphNotesCharCount.text(maxLength);
-        }
+    function handleCphNotesInput() {
+        handleGenericNotesInput(DOM.cphUserNotesInput, DOM.cphNotesCharCount);
     }
 
     // ============================================================================
@@ -4235,17 +4303,8 @@
     /**
      * Handle user notes input
      */
-    function handleReallocationNotesInput(e) {
-        const input = $(e.target);
-        const charCount = input.val().length;
-        const maxLength = CONFIG.settings.maxUserNotesLength;
-
-        DOM.reallocationNotesCharCount.text(charCount);
-
-        if (charCount > maxLength) {
-            input.val(input.val().substring(0, maxLength));
-            DOM.reallocationNotesCharCount.text(maxLength);
-        }
+    function handleReallocationNotesInput() {
+        handleGenericNotesInput(DOM.reallocationUserNotesInput, DOM.reallocationNotesCharCount);
     }
 
     // ============================================================================
