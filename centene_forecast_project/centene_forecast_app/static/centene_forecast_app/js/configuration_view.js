@@ -393,6 +393,9 @@
             DOM.targetCph.tableBody.addEventListener('click', handleTargetCphTableAction);
         }
 
+        // Pagination event delegation
+        document.addEventListener('click', handlePaginationClick);
+
         // Modal reset on close
         if (DOM.monthConfigModal.modal) {
             DOM.monthConfigModal.modal.addEventListener('hidden.bs.modal', resetMonthConfigModal);
