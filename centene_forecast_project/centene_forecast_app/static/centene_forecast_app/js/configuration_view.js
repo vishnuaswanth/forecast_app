@@ -21,12 +21,14 @@
         // Month Configuration state
         monthConfig: {
             data: [],
-            filters: { year: '', month: '', workType: '' },
+            allData: [],  // Store unfiltered data for client-side filtering
+            filters: { year: [], month: [], workType: [] },  // Arrays for multi-select
             currentPage: 1,
             totalPages: 1,
             isLoading: false,
             distinctYears: [],
-            distinctMonths: []
+            distinctMonths: [],
+            distinctWorkTypes: []
         },
         // Target CPH state
         targetCph: {
@@ -257,11 +259,6 @@
             DOM.monthConfigModal.workTypeField.innerHTML = '<option value="">Select Type</option>' + workTypeOptions;
         }
 
-        // Work type filter can be static (only 2 values: Domestic, Global)
-        if (DOM.monthConfig.workTypeFilter) {
-            DOM.monthConfig.workTypeFilter.innerHTML = '<option value="">All Types</option>' + workTypeOptions;
-        }
-
         // Set year field limits in modal
         if (DOM.monthConfigModal.yearField) {
             DOM.monthConfigModal.yearField.min = SETTINGS.minYear || 2020;
@@ -269,68 +266,174 @@
             DOM.monthConfigModal.yearField.value = currentYear;
         }
 
-        // Initialize filter dropdowns with loading state
+        // Initialize filter dropdowns with empty state (will be populated from data)
+        // Note: Multi-select filters don't need placeholder options
         if (DOM.monthConfig.yearFilter) {
-            DOM.monthConfig.yearFilter.innerHTML = '<option value="">Loading...</option>';
+            DOM.monthConfig.yearFilter.innerHTML = '';
         }
         if (DOM.monthConfig.monthFilter) {
-            DOM.monthConfig.monthFilter.innerHTML = '<option value="">Loading...</option>';
+            DOM.monthConfig.monthFilter.innerHTML = '';
+        }
+        if (DOM.monthConfig.workTypeFilter) {
+            DOM.monthConfig.workTypeFilter.innerHTML = '';
         }
 
-        // Initialize Target CPH filters with loading state
+        // Initialize Target CPH filters with empty state
         if (DOM.targetCph.lobFilter) {
-            DOM.targetCph.lobFilter.innerHTML = '<option value="">Loading...</option>';
+            DOM.targetCph.lobFilter.innerHTML = '';
         }
         if (DOM.targetCph.caseTypeFilter) {
-            DOM.targetCph.caseTypeFilter.innerHTML = '<option value="">Loading...</option>';
+            DOM.targetCph.caseTypeFilter.innerHTML = '';
         }
     }
 
-    function populateMonthConfigFiltersFromData() {
-        // Extract distinct years from data
-        const years = [...new Set(STATE.monthConfig.data.map(c => c.year))].sort((a, b) => b - a);
+    function populateMonthConfigFiltersFromData(cascadeFrom = null) {
+        // Extract distinct values from allData (unfiltered data)
+        const allData = STATE.monthConfig.allData;
+
+        // Extract distinct years from allData
+        const years = [...new Set(allData.map(c => c.year))].sort((a, b) => b - a);
         STATE.monthConfig.distinctYears = years;
 
-        // Extract distinct months from data (preserve month order)
+        // Extract distinct work types from allData
+        const workTypes = SETTINGS.workTypes || [];
+        const workTypesInData = [...new Set(allData.map(c => c.work_type))];
+        const orderedWorkTypes = workTypes.filter(t => workTypesInData.includes(t));
+        STATE.monthConfig.distinctWorkTypes = orderedWorkTypes;
+
+        // Extract distinct months - may be filtered by selected years
         const monthNames = SETTINGS.monthNames || [];
-        const monthsInData = [...new Set(STATE.monthConfig.data.map(c => c.month))];
-        const orderedMonths = monthNames.filter(m => monthsInData.includes(m));
+        let dataForMonths = allData;
+        let dataForWorkTypes = allData;
+
+        // If years are selected, filter months to only show months from those years
+        const selectedYears = STATE.monthConfig.filters.year || [];
+        if (selectedYears.length > 0) {
+            dataForMonths = allData.filter(c => selectedYears.includes(c.year.toString()) || selectedYears.includes(c.year));
+        }
+
+        // If years and months are selected, filter work types
+        const selectedMonths = STATE.monthConfig.filters.month || [];
+        if (selectedYears.length > 0 || selectedMonths.length > 0) {
+            dataForWorkTypes = allData.filter(c => {
+                const yearMatch = selectedYears.length === 0 || selectedYears.includes(c.year.toString()) || selectedYears.includes(c.year);
+                const monthMatch = selectedMonths.length === 0 || selectedMonths.includes(c.month);
+                return yearMatch && monthMatch;
+            });
+        }
+
+        const monthsInFilteredData = [...new Set(dataForMonths.map(c => c.month))];
+        const orderedMonths = monthNames.filter(m => monthsInFilteredData.includes(m));
         STATE.monthConfig.distinctMonths = orderedMonths;
 
-        // Populate year filter
-        if (DOM.monthConfig.yearFilter) {
+        const workTypesInFilteredData = [...new Set(dataForWorkTypes.map(c => c.work_type))];
+        const filteredWorkTypes = workTypes.filter(t => workTypesInFilteredData.includes(t));
+
+        // Populate year filter (always from allData)
+        if (DOM.monthConfig.yearFilter && cascadeFrom !== 'year') {
             const yearOptions = years.map(y => `<option value="${y}">${y}</option>`).join('');
-            DOM.monthConfig.yearFilter.innerHTML = '<option value="">All Years</option>' + yearOptions;
-            // Restore selected value if it exists
-            if (STATE.monthConfig.filters.year && years.includes(parseInt(STATE.monthConfig.filters.year))) {
-                DOM.monthConfig.yearFilter.value = STATE.monthConfig.filters.year;
-            }
+            DOM.monthConfig.yearFilter.innerHTML = yearOptions;
         }
 
-        // Populate month filter
+        // Populate month filter (filtered by selected years)
         if (DOM.monthConfig.monthFilter) {
             const monthOptions = orderedMonths.map(m => `<option value="${m}">${m}</option>`).join('');
-            DOM.monthConfig.monthFilter.innerHTML = '<option value="">All Months</option>' + monthOptions;
-            // Restore selected value if it exists
-            if (STATE.monthConfig.filters.month && orderedMonths.includes(STATE.monthConfig.filters.month)) {
-                DOM.monthConfig.monthFilter.value = STATE.monthConfig.filters.month;
+            DOM.monthConfig.monthFilter.innerHTML = monthOptions;
+
+            // If cascading from year, clear month selection if selected months are no longer valid
+            if (cascadeFrom === 'year' && selectedMonths.length > 0) {
+                const validMonths = selectedMonths.filter(m => orderedMonths.includes(m));
+                STATE.monthConfig.filters.month = validMonths;
             }
         }
 
-        // Refresh Select2 if initialized
-        if (jQuery && jQuery.fn.select2) {
-            if (DOM.monthConfig.yearFilter) {
-                jQuery(DOM.monthConfig.yearFilter).trigger('change.select2');
+        // Populate work type filter (filtered by selected years and months)
+        if (DOM.monthConfig.workTypeFilter) {
+            const workTypeOptions = filteredWorkTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+            DOM.monthConfig.workTypeFilter.innerHTML = workTypeOptions;
+
+            // If cascading, clear work type selection if selected types are no longer valid
+            if ((cascadeFrom === 'year' || cascadeFrom === 'month') && STATE.monthConfig.filters.workType.length > 0) {
+                const validWorkTypes = STATE.monthConfig.filters.workType.filter(t => filteredWorkTypes.includes(t));
+                STATE.monthConfig.filters.workType = validWorkTypes;
             }
-            if (DOM.monthConfig.monthFilter) {
-                jQuery(DOM.monthConfig.monthFilter).trigger('change.select2');
+        }
+
+        // Initialize or refresh Select2 for multi-select dropdowns
+        initMonthConfigSelect2();
+    }
+
+    function initMonthConfigSelect2() {
+        if (!jQuery || !jQuery.fn.select2) return;
+
+        // Year filter
+        if (DOM.monthConfig.yearFilter) {
+            const $year = jQuery(DOM.monthConfig.yearFilter);
+            if ($year.hasClass('select2-hidden-accessible')) {
+                $year.select2('destroy');
+            }
+            $year.select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Select Years...',
+                allowClear: true,
+                closeOnSelect: false,
+                width: '100%'
+            });
+            // Restore selected values
+            if (STATE.monthConfig.filters.year && STATE.monthConfig.filters.year.length > 0) {
+                $year.val(STATE.monthConfig.filters.year).trigger('change.select2');
+            }
+        }
+
+        // Month filter
+        if (DOM.monthConfig.monthFilter) {
+            const $month = jQuery(DOM.monthConfig.monthFilter);
+            if ($month.hasClass('select2-hidden-accessible')) {
+                $month.select2('destroy');
+            }
+            $month.select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Select Months...',
+                allowClear: true,
+                closeOnSelect: false,
+                width: '100%'
+            });
+            // Restore selected values
+            if (STATE.monthConfig.filters.month && STATE.monthConfig.filters.month.length > 0) {
+                $month.val(STATE.monthConfig.filters.month).trigger('change.select2');
+            }
+        }
+
+        // Work Type filter
+        if (DOM.monthConfig.workTypeFilter) {
+            const $workType = jQuery(DOM.monthConfig.workTypeFilter);
+            if ($workType.hasClass('select2-hidden-accessible')) {
+                $workType.select2('destroy');
+            }
+            $workType.select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Select Types...',
+                allowClear: true,
+                closeOnSelect: false,
+                width: '100%'
+            });
+            // Restore selected values
+            if (STATE.monthConfig.filters.workType && STATE.monthConfig.filters.workType.length > 0) {
+                $workType.val(STATE.monthConfig.filters.workType).trigger('change.select2');
             }
         }
     }
 
-    function populateTargetCphFiltersFromData() {
+    function populateTargetCphFiltersFromData(onlyPopulateCaseTypes = false) {
         // Populate Main LOB filter from distinct values (multi-select - no "All" option needed)
-        if (DOM.targetCph.lobFilter && STATE.targetCph.distinctLobs.length > 0) {
+        // Skip if we only need to update case types (e.g., after LOB selection change)
+        if (!onlyPopulateCaseTypes && DOM.targetCph.lobFilter && STATE.targetCph.distinctLobs.length > 0) {
+            // Save current selection before repopulating
+            let currentSelection = [];
+            if (jQuery && jQuery.fn.select2) {
+                currentSelection = jQuery(DOM.targetCph.lobFilter).val() || [];
+            }
+
             const lobOptions = STATE.targetCph.distinctLobs.map(item => {
                 const value = typeof item === 'object' ? item.value : item;
                 const display = typeof item === 'object' ? item.display : item;
@@ -338,10 +441,8 @@
             }).join('');
             DOM.targetCph.lobFilter.innerHTML = lobOptions;
 
-            // Restore selected values for multi-select
-            if (jQuery && jQuery.fn.select2 && STATE.targetCph.filters.mainLob && STATE.targetCph.filters.mainLob.length > 0) {
-                jQuery(DOM.targetCph.lobFilter).val(STATE.targetCph.filters.mainLob).trigger('change.select2');
-            }
+            // Initialize LOB Select2
+            initTargetCphLobSelect2(currentSelection);
         }
 
         // Populate Case Type filter from distinct values (multi-select - no "All" option needed)
@@ -353,92 +454,82 @@
             }).join('');
             DOM.targetCph.caseTypeFilter.innerHTML = caseTypeOptions;
 
-            // Restore selected values for multi-select
-            if (jQuery && jQuery.fn.select2 && STATE.targetCph.filters.caseType && STATE.targetCph.filters.caseType.length > 0) {
-                jQuery(DOM.targetCph.caseTypeFilter).val(STATE.targetCph.filters.caseType).trigger('change.select2');
-            }
+            // Initialize Case Type Select2
+            initTargetCphCaseTypeSelect2();
+        }
+    }
+
+    function initTargetCphLobSelect2(preserveSelection = null) {
+        if (!jQuery || !jQuery.fn.select2) return;
+        if (!DOM.targetCph.lobFilter) return;
+
+        const $lob = jQuery(DOM.targetCph.lobFilter);
+
+        // Destroy existing Select2 instance if any
+        if ($lob.hasClass('select2-hidden-accessible')) {
+            $lob.select2('destroy');
         }
 
-        // Refresh Select2 to show updated options
-        if (jQuery && jQuery.fn.select2) {
-            // Destroy and reinitialize Select2 to pick up new options
-            if (DOM.targetCph.lobFilter) {
-                const $lob = jQuery(DOM.targetCph.lobFilter);
-                if ($lob.hasClass('select2-hidden-accessible')) {
-                    $lob.select2('destroy');
-                }
-                $lob.select2({
-                    theme: 'bootstrap-5',
-                    placeholder: 'Select LOBs...',
-                    allowClear: true,
-                    closeOnSelect: false,
-                    width: '100%'
-                });
-            }
-            if (DOM.targetCph.caseTypeFilter) {
-                const $caseType = jQuery(DOM.targetCph.caseTypeFilter);
-                if ($caseType.hasClass('select2-hidden-accessible')) {
-                    $caseType.select2('destroy');
-                }
-                $caseType.select2({
-                    theme: 'bootstrap-5',
-                    placeholder: 'Select Case Types...',
-                    allowClear: true,
-                    closeOnSelect: false,
-                    width: '100%'
-                });
-            }
+        // Initialize Select2
+        $lob.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Select LOBs...',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+
+        // Restore selection - use preserved selection or state
+        const valuesToRestore = preserveSelection && preserveSelection.length > 0
+            ? preserveSelection
+            : (STATE.targetCph.filters.mainLob || []);
+
+        if (valuesToRestore.length > 0) {
+            $lob.val(valuesToRestore).trigger('change.select2');
+        }
+    }
+
+    function initTargetCphCaseTypeSelect2() {
+        if (!jQuery || !jQuery.fn.select2) return;
+        if (!DOM.targetCph.caseTypeFilter) return;
+
+        const $caseType = jQuery(DOM.targetCph.caseTypeFilter);
+
+        // Destroy existing Select2 instance if any
+        if ($caseType.hasClass('select2-hidden-accessible')) {
+            $caseType.select2('destroy');
+        }
+
+        // Initialize Select2
+        $caseType.select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Select Case Types...',
+            allowClear: true,
+            closeOnSelect: false,
+            width: '100%'
+        });
+
+        // Restore selected values AFTER initialization
+        if (STATE.targetCph.filters.caseType && STATE.targetCph.filters.caseType.length > 0) {
+            $caseType.val(STATE.targetCph.filters.caseType).trigger('change.select2');
         }
     }
 
     function initSelect2() {
         // Initialize Select2 for filter dropdowns
+        // NOTE: Multi-select dropdowns (.config-view-select2-multi) are initialized
+        // AFTER their options are populated in populateMonthConfigFiltersFromData()
+        // and populateTargetCphFiltersFromData() to ensure Select2 can properly
+        // render the options.
         if (jQuery && jQuery.fn.select2) {
-            // Single-select dropdowns
+            // Single-select dropdowns only
             jQuery('.config-view-select2').select2({
                 theme: 'bootstrap-5',
                 width: '100%',
                 allowClear: true,
                 minimumResultsForSearch: 5
             });
-
-            // Multi-select dropdowns
-            jQuery('.config-view-select2-multi').select2({
-                theme: 'bootstrap-5',
-                placeholder: 'Select options...',
-                allowClear: true,
-                closeOnSelect: false,
-                width: '100%'
-            });
-
-            // Multi-select with checkboxes
-            jQuery('.config-view-select2-multi-checkbox').select2({
-                theme: 'bootstrap-5',
-                placeholder: 'Select options...',
-                allowClear: true,
-                closeOnSelect: false,
-                width: '100%'
-            });
         }
-
-        // Add Select All functionality for multi-checkbox dropdowns
-        jQuery(document).on('select2:open', '.config-view-select2-multi-checkbox', function() {
-            const container = jQuery('.select2-results__options');
-            if (container.find('.select-all-option').length === 0) {
-                container.prepend(
-                    '<li class="select2-results__option select-all-option" role="option">Select All</li>'
-                );
-            }
-        });
-
-        jQuery(document).on('click', '.select-all-option', function(e) {
-            e.stopPropagation();
-            const select = jQuery('.select2-hidden-accessible:focus');
-            const allValues = select.find('option').map(function() {
-                return jQuery(this).val();
-            }).get();
-            select.val(allValues).trigger('change');
-        });
     }
 
     function bindEvents() {
@@ -457,6 +548,12 @@
         }
         if (DOM.monthConfig.validateBtn) {
             DOM.monthConfig.validateBtn.addEventListener('click', handleMonthConfigValidate);
+        }
+
+        // Month Config cascading filter events (using jQuery for Select2)
+        if (jQuery && jQuery.fn.select2) {
+            jQuery(DOM.monthConfig.yearFilter).on('change', handleYearFilterChange);
+            jQuery(DOM.monthConfig.monthFilter).on('change', handleMonthFilterChange);
         }
 
         // Month Config Modal events
@@ -486,10 +583,11 @@
 
         // LOB filter change event - update case types based on selected LOB
         if (DOM.targetCph.lobFilter) {
-            DOM.targetCph.lobFilter.addEventListener('change', handleLobFilterChange);
-            // Also listen for Select2 change event
+            // Use jQuery for Select2 change event only (to avoid double-firing)
             if (jQuery && jQuery.fn.select2) {
                 jQuery(DOM.targetCph.lobFilter).on('change', handleLobFilterChange);
+            } else {
+                DOM.targetCph.lobFilter.addEventListener('change', handleLobFilterChange);
             }
         }
 
@@ -537,6 +635,39 @@
     }
 
     // ============================================================
+    // MONTH CONFIG CASCADING FILTER HANDLERS
+    // ============================================================
+    function handleYearFilterChange(e) {
+        // Get selected years
+        let selectedYears = [];
+        if (jQuery && jQuery.fn.select2) {
+            selectedYears = jQuery(DOM.monthConfig.yearFilter).val() || [];
+        } else if (DOM.monthConfig.yearFilter) {
+            selectedYears = Array.from(DOM.monthConfig.yearFilter.selectedOptions).map(o => o.value).filter(v => v);
+        }
+
+        STATE.monthConfig.filters.year = selectedYears;
+
+        // Repopulate month and work type filters based on selected years
+        populateMonthConfigFiltersFromData('year');
+    }
+
+    function handleMonthFilterChange(e) {
+        // Get selected months
+        let selectedMonths = [];
+        if (jQuery && jQuery.fn.select2) {
+            selectedMonths = jQuery(DOM.monthConfig.monthFilter).val() || [];
+        } else if (DOM.monthConfig.monthFilter) {
+            selectedMonths = Array.from(DOM.monthConfig.monthFilter.selectedOptions).map(o => o.value).filter(v => v);
+        }
+
+        STATE.monthConfig.filters.month = selectedMonths;
+
+        // Repopulate work type filter based on selected years and months
+        populateMonthConfigFiltersFromData('month');
+    }
+
+    // ============================================================
     // TAB HANDLING
     // ============================================================
     function handleTabSwitch(e) {
@@ -564,24 +695,21 @@
         hideError(DOM.monthConfig);
 
         try {
-            // On initial load, fetch all data to populate filters
-            // On subsequent loads, we can use server-side filtering if needed
-            const params = new URLSearchParams();
-            if (!isInitialLoad) {
-                if (STATE.monthConfig.filters.year) params.append('year', STATE.monthConfig.filters.year);
-                if (STATE.monthConfig.filters.month) params.append('month', STATE.monthConfig.filters.month);
-                if (STATE.monthConfig.filters.workType) params.append('work_type', STATE.monthConfig.filters.workType);
+            // Only fetch from server if we don't have data or isInitialLoad is true
+            if (isInitialLoad || STATE.monthConfig.allData.length === 0) {
+                // Fetch all data without filters (client-side filtering for multi-select)
+                const response = await fetch(URLS.monthConfigList);
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Failed to load configurations');
+                }
+
+                STATE.monthConfig.allData = data.data || [];
             }
 
-            const url = URLS.monthConfigList + (params.toString() ? '?' + params.toString() : '');
-            const response = await fetch(url);
-            const data = await response.json();
-
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || 'Failed to load configurations');
-            }
-
-            STATE.monthConfig.data = data.data || [];
+            // Apply client-side filtering for multi-select
+            STATE.monthConfig.data = applyMonthConfigFilters(STATE.monthConfig.allData);
 
             // On initial load, populate filter dropdowns from data
             if (isInitialLoad || STATE.monthConfig.distinctYears.length === 0) {
@@ -598,6 +726,36 @@
             STATE.monthConfig.isLoading = false;
             hideLoading(DOM.monthConfig);
         }
+    }
+
+    function applyMonthConfigFilters(data) {
+        const { year, month, workType } = STATE.monthConfig.filters;
+
+        return data.filter(item => {
+            // Filter by Year (if any selected)
+            if (year && year.length > 0) {
+                // year could be number in data, string in filter
+                if (!year.includes(item.year.toString()) && !year.includes(item.year)) {
+                    return false;
+                }
+            }
+
+            // Filter by Month (if any selected)
+            if (month && month.length > 0) {
+                if (!month.includes(item.month)) {
+                    return false;
+                }
+            }
+
+            // Filter by Work Type (if any selected)
+            if (workType && workType.length > 0) {
+                if (!workType.includes(item.work_type)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
     }
 
     function renderMonthConfigTable() {
@@ -717,25 +875,48 @@
     }
 
     function handleMonthConfigApplyFilters() {
-        STATE.monthConfig.filters.year = DOM.monthConfig.yearFilter?.value || '';
-        STATE.monthConfig.filters.month = DOM.monthConfig.monthFilter?.value || '';
-        STATE.monthConfig.filters.workType = DOM.monthConfig.workTypeFilter?.value || '';
+        // Multi-select: use jQuery.val() which returns an array
+        if (jQuery && jQuery.fn.select2) {
+            STATE.monthConfig.filters.year = jQuery(DOM.monthConfig.yearFilter).val() || [];
+            STATE.monthConfig.filters.month = jQuery(DOM.monthConfig.monthFilter).val() || [];
+            STATE.monthConfig.filters.workType = jQuery(DOM.monthConfig.workTypeFilter).val() || [];
+        } else {
+            // Fallback for native multi-select
+            STATE.monthConfig.filters.year = DOM.monthConfig.yearFilter
+                ? Array.from(DOM.monthConfig.yearFilter.selectedOptions).map(o => o.value).filter(v => v)
+                : [];
+            STATE.monthConfig.filters.month = DOM.monthConfig.monthFilter
+                ? Array.from(DOM.monthConfig.monthFilter.selectedOptions).map(o => o.value).filter(v => v)
+                : [];
+            STATE.monthConfig.filters.workType = DOM.monthConfig.workTypeFilter
+                ? Array.from(DOM.monthConfig.workTypeFilter.selectedOptions).map(o => o.value).filter(v => v)
+                : [];
+        }
         STATE.monthConfig.currentPage = 1;
         loadMonthConfigurations();
     }
 
     function handleMonthConfigClearFilters() {
-        STATE.monthConfig.filters = { year: '', month: '', workType: '' };
+        STATE.monthConfig.filters = { year: [], month: [], workType: [] };
 
         if (jQuery && jQuery.fn.select2) {
-            jQuery(DOM.monthConfig.yearFilter).val('').trigger('change');
-            jQuery(DOM.monthConfig.monthFilter).val('').trigger('change');
-            jQuery(DOM.monthConfig.workTypeFilter).val('').trigger('change');
+            jQuery(DOM.monthConfig.yearFilter).val(null).trigger('change.select2');
+            jQuery(DOM.monthConfig.monthFilter).val(null).trigger('change.select2');
+            jQuery(DOM.monthConfig.workTypeFilter).val(null).trigger('change.select2');
         } else {
-            if (DOM.monthConfig.yearFilter) DOM.monthConfig.yearFilter.value = '';
-            if (DOM.monthConfig.monthFilter) DOM.monthConfig.monthFilter.value = '';
-            if (DOM.monthConfig.workTypeFilter) DOM.monthConfig.workTypeFilter.value = '';
+            if (DOM.monthConfig.yearFilter) {
+                Array.from(DOM.monthConfig.yearFilter.options).forEach(o => o.selected = false);
+            }
+            if (DOM.monthConfig.monthFilter) {
+                Array.from(DOM.monthConfig.monthFilter.options).forEach(o => o.selected = false);
+            }
+            if (DOM.monthConfig.workTypeFilter) {
+                Array.from(DOM.monthConfig.workTypeFilter.options).forEach(o => o.selected = false);
+            }
         }
+
+        // Repopulate filters from all data (reset cascading)
+        populateMonthConfigFiltersFromData();
 
         STATE.monthConfig.currentPage = 1;
         loadMonthConfigurations();
@@ -1148,7 +1329,7 @@
         }
     }
 
-    async function loadDistinctCaseTypes(mainLob = null) {
+    async function loadDistinctCaseTypes(mainLob = null, onlyUpdateCaseTypes = false) {
         try {
             let url = URLS.targetCphDistinctCaseTypes;
             if (mainLob) {
@@ -1160,7 +1341,8 @@
 
             if (data.success && data.data) {
                 STATE.targetCph.distinctCaseTypes = data.data;
-                populateTargetCphFiltersFromData();
+                // Pass flag to only update case types, not LOB (preserves LOB selection)
+                populateTargetCphFiltersFromData(onlyUpdateCaseTypes);
             }
         } catch (error) {
             console.error('Failed to load distinct Case Types:', error);
@@ -1377,7 +1559,11 @@
             selectedLobs = Array.from(DOM.targetCph.lobFilter.selectedOptions).map(o => o.value).filter(v => v);
         }
 
+        // Store the selected LOBs in state
+        STATE.targetCph.filters.mainLob = selectedLobs;
+
         // Reset case type filter when LOB changes
+        STATE.targetCph.filters.caseType = [];
         if (DOM.targetCph.caseTypeFilter) {
             DOM.targetCph.caseTypeFilter.innerHTML = '<option value="">Loading...</option>';
             if (jQuery && jQuery.fn.select2) {
@@ -1388,7 +1574,8 @@
         // Load case types filtered by first selected LOB (or all if none selected)
         // For simplicity, use first LOB or null for all
         const filterLob = selectedLobs.length === 1 ? selectedLobs[0] : null;
-        loadDistinctCaseTypes(filterLob);
+        // Pass true to only update case types, preserving LOB selection
+        loadDistinctCaseTypes(filterLob, true);
     }
 
     function handleTargetCphAdd() {

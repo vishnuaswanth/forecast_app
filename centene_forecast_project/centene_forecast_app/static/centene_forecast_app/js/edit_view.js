@@ -681,6 +681,20 @@
         DOM.reallocationAcceptBtn.on('click', handleReallocationAccept);
         DOM.reallocationUserNotesInput.on('input', handleReallocationNotesInput);
 
+        // Reallocation data filters (cascading filter on loaded data)
+        DOM.reallocationLobFilter.on('select2:close', function() {
+            updateReallocationDataCascadingFilters('lob');
+            applyReallocationDataFilters();
+        });
+        DOM.reallocationStateFilter.on('select2:close', function() {
+            updateReallocationDataCascadingFilters('state');
+            applyReallocationDataFilters();
+        });
+        DOM.reallocationCaseTypeFilter.on('select2:close', function() {
+            updateReallocationDataCascadingFilters('caseType');
+            applyReallocationDataFilters();
+        });
+
         // Reallocation preview filters
         DOM.reallocationPreviewLobFilter.on('select2:close', applyReallocationPreviewFilters);
         DOM.reallocationPreviewCaseTypeFilter.on('select2:close', applyReallocationPreviewFilters);
@@ -3403,32 +3417,8 @@
     /**
      * Load filter options for the reallocation tab
      */
-    async function loadReallocationFilterOptions(month, year) {
-        try {
-            const url = `${CONFIG.urls.forecastReallocationFilters}?month=${encodeURIComponent(month)}&year=${year}`;
-            const response = await $.ajax({
-                url: url,
-                method: 'GET',
-                dataType: 'json'
-            });
-
-            if (response.success) {
-                STATE.reallocation.filterOptions = {
-                    mainLobs: response.main_lobs || [],
-                    states: response.states || [],
-                    caseTypes: response.case_types || []
-                };
-
-                // Populate filter dropdowns
-                populateReallocationFilterDropdowns();
-            }
-        } catch (error) {
-            console.error('Edit View: Failed to load reallocation filter options', error);
-        }
-    }
-
     /**
-     * Populate the reallocation filter dropdowns
+     * Populate the reallocation filter dropdowns from extracted filter options
      */
     function populateReallocationFilterDropdowns() {
         const { mainLobs, states, caseTypes } = STATE.reallocation.filterOptions;
@@ -3453,6 +3443,143 @@
             DOM.reallocationCaseTypeFilter.append(new Option(ct, ct, false, false));
         });
         DOM.reallocationCaseTypeFilter.trigger('change');
+    }
+
+    /**
+     * Update reallocation data cascading filters
+     * When one filter changes, update the options in other filters based on the filtered data
+     * @param {string} changedFilter - Which filter changed ('lob', 'state', 'caseType')
+     */
+    function updateReallocationDataCascadingFilters(changedFilter) {
+        const selectedLobs = DOM.reallocationLobFilter.val() || [];
+        const selectedStates = DOM.reallocationStateFilter.val() || [];
+        const selectedCaseTypes = DOM.reallocationCaseTypeFilter.val() || [];
+
+        // Get all records
+        const allRecords = STATE.reallocation.allRecords;
+
+        // Filter records based on current selections
+        let filteredRecords = allRecords;
+
+        if (selectedLobs.length > 0) {
+            filteredRecords = filteredRecords.filter(r => selectedLobs.includes(r.main_lob));
+        }
+        if (selectedStates.length > 0) {
+            filteredRecords = filteredRecords.filter(r => selectedStates.includes(r.state));
+        }
+        if (selectedCaseTypes.length > 0) {
+            filteredRecords = filteredRecords.filter(r => selectedCaseTypes.includes(r.case_type));
+        }
+
+        // Extract unique values from filtered records for cascading effect
+        const availableLobs = new Set();
+        const availableStates = new Set();
+        const availableCaseTypes = new Set();
+
+        // For each filter, determine available options based on other filter selections
+        if (changedFilter !== 'lob') {
+            // Update LOB options based on state and case type selections
+            let lobFilteredRecords = allRecords;
+            if (selectedStates.length > 0) {
+                lobFilteredRecords = lobFilteredRecords.filter(r => selectedStates.includes(r.state));
+            }
+            if (selectedCaseTypes.length > 0) {
+                lobFilteredRecords = lobFilteredRecords.filter(r => selectedCaseTypes.includes(r.case_type));
+            }
+            lobFilteredRecords.forEach(r => availableLobs.add(r.main_lob));
+        } else {
+            // Keep all original LOB options
+            STATE.reallocation.filterOptions.mainLobs.forEach(lob => availableLobs.add(lob));
+        }
+
+        if (changedFilter !== 'state') {
+            // Update State options based on LOB and case type selections
+            let stateFilteredRecords = allRecords;
+            if (selectedLobs.length > 0) {
+                stateFilteredRecords = stateFilteredRecords.filter(r => selectedLobs.includes(r.main_lob));
+            }
+            if (selectedCaseTypes.length > 0) {
+                stateFilteredRecords = stateFilteredRecords.filter(r => selectedCaseTypes.includes(r.case_type));
+            }
+            stateFilteredRecords.forEach(r => availableStates.add(r.state));
+        } else {
+            // Keep all original State options
+            STATE.reallocation.filterOptions.states.forEach(state => availableStates.add(state));
+        }
+
+        if (changedFilter !== 'caseType') {
+            // Update Case Type options based on LOB and state selections
+            let ctFilteredRecords = allRecords;
+            if (selectedLobs.length > 0) {
+                ctFilteredRecords = ctFilteredRecords.filter(r => selectedLobs.includes(r.main_lob));
+            }
+            if (selectedStates.length > 0) {
+                ctFilteredRecords = ctFilteredRecords.filter(r => selectedStates.includes(r.state));
+            }
+            ctFilteredRecords.forEach(r => availableCaseTypes.add(r.case_type));
+        } else {
+            // Keep all original Case Type options
+            STATE.reallocation.filterOptions.caseTypes.forEach(ct => availableCaseTypes.add(ct));
+        }
+
+        // Update filter dropdowns with available options
+        updateReallocationFilterDropdown(DOM.reallocationLobFilter, Array.from(availableLobs).sort(), selectedLobs);
+        updateReallocationFilterDropdown(DOM.reallocationStateFilter, Array.from(availableStates).sort(), selectedStates);
+        updateReallocationFilterDropdown(DOM.reallocationCaseTypeFilter, Array.from(availableCaseTypes).sort(), selectedCaseTypes);
+    }
+
+    /**
+     * Update a reallocation filter dropdown with new options while preserving selection
+     * @param {jQuery} $select - The select element
+     * @param {Array} options - Available options
+     * @param {Array} currentSelection - Currently selected values
+     */
+    function updateReallocationFilterDropdown($select, options, currentSelection) {
+        const validSelection = currentSelection.filter(val => options.includes(val));
+
+        $select.empty();
+        options.forEach(opt => {
+            const selected = validSelection.includes(opt);
+            $select.append(new Option(opt, opt, selected, selected));
+        });
+        $select.val(validSelection).trigger('change.select2');
+    }
+
+    /**
+     * Apply reallocation data filters to filter the displayed records
+     */
+    function applyReallocationDataFilters() {
+        const selectedLobs = DOM.reallocationLobFilter.val() || [];
+        const selectedStates = DOM.reallocationStateFilter.val() || [];
+        const selectedCaseTypes = DOM.reallocationCaseTypeFilter.val() || [];
+
+        // Store current filter selections
+        STATE.reallocation.filters = {
+            mainLobs: selectedLobs,
+            states: selectedStates,
+            caseTypes: selectedCaseTypes
+        };
+
+        // Filter all records based on selections
+        let filteredRecords = STATE.reallocation.allRecords;
+
+        if (selectedLobs.length > 0) {
+            filteredRecords = filteredRecords.filter(r => selectedLobs.includes(r.main_lob));
+        }
+        if (selectedStates.length > 0) {
+            filteredRecords = filteredRecords.filter(r => selectedStates.includes(r.state));
+        }
+        if (selectedCaseTypes.length > 0) {
+            filteredRecords = filteredRecords.filter(r => selectedCaseTypes.includes(r.case_type));
+        }
+
+        STATE.reallocation.filteredRecords = filteredRecords;
+        STATE.reallocation.currentPage = 1;
+
+        // Re-render the table
+        renderReallocationDataTable();
+
+        console.log(`Edit View: Applied filters - ${filteredRecords.length} records shown`);
     }
 
     /**
@@ -3492,16 +3619,13 @@
         STATE.reallocation.modifiedRecords.clear();
         STATE.reallocation.currentPage = 1;
 
-        // Load filter options first
-        await loadReallocationFilterOptions(month, year);
+        // Clear existing filter selections (load data without filters first, then populate filter options)
+        DOM.reallocationLobFilter.val(null).trigger('change');
+        DOM.reallocationCaseTypeFilter.val(null).trigger('change');
+        DOM.reallocationStateFilter.val(null).trigger('change');
 
-        // Get selected filters
-        const mainLobs = DOM.reallocationLobFilter.val() || [];
-        const caseTypes = DOM.reallocationCaseTypeFilter.val() || [];
-        const states = DOM.reallocationStateFilter.val() || [];
-
-        // Load data
-        await loadReallocationData(month, year, mainLobs, caseTypes, states);
+        // Load data without filters - filters will be populated from the returned data
+        await loadReallocationData(month, year, [], [], []);
     }
 
     /**
@@ -3543,6 +3667,12 @@
                 STATE.reallocation.allMonths = Object.keys(response.months || {}).map(key => response.months[key]);
                 STATE.reallocation.visibleMonths = [...STATE.reallocation.allMonths].slice(0, 6);
 
+                // Extract filter options from loaded data (for cascading filters)
+                extractReallocationFilterOptions(STATE.reallocation.allRecords);
+
+                // Populate filter dropdowns from extracted data
+                populateReallocationFilterDropdowns();
+
                 // Render month checkboxes
                 renderReallocationMonthCheckboxes();
 
@@ -3566,6 +3696,30 @@
         } finally {
             hideElement(DOM.reallocationDataLoading);
         }
+    }
+
+    /**
+     * Extract unique filter options from loaded reallocation data
+     */
+    function extractReallocationFilterOptions(records) {
+        const mainLobs = new Set();
+        const states = new Set();
+        const caseTypes = new Set();
+
+        records.forEach(record => {
+            if (record.main_lob) mainLobs.add(record.main_lob);
+            if (record.state) states.add(record.state);
+            if (record.case_type) caseTypes.add(record.case_type);
+        });
+
+        // Sort and store filter options
+        STATE.reallocation.filterOptions = {
+            mainLobs: Array.from(mainLobs).sort(),
+            states: Array.from(states).sort(),
+            caseTypes: Array.from(caseTypes).sort()
+        };
+
+        console.log('Edit View: Extracted filter options from data', STATE.reallocation.filterOptions);
     }
 
     /**
@@ -3849,6 +4003,8 @@
         if (!modifiedRecord) {
             modifiedRecord = JSON.parse(JSON.stringify(originalRecord));
             modifiedRecord.modified_fields = [];
+            // Store original target_cph for change calculation
+            modifiedRecord.original_target_cph = originalRecord.target_cph;
         }
 
         let currentValue, newValue, min, max;
@@ -3861,13 +4017,21 @@
             modifiedRecord.target_cph = parseFloat(newValue.toFixed(2));
             modifiedRecord.target_cph_change = modifiedRecord.target_cph - (originalRecord.target_cph || 0);
 
-            if (!modifiedRecord.modified_fields.includes('target_cph')) {
-                modifiedRecord.modified_fields.push('target_cph');
-            }
+            // Store full reference object in modified_fields
+            updateModifiedFieldsReference(modifiedRecord, 'target_cph', {
+                field: 'target_cph',
+                original_value: originalRecord.target_cph,
+                new_value: modifiedRecord.target_cph,
+                change: modifiedRecord.target_cph_change
+            });
         } else if (field === 'fte_avail' && month) {
             if (!modifiedRecord.months) modifiedRecord.months = {};
             if (!modifiedRecord.months[month]) {
                 modifiedRecord.months[month] = JSON.parse(JSON.stringify(originalRecord.months[month] || {}));
+                // Store original values for change calculations
+                modifiedRecord.months[month].original_fte_avail = (originalRecord.months[month] || {}).fte_avail ?? 0;
+                modifiedRecord.months[month].original_fte_req = (originalRecord.months[month] || {}).fte_req ?? 0;
+                modifiedRecord.months[month].original_capacity = (originalRecord.months[month] || {}).capacity ?? 0;
             }
 
             currentValue = modifiedRecord.months[month].fte_avail ?? 0;
@@ -3879,10 +4043,16 @@
             const originalFte = (originalRecord.months[month] || {}).fte_avail ?? 0;
             modifiedRecord.months[month].fte_avail_change = newValue - originalFte;
 
-            const fieldKey = `${month}.fte_avail`;
-            if (!modifiedRecord.modified_fields.includes(fieldKey)) {
-                modifiedRecord.modified_fields.push(fieldKey);
-            }
+            // Store full month reference object in modified_fields
+            updateModifiedFieldsReference(modifiedRecord, month, {
+                month_label: month,
+                month_index: modifiedRecord.months[month].month_index,
+                field: 'fte_avail',
+                original_fte_avail: originalFte,
+                new_fte_avail: newValue,
+                fte_avail_change: modifiedRecord.months[month].fte_avail_change,
+                forecast: modifiedRecord.months[month].forecast
+            });
         }
 
         // Check if record is actually modified from original
@@ -3904,6 +4074,46 @@
     }
 
     /**
+     * Update modified_fields array with full reference objects
+     * @param {Object} record - The modified record
+     * @param {string} key - Unique key for this modification (field name or month label)
+     * @param {Object} reference - Full reference object with original and new values
+     */
+    function updateModifiedFieldsReference(record, key, reference) {
+        if (!record.modified_fields) {
+            record.modified_fields = [];
+        }
+
+        // Find existing reference by key
+        const existingIndex = record.modified_fields.findIndex(ref => {
+            if (typeof ref === 'object') {
+                return ref.field === key || ref.month_label === key;
+            }
+            return ref === key;
+        });
+
+        if (existingIndex >= 0) {
+            // Update existing reference
+            record.modified_fields[existingIndex] = reference;
+        } else {
+            // Add new reference
+            record.modified_fields.push(reference);
+        }
+
+        // Remove references where there's no actual change
+        record.modified_fields = record.modified_fields.filter(ref => {
+            if (typeof ref === 'object') {
+                if (ref.field === 'target_cph') {
+                    return ref.change !== 0;
+                } else if (ref.month_label) {
+                    return ref.fte_avail_change !== 0;
+                }
+            }
+            return true;
+        });
+    }
+
+    /**
      * Set a reallocation value directly
      */
     function setReallocationValue(caseId, field, month, newValue) {
@@ -3914,6 +4124,8 @@
         if (!modifiedRecord) {
             modifiedRecord = JSON.parse(JSON.stringify(originalRecord));
             modifiedRecord.modified_fields = [];
+            // Store original target_cph for change calculation
+            modifiedRecord.original_target_cph = originalRecord.target_cph;
         }
 
         if (field === 'target_cph') {
@@ -3921,13 +4133,21 @@
             modifiedRecord.target_cph = parseFloat(newValue.toFixed(2));
             modifiedRecord.target_cph_change = modifiedRecord.target_cph - (originalRecord.target_cph || 0);
 
-            if (!modifiedRecord.modified_fields.includes('target_cph')) {
-                modifiedRecord.modified_fields.push('target_cph');
-            }
+            // Store full reference object in modified_fields
+            updateModifiedFieldsReference(modifiedRecord, 'target_cph', {
+                field: 'target_cph',
+                original_value: originalRecord.target_cph,
+                new_value: modifiedRecord.target_cph,
+                change: modifiedRecord.target_cph_change
+            });
         } else if (field === 'fte_avail' && month) {
             if (!modifiedRecord.months) modifiedRecord.months = {};
             if (!modifiedRecord.months[month]) {
                 modifiedRecord.months[month] = JSON.parse(JSON.stringify(originalRecord.months[month] || {}));
+                // Store original values for change calculations
+                modifiedRecord.months[month].original_fte_avail = (originalRecord.months[month] || {}).fte_avail ?? 0;
+                modifiedRecord.months[month].original_fte_req = (originalRecord.months[month] || {}).fte_req ?? 0;
+                modifiedRecord.months[month].original_capacity = (originalRecord.months[month] || {}).capacity ?? 0;
             }
 
             newValue = Math.max(0, Math.min(999, Math.round(newValue)));
@@ -3936,10 +4156,16 @@
             const originalFte = (originalRecord.months[month] || {}).fte_avail ?? 0;
             modifiedRecord.months[month].fte_avail_change = newValue - originalFte;
 
-            const fieldKey = `${month}.fte_avail`;
-            if (!modifiedRecord.modified_fields.includes(fieldKey)) {
-                modifiedRecord.modified_fields.push(fieldKey);
-            }
+            // Store full month reference object in modified_fields
+            updateModifiedFieldsReference(modifiedRecord, month, {
+                month_label: month,
+                month_index: modifiedRecord.months[month].month_index,
+                field: 'fte_avail',
+                original_fte_avail: originalFte,
+                new_fte_avail: newValue,
+                fte_avail_change: modifiedRecord.months[month].fte_avail_change,
+                forecast: modifiedRecord.months[month].forecast
+            });
         }
 
         const isActuallyModified = checkRecordModified(originalRecord, modifiedRecord);
@@ -4012,6 +4238,7 @@
                 data: JSON.stringify({
                     month: month,
                     year: year,
+                    months: STATE.reallocation.monthsMapping,  // Include month index mapping
                     modified_records: modifiedRecords
                 })
             });
@@ -4022,15 +4249,11 @@
                 STATE.reallocation.filteredPreviewRecords = [...STATE.reallocation.allPreviewRecords];
                 STATE.reallocation.previewCurrentPage = 1;
 
-                // Render preview
+                // Render preview (handles badges, filters, and table)
                 renderReallocationPreview();
 
                 showElement(DOM.reallocationPreviewContainer);
                 showElement(DOM.reallocationActionsContainer);
-
-                // Update counts
-                DOM.reallocationPreviewModifiedCountBadge.text(`${STATE.reallocation.allPreviewRecords.length} records modified`);
-                DOM.reallocationActionSummaryCount.text(STATE.reallocation.allPreviewRecords.length);
 
                 console.log('Edit View: Reallocation preview generated');
             } else {
@@ -4052,52 +4275,28 @@
     function renderReallocationPreview() {
         // Use the generic preview rendering system
         const config = PREVIEW_CONFIGS.forecastReallocation;
-        const records = STATE.reallocation.filteredPreviewRecords;
-        const pageSize = CONFIG.settings.previewPageSize;
-        const currentPage = STATE.reallocation.previewCurrentPage;
-        const startIdx = (currentPage - 1) * pageSize;
-        const endIdx = startIdx + pageSize;
-        const pageRecords = records.slice(startIdx, endIdx);
 
-        // Get months mapping from state
-        const monthsMapping = STATE.reallocation.monthsMapping || {};
+        // Populate filters using generic system
+        populateGenericFilters(STATE.reallocation.allPreviewRecords, config);
 
-        // Render using generic preview table
-        renderGenericPreviewTable(
-            config,
-            pageRecords,
-            monthsMapping,
-            DOM.reallocationPreviewTableHead,
-            DOM.reallocationPreviewTableBody
-        );
+        // Render using generic system (same pattern as CPH and Bench Allocation)
+        renderGenericPreviewTable(STATE.reallocation.previewData, config);
 
-        // Update pagination
-        STATE.reallocation.previewTotalPages = Math.ceil(records.length / pageSize);
-        renderReallocationPreviewPagination();
+        // Update badges - always show total from original data, not filtered
+        const totalOriginal = STATE.reallocation.allPreviewRecords.length;
+        const totalFiltered = STATE.reallocation.filteredPreviewRecords.length;
+        DOM.reallocationPreviewModifiedCountBadge.text(`${totalOriginal} ${totalOriginal === 1 ? 'record' : 'records'} modified`);
+        DOM.reallocationSummaryText.text(`${totalOriginal} ${totalOriginal === 1 ? 'record' : 'records'} modified (${totalFiltered} shown)`);
+        DOM.reallocationActionSummaryCount.text(totalOriginal);
 
-        // Update summary
-        DOM.reallocationSummaryText.text(`${records.length} records will be modified`);
-
-        // Populate preview filters
-        populateReallocationPreviewFilters();
+        // Show containers
+        showElement(DOM.reallocationPreviewFilters);
     }
 
     /**
      * Render preview pagination
      */
-    function renderReallocationPreviewPagination() {
-        const totalPages = STATE.reallocation.previewTotalPages;
-        const currentPage = STATE.reallocation.previewCurrentPage;
-
-        if (totalPages <= 1) {
-            hideElement(DOM.reallocationPreviewPagination);
-            return;
-        }
-
-        const paginationHtml = renderPaginationHtml(currentPage, totalPages, 'edit-view-reallocation-preview-pagination');
-        DOM.reallocationPreviewPagination.find('ul').html(paginationHtml);
-        showElement(DOM.reallocationPreviewPagination);
-    }
+    // NOTE: renderReallocationPreviewPagination removed - superseded by renderGenericPagination
 
     /**
      * Handle preview page click
@@ -4107,38 +4306,17 @@
         const page = parseInt($(e.currentTarget).data('page'), 10);
         if (page && page !== STATE.reallocation.previewCurrentPage) {
             STATE.reallocation.previewCurrentPage = page;
-            renderReallocationPreview();
+
+            // Just re-render the table with the new page (same pattern as CPH)
+            const config = PREVIEW_CONFIGS.forecastReallocation;
+            renderGenericPreviewTable(STATE.reallocation.previewData, config);
+
+            // Scroll to preview table top
+            DOM.reallocationPreviewContainer[0].scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
 
-    /**
-     * Populate preview filters with unique values
-     */
-    function populateReallocationPreviewFilters() {
-        const records = STATE.reallocation.allPreviewRecords;
-
-        // Get unique LOBs and Case Types
-        const lobs = [...new Set(records.map(r => r.main_lob))].sort();
-        const caseTypes = [...new Set(records.map(r => r.case_type))].sort();
-
-        // Populate LOB filter
-        DOM.reallocationPreviewLobFilter.empty();
-        lobs.forEach(lob => {
-            DOM.reallocationPreviewLobFilter.append(new Option(lob, lob, false, false));
-        });
-        DOM.reallocationPreviewLobFilter.trigger('change');
-
-        // Populate Case Type filter
-        DOM.reallocationPreviewCaseTypeFilter.empty();
-        caseTypes.forEach(ct => {
-            DOM.reallocationPreviewCaseTypeFilter.append(new Option(ct, ct, false, false));
-        });
-        DOM.reallocationPreviewCaseTypeFilter.trigger('change');
-
-        if (lobs.length > 1 || caseTypes.length > 1) {
-            showElement(DOM.reallocationPreviewFilters);
-        }
-    }
+    // NOTE: populateReallocationPreviewFilters removed - superseded by populateGenericFilters
 
     /**
      * Apply preview filters
