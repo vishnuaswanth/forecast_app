@@ -549,48 +549,21 @@
             <div class="edit-view-card edit-view-filter-card">
                 <div class="edit-view-card-body">
                     <h5 class="edit-view-mb-3">
-                        <i class="fas fa-filter edit-view-me-2"></i>Forecast Reallocation - Data Selection
+                        <i class="fas fa-exchange-alt edit-view-me-2 text-primary"></i>Forecast Reallocation - Data Selection
                     </h5>
                     <div class="edit-view-row edit-view-align-end">
-                        <div class="edit-view-col-3">
+                        <div class="edit-view-col-6">
                             <label class="edit-view-form-label" for="reallocation-report-select">
-                                Select Report Month:
+                                Report Month:
                             </label>
                             <select class="edit-view-form-select edit-view-select2" id="reallocation-report-select"
                                     data-placeholder="-- Select Report Month --">
                                 <option value="">-- Select Report Month --</option>
                             </select>
                         </div>
-                        <div class="edit-view-col-2">
-                            <label class="edit-view-form-label" for="reallocation-lob-filter">
-                                Main LOB:
-                            </label>
-                            <select class="edit-view-form-select edit-view-select2-multi-checkbox"
-                                    id="reallocation-lob-filter" multiple
-                                    data-placeholder="All LOBs">
-                            </select>
-                        </div>
-                        <div class="edit-view-col-2">
-                            <label class="edit-view-form-label" for="reallocation-case-type-filter">
-                                Case Type:
-                            </label>
-                            <select class="edit-view-form-select edit-view-select2-multi-checkbox"
-                                    id="reallocation-case-type-filter" multiple
-                                    data-placeholder="All Case Types">
-                            </select>
-                        </div>
-                        <div class="edit-view-col-2">
-                            <label class="edit-view-form-label" for="reallocation-state-filter">
-                                State:
-                            </label>
-                            <select class="edit-view-form-select edit-view-select2-multi-checkbox"
-                                    id="reallocation-state-filter" multiple
-                                    data-placeholder="All States">
-                            </select>
-                        </div>
-                        <div class="edit-view-col-2">
+                        <div class="edit-view-col-3">
                             <button class="edit-view-btn edit-view-btn-primary" id="load-reallocation-data-btn">
-                                <i class="fas fa-download edit-view-me-1"></i>Load Data
+                                <i class="fas fa-database edit-view-me-1"></i>Load Data
                             </button>
                         </div>
                     </div>
@@ -630,6 +603,45 @@
                     </div>
                 </div>
                 <div class="edit-view-card-body">
+                    <!-- Data Filters Section (populated from loaded data) -->
+                    <div class="edit-view-reallocation-filters edit-view-mb-3" id="reallocation-filters">
+                        <div class="edit-view-row edit-view-align-end">
+                            <div class="edit-view-col-3">
+                                <label class="edit-view-form-label" for="reallocation-lob-filter">
+                                    Main LOB:
+                                </label>
+                                <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                        id="reallocation-lob-filter" multiple
+                                        data-placeholder="All LOBs">
+                                </select>
+                            </div>
+                            <div class="edit-view-col-3">
+                                <label class="edit-view-form-label" for="reallocation-state-filter">
+                                    State:
+                                </label>
+                                <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                        id="reallocation-state-filter" multiple
+                                        data-placeholder="All States">
+                                </select>
+                            </div>
+                            <div class="edit-view-col-3">
+                                <label class="edit-view-form-label" for="reallocation-case-type-filter">
+                                    Case Type:
+                                </label>
+                                <select class="edit-view-form-select edit-view-select2-multi-checkbox"
+                                        id="reallocation-case-type-filter" multiple
+                                        data-placeholder="All Case Types">
+                                </select>
+                            </div>
+                            <div class="edit-view-col-2">
+                                <button class="edit-view-btn edit-view-btn-outline-secondary"
+                                        id="clear-reallocation-filters-btn">
+                                    <i class="fas fa-times edit-view-me-1"></i>Clear Filters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Month Visibility Checkboxes -->
                     <div class="edit-view-month-selector edit-view-mb-3" id="reallocation-month-selector">
                         <label class="edit-view-form-label"><strong>Visible Months:</strong></label>

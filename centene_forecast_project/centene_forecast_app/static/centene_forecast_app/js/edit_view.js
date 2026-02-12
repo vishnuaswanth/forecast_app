@@ -541,6 +541,9 @@
         DOM.reallocationOverallChanges = $('#reallocation-overall-changes');
         DOM.reallocationMonthChangesContainer = $('#reallocation-month-changes-container');
 
+        // Reallocation data filters (Clear button)
+        DOM.clearReallocationFiltersBtn = $('#clear-reallocation-filters-btn');
+
         // Reallocation preview filters
         DOM.reallocationPreviewFilters = $('#reallocation-preview-filters');
         DOM.reallocationPreviewLobFilter = $('#reallocation-preview-lob-filter');
@@ -694,6 +697,9 @@
             updateReallocationDataCascadingFilters('caseType');
             applyReallocationDataFilters();
         });
+
+        // Clear filters button for reallocation data
+        DOM.clearReallocationFiltersBtn.on('click', clearReallocationDataFilters);
 
         // Reallocation preview filters
         DOM.reallocationPreviewLobFilter.on('select2:close', applyReallocationPreviewFilters);
@@ -3580,6 +3586,35 @@
         renderReallocationDataTable();
 
         console.log(`Edit View: Applied filters - ${filteredRecords.length} records shown`);
+    }
+
+    /**
+     * Clear all reallocation data filters and reset to showing all records
+     */
+    function clearReallocationDataFilters() {
+        // Clear all filter dropdowns
+        DOM.reallocationLobFilter.val(null).trigger('change');
+        DOM.reallocationStateFilter.val(null).trigger('change');
+        DOM.reallocationCaseTypeFilter.val(null).trigger('change');
+
+        // Reset filter state
+        STATE.reallocation.filters = {
+            mainLobs: [],
+            states: [],
+            caseTypes: []
+        };
+
+        // Reset to all records
+        STATE.reallocation.filteredRecords = [...STATE.reallocation.allRecords];
+        STATE.reallocation.currentPage = 1;
+
+        // Re-populate filter options with all available values
+        populateReallocationFilterDropdowns();
+
+        // Re-render the table
+        renderReallocationDataTable();
+
+        console.log('Edit View: Cleared all reallocation filters');
     }
 
     /**
