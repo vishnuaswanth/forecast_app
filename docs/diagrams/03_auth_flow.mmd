@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant U as User
+    participant D as Django
+    participant L as LDAP Server
+    participant S as Session
+    participant P as Permissions
+
+    U->>D: Login Request
+    D->>L: Bind and Validate Credentials
+    L-->>D: User Attributes
+    D->>D: Create or Update User Record
+    D->>D: Check Group Membership
+    alt Has Valid Groups
+        D->>S: Create Session
+        S->>P: Load Permissions
+        P-->>U: Redirect to Dashboard
+    else No Groups
+        D-->>U: Access Denied
+    end
+
+    Note over U,P: Subsequent Requests
+    U->>D: Protected Resource
+    D->>S: Validate Session
+    S->>P: Check Permission
+    alt Authorized
+        P-->>U: Resource Content
+    else Unauthorized
+        P-->>U: 403 Forbidden
+    end

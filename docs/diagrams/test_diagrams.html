@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mermaid Diagram Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .diagram-section { background: white; margin: 20px 0; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px; }
+        .mermaid { text-align: center; }
+        .status { padding: 5px 10px; border-radius: 4px; display: inline-block; margin-bottom: 10px; }
+        .success { background: #c8e6c9; color: #2e7d32; }
+        .error { background: #ffcdd2; color: #c62828; }
+    </style>
+</head>
+<body>
+    <h1>Centene Forecasting - Architecture Diagrams</h1>
+
+    <div class="diagram-section">
+        <h2>1. System Architecture</h2>
+        <pre class="mermaid">
+flowchart TB
+    subgraph Client["Client Layer"]
+        Browser["Web Browser"]
+        WS["WebSocket Client"]
+    end
+
+    subgraph Django["Django Frontend - ASGI"]
+        subgraph Auth["Authentication"]
+            LDAP["LDAP Backend"]
+            Session["Session Manager"]
+            Permissions["Permission System"]
+        end
+
+        subgraph WebLayer["Web Layer"]
+            Views["Views"]
+            Templates["Templates"]
+            Static["Static Files"]
+        end
+
+        subgraph Business["Business Logic"]
+            Services["Services"]
+            Validators["Validators"]
+            Serializers["Serializers"]
+        end
+
+        subgraph Integration["Integration Layer"]
+            Repository["Repository Pattern"]
+            WSConsumer["WebSocket Consumers"]
+        end
+
+        subgraph Background["Background Processing"]
+            DjangoQ["Django-Q Workers"]
+            Tasks["Async Tasks"]
+        end
+
+        subgraph CacheLayer["Caching Layer"]
+            LocMem["In-Memory Cache"]
+            FileCache["File-Based Cache"]
+        end
+    end
+
+    subgraph External["External Services"]
+        LDAPServer["Corporate LDAP Server"]
+        FastAPI["FastAPI Backend"]
+        Database[(Database)]
+    end
+
+    Browser -->|HTTP/HTTPS| Views
+    Browser -->|Static Assets| Static
+    WS -->|WebSocket| WSConsumer
+
+    Views --> Auth
+    LDAP -->|Validate| LDAPServer
+    Auth --> Session
+    Session --> Permissions
+
+    Views --> Services
+    Services --> Validators
+    Validators --> Repository
+    Services --> Serializers
+    Serializers --> Views
+
+    Repository -->|REST API| FastAPI
+    FastAPI --> Database
+
+    Views -->|Queue Task| DjangoQ
+    DjangoQ --> Tasks
+    Tasks --> Repository
+    Tasks -->|Progress| WSConsumer
+
+    Services --> CacheLayer
+    Repository --> CacheLayer
+        </pre>
+    </div>
+
+    <div class="diagram-section">
+        <h2>2. Data Flow</h2>
+        <pre class="mermaid">
+flowchart LR
+    subgraph Request["Request Flow"]
+        User((User)) --> UI[Web UI]
+        UI --> View[View Layer]
+        View --> Service[Service Layer]
+        Service --> Validator[Validation]
+        Validator --> Repo[Repository]
+        Repo --> API[Backend API]
+    end
+
+    subgraph Response["Response Flow"]
+        API2[Backend API] --> Repo2[Repository]
+        Repo2 --> Serial[Serializer]
+        Serial --> View2[View Layer]
+        View2 --> Template[Template or JSON]
+        Template --> UI2[Web UI]
+    end
+
+    subgraph Cache["Cache Layer"]
+        CacheCheck{Cache Check}
+        CacheStore[(Cache Store)]
+    end
+
+    Service --> CacheCheck
+    CacheCheck -->|Hit| Serial
+    CacheCheck -->|Miss| Validator
+    Repo2 --> CacheStore
+        </pre>
+    </div>
+
+    <div class="diagram-section">
+        <h2>3. Authentication Flow</h2>
+        <pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant D as Django
+    participant L as LDAP Server
+    participant S as Session
+    participant P as Permissions
+
+    U->>D: Login Request
+    D->>L: Bind and Validate Credentials
+    L-->>D: User Attributes
+    D->>D: Create or Update User Record
+    D->>D: Check Group Membership
+    alt Has Valid Groups
+        D->>S: Create Session
+        S->>P: Load Permissions
+        P-->>U: Redirect to Dashboard
+    else No Groups
+        D-->>U: Access Denied
+    end
+
+    Note over U,P: Subsequent Requests
+    U->>D: Protected Resource
+    D->>S: Validate Session
+    S->>P: Check Permission
+    alt Authorized
+        P-->>U: Resource Content
+    else Unauthorized
+        P-->>U: 403 Forbidden
+    end
+        </pre>
+    </div>
+
+    <div class="diagram-section">
+        <h2>4. File Upload Flow</h2>
+        <pre class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant V as View
+    participant Q as Django-Q
+    participant W as WebSocket
+    participant R as Repository
+    participant B as Backend API
+    participant C as Cache
+
+    U->>V: Upload File
+    V->>V: Validate File Type
+    V->>V: Store in Database
+    V->>Q: Queue Processing Task
+    V-->>U: Upload Accepted
+
+    U->>W: Connect WebSocket
+
+    loop Processing Chunks
+        Q->>Q: Process Data Chunk
+        Q->>W: Progress Update
+        W-->>U: Real-time Progress
+    end
+
+    Q->>R: Send Processed Data
+    R->>B: API Call
+    B-->>R: Success
+    Q->>C: Invalidate Related Caches
+    Q->>W: Complete Notification
+    W-->>U: Processing Complete
+        </pre>
+    </div>
+
+    <div class="diagram-section">
+        <h2>5. Caching Strategy</h2>
+        <pre class="mermaid">
+flowchart TB
+    subgraph TTL["Cache TTL Configuration"]
+        Fast["Fast: 5-30s"]
+        Medium["Medium: 5 min"]
+        Long["Long: 15 min"]
+        Persist["Persistent: 1 hour"]
+    end
+
+    subgraph Types["Cache Types"]
+        Exec["Execution List"]
+        Progress["In-Progress Details"]
+        Cascade["Filter Dropdowns"]
+        Data["Data Tables"]
+        Schema["Schema Metadata"]
+        Complete["Completed Tasks"]
+    end
+
+    subgraph Backends["Cache Backends"]
+        LocMem["In-Memory - Development"]
+        File["File-Based - Staging"]
+        Redis["Redis - Production"]
+    end
+
+    Fast --> Exec
+    Fast --> Progress
+    Medium --> Cascade
+    Long --> Data
+    Long --> Schema
+    Persist --> Complete
+
+    Types --> Backends
+
+    subgraph Invalidation["Cache Invalidation"]
+        Upload["File Upload"] --> Clear["Clear Related Caches"]
+        Clear --> Forecast["Forecast Cache"]
+        Clear --> Roster["Roster Cache"]
+        Clear --> Summary["Summary Cache"]
+        Clear --> CascadeC["Cascade Filters"]
+    end
+        </pre>
+    </div>
+
+    <div class="diagram-section">
+        <h2>6. Component Architecture</h2>
+        <pre class="mermaid">
+flowchart TB
+    subgraph Frontend["Django Application"]
+        subgraph Views["View Modules"]
+            CoreViews["Core Views"]
+            ManagerView["Manager Dashboard"]
+            ExecutionView["Execution Monitoring"]
+            EditView["Edit and Allocation"]
+            ConfigView["Configuration"]
+            CacheView["Cache Management"]
+        end
+
+        subgraph Services["Service Layer"]
+            DataSvc["DataView Service"]
+            MgrSvc["Manager Service"]
+            ExecSvc["Execution Service"]
+            EditSvc["Edit Service"]
+            ConfigSvc["Configuration Service"]
+        end
+
+        subgraph Utils["Utilities"]
+            CacheUtil["Cache Utils"]
+            AuthUtil["Auth Helpers"]
+            FileUtil["File Validation"]
+            TableUtil["Table Rendering"]
+        end
+    end
+
+    subgraph Core["Core Module"]
+        UserModel["Custom User Model"]
+        FileModel["Upload Tracking"]
+        LDAPAuth["LDAP Backend"]
+        Config["Configuration Classes"]
+    end
+
+    subgraph Chat["Chat Module"]
+        ChatConsumer["WebSocket Consumer"]
+        ChatService["Chat Service"]
+        ChatModels["Conversation Models"]
+    end
+
+    Views --> Services
+    Services --> Utils
+    Frontend --> Core
+    Frontend --> Chat
+        </pre>
+    </div>
+
+    <div class="diagram-section">
+        <h2>7. Deployment Architecture</h2>
+        <pre class="mermaid">
+flowchart TB
+    subgraph LoadBalancer["Load Balancer"]
+        LB[LB]
+    end
+
+    subgraph AppServers["Application Tier"]
+        App1["Django Instance 1"]
+        App2["Django Instance 2"]
+    end
+
+    subgraph Workers["Background Workers"]
+        W1["Django-Q Worker 1"]
+        W2["Django-Q Worker 2"]
+        W3["Django-Q Worker 3"]
+        W4["Django-Q Worker 4"]
+    end
+
+    subgraph CacheTier["Cache Layer"]
+        Redis[("Redis Cache")]
+    end
+
+    subgraph Backend["Data Backend"]
+        FastAPI["FastAPI Service"]
+        DB[("Database")]
+    end
+
+    subgraph External["External Services"]
+        LDAP["Corporate LDAP"]
+    end
+
+    LB --> App1
+    LB --> App2
+
+    App1 --> Workers
+    App2 --> Workers
+
+    App1 --> Redis
+    App2 --> Redis
+    Workers --> Redis
+
+    App1 --> FastAPI
+    App2 --> FastAPI
+    Workers --> FastAPI
+
+    FastAPI --> DB
+
+    App1 --> LDAP
+    App2 --> LDAP
+        </pre>
+    </div>
+
+    <div class="diagram-section">
+        <h2>8. Technology Stack</h2>
+        <pre class="mermaid">
+flowchart TB
+    subgraph App["Centene Forecasting Platform"]
+        subgraph BackendStack["Backend"]
+            Django["Django 4.x"]
+            Channels["Django Channels"]
+            DjangoQ["Django-Q"]
+            Daphne["Daphne ASGI"]
+        end
+
+        subgraph FrontendStack["Frontend"]
+            jQuery["jQuery"]
+            DataTables["DataTables"]
+            Select2["Select2"]
+            SweetAlert["SweetAlert2"]
+        end
+
+        subgraph AuthStack["Authentication"]
+            LDAPInt["LDAP Integration"]
+            SessionMgmt["Session Management"]
+            RBAC["Role-Based Access"]
+        end
+
+        subgraph DataStack["Data Layer"]
+            RepoPattern["Repository Pattern"]
+            FastAPIBackend["FastAPI Backend"]
+            MultiCache["Multi-Tier Caching"]
+        end
+
+        subgraph RealTimeStack["Real-Time"]
+            WebSocket["WebSocket"]
+            ProgressStream["Progress Streaming"]
+            LiveUpdates["Live Updates"]
+        end
+
+        subgraph DevOpsStack["DevOps"]
+            WhiteNoise["WhiteNoise Static"]
+            FileCache["File-Based Cache"]
+            BGWorkers["Background Workers"]
+        end
+    end
+        </pre>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+    </script>
+</body>
+</html>

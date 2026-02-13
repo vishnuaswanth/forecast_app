@@ -1,0 +1,48 @@
+flowchart TB
+    subgraph LoadBalancer["Load Balancer"]
+        LB[LB]
+    end
+
+    subgraph AppServers["Application Tier"]
+        App1["Django Instance 1"]
+        App2["Django Instance 2"]
+    end
+
+    subgraph Workers["Background Workers"]
+        W1["Django-Q Worker 1"]
+        W2["Django-Q Worker 2"]
+        W3["Django-Q Worker 3"]
+        W4["Django-Q Worker 4"]
+    end
+
+    subgraph CacheTier["Cache Layer"]
+        Redis[("Redis Cache")]
+    end
+
+    subgraph Backend["Data Backend"]
+        FastAPI["FastAPI Service"]
+        DB[("Database")]
+    end
+
+    subgraph External["External Services"]
+        LDAP["Corporate LDAP"]
+    end
+
+    LB --> App1
+    LB --> App2
+
+    App1 --> Workers
+    App2 --> Workers
+
+    App1 --> Redis
+    App2 --> Redis
+    Workers --> Redis
+
+    App1 --> FastAPI
+    App2 --> FastAPI
+    Workers --> FastAPI
+
+    FastAPI --> DB
+
+    App1 --> LDAP
+    App2 --> LDAP

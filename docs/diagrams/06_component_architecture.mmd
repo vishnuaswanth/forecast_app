@@ -1,0 +1,44 @@
+flowchart TB
+    subgraph Frontend["Django Application"]
+        subgraph Views["View Modules"]
+            CoreViews["Core Views"]
+            ManagerView["Manager Dashboard"]
+            ExecutionView["Execution Monitoring"]
+            EditView["Edit and Allocation"]
+            ConfigView["Configuration"]
+            CacheView["Cache Management"]
+        end
+
+        subgraph Services["Service Layer"]
+            DataSvc["DataView Service"]
+            MgrSvc["Manager Service"]
+            ExecSvc["Execution Service"]
+            EditSvc["Edit Service"]
+            ConfigSvc["Configuration Service"]
+        end
+
+        subgraph Utils["Utilities"]
+            CacheUtil["Cache Utils"]
+            AuthUtil["Auth Helpers"]
+            FileUtil["File Validation"]
+            TableUtil["Table Rendering"]
+        end
+    end
+
+    subgraph Core["Core Module"]
+        UserModel["Custom User Model"]
+        FileModel["Upload Tracking"]
+        LDAPAuth["LDAP Backend"]
+        Config["Configuration Classes"]
+    end
+
+    subgraph Chat["Chat Module"]
+        ChatConsumer["WebSocket Consumer"]
+        ChatService["Chat Service"]
+        ChatModels["Conversation Models"]
+    end
+
+    Views --> Services
+    Services --> Utils
+    Frontend --> Core
+    Frontend --> Chat

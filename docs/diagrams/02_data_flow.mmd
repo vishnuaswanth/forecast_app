@@ -1,0 +1,27 @@
+flowchart LR
+    subgraph Request["Request Flow"]
+        User((User)) --> UI[Web UI]
+        UI --> View[View Layer]
+        View --> Service[Service Layer]
+        Service --> Validator[Validation]
+        Validator --> Repo[Repository]
+        Repo --> API[Backend API]
+    end
+
+    subgraph Response["Response Flow"]
+        API2[Backend API] --> Repo2[Repository]
+        Repo2 --> Serial[Serializer]
+        Serial --> View2[View Layer]
+        View2 --> Template[Template or JSON]
+        Template --> UI2[Web UI]
+    end
+
+    subgraph Cache["Cache Layer"]
+        CacheCheck{Cache Check}
+        CacheStore[(Cache Store)]
+    end
+
+    Service --> CacheCheck
+    CacheCheck -->|Hit| Serial
+    CacheCheck -->|Miss| Validator
+    Repo2 --> CacheStore

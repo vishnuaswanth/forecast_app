@@ -1,0 +1,72 @@
+flowchart TB
+    subgraph Client["Client Layer"]
+        Browser["Web Browser"]
+        WS["WebSocket Client"]
+    end
+
+    subgraph Django["Django Frontend - ASGI"]
+        subgraph Auth["Authentication"]
+            LDAP["LDAP Backend"]
+            Session["Session Manager"]
+            Permissions["Permission System"]
+        end
+
+        subgraph WebLayer["Web Layer"]
+            Views["Views"]
+            Templates["Templates"]
+            Static["Static Files"]
+        end
+
+        subgraph Business["Business Logic"]
+            Services["Services"]
+            Validators["Validators"]
+            Serializers["Serializers"]
+        end
+
+        subgraph Integration["Integration Layer"]
+            Repository["Repository Pattern"]
+            WSConsumer["WebSocket Consumers"]
+        end
+
+        subgraph Background["Background Processing"]
+            DjangoQ["Django-Q Workers"]
+            Tasks["Async Tasks"]
+        end
+
+        subgraph CacheLayer["Caching Layer"]
+            LocMem["In-Memory Cache"]
+            FileCache["File-Based Cache"]
+        end
+    end
+
+    subgraph External["External Services"]
+        LDAPServer["Corporate LDAP Server"]
+        FastAPI["FastAPI Backend"]
+        Database[(Database)]
+    end
+
+    Browser -->|HTTP/HTTPS| Views
+    Browser -->|Static Assets| Static
+    WS -->|WebSocket| WSConsumer
+
+    Views --> Auth
+    LDAP -->|Validate| LDAPServer
+    Auth --> Session
+    Session --> Permissions
+
+    Views --> Services
+    Services --> Validators
+    Validators --> Repository
+    Services --> Serializers
+    Serializers --> Views
+
+    Repository -->|REST API| FastAPI
+    FastAPI --> Database
+
+    Views -->|Queue Task| DjangoQ
+    DjangoQ --> Tasks
+    Tasks --> Repository
+    Tasks -->|Progress| WSConsumer
+
+    Services --> CacheLayer
+    Repository --> CacheLayer

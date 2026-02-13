@@ -1,0 +1,40 @@
+flowchart TB
+    subgraph App["Centene Forecasting Platform"]
+        subgraph BackendStack["Backend"]
+            Django["Django 4.x"]
+            Channels["Django Channels"]
+            DjangoQ["Django-Q"]
+            Daphne["Daphne ASGI"]
+        end
+
+        subgraph FrontendStack["Frontend"]
+            jQuery["jQuery"]
+            DataTables["DataTables"]
+            Select2["Select2"]
+            SweetAlert["SweetAlert2"]
+        end
+
+        subgraph AuthStack["Authentication"]
+            LDAPInt["LDAP Integration"]
+            SessionMgmt["Session Management"]
+            RBAC["Role-Based Access"]
+        end
+
+        subgraph DataStack["Data Layer"]
+            RepoPattern["Repository Pattern"]
+            FastAPIBackend["FastAPI Backend"]
+            MultiCache["Multi-Tier Caching"]
+        end
+
+        subgraph RealTimeStack["Real-Time"]
+            WebSocket["WebSocket"]
+            ProgressStream["Progress Streaming"]
+            LiveUpdates["Live Updates"]
+        end
+
+        subgraph DevOpsStack["DevOps"]
+            WhiteNoise["WhiteNoise Static"]
+            FileCache["File-Based Cache"]
+            BGWorkers["Background Workers"]
+        end
+    end

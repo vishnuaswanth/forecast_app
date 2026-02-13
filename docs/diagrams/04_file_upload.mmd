@@ -1,0 +1,29 @@
+sequenceDiagram
+    participant U as User
+    participant V as View
+    participant Q as Django-Q
+    participant W as WebSocket
+    participant R as Repository
+    participant B as Backend API
+    participant C as Cache
+
+    U->>V: Upload File
+    V->>V: Validate File Type
+    V->>V: Store in Database
+    V->>Q: Queue Processing Task
+    V-->>U: Upload Accepted
+
+    U->>W: Connect WebSocket
+
+    loop Processing Chunks
+        Q->>Q: Process Data Chunk
+        Q->>W: Progress Update
+        W-->>U: Real-time Progress
+    end
+
+    Q->>R: Send Processed Data
+    R->>B: API Call
+    B-->>R: Success
+    Q->>C: Invalidate Related Caches
+    Q->>W: Complete Notification
+    W-->>U: Processing Complete

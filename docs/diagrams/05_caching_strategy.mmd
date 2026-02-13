@@ -1,0 +1,39 @@
+flowchart TB
+    subgraph TTL["Cache TTL Configuration"]
+        Fast["Fast: 5-30s"]
+        Medium["Medium: 5 min"]
+        Long["Long: 15 min"]
+        Persist["Persistent: 1 hour"]
+    end
+
+    subgraph Types["Cache Types"]
+        Exec["Execution List"]
+        Progress["In-Progress Details"]
+        Cascade["Filter Dropdowns"]
+        Data["Data Tables"]
+        Schema["Schema Metadata"]
+        Complete["Completed Tasks"]
+    end
+
+    subgraph Backends["Cache Backends"]
+        LocMem["In-Memory - Development"]
+        File["File-Based - Staging"]
+        Redis["Redis - Production"]
+    end
+
+    Fast --> Exec
+    Fast --> Progress
+    Medium --> Cascade
+    Long --> Data
+    Long --> Schema
+    Persist --> Complete
+
+    Types --> Backends
+
+    subgraph Invalidation["Cache Invalidation"]
+        Upload["File Upload"] --> Clear["Clear Related Caches"]
+        Clear --> Forecast["Forecast Cache"]
+        Clear --> Roster["Roster Cache"]
+        Clear --> Summary["Summary Cache"]
+        Clear --> CascadeC["Cascade Filters"]
+    end

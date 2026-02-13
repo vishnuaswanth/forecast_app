@@ -1090,6 +1090,8 @@ Do you want us to try to recover as much as we can?"
 
 ## 10. Get Forecast Reallocation Filters
 
+> **DEPRECATED**: This endpoint is no longer used by the frontend UI. Filter options are now extracted client-side from the loaded data (Section 11). The endpoint remains available for backward compatibility but may be removed in a future version.
+
 **Endpoint**: `GET /api/edit-view/forecast-reallocation/filters/`
 
 **Purpose**: Retrieve available filter options (Main LOBs, States, Case Types) for the Forecast Reallocation feature
@@ -1143,9 +1145,9 @@ Do you want us to try to recover as much as we can?"
 ```
 
 **Notes**:
+- **DEPRECATED**: Frontend now extracts filter options from loaded data (see Section 11)
 - Returns distinct filter options available for the selected report month/year
-- Used to populate multi-select dropdowns in the Forecast Reallocation tab
-- Filter values are used in subsequent data load requests
+- Previously used to populate multi-select dropdowns before data load
 
 **Field Reference**:
 
@@ -1166,9 +1168,9 @@ Do you want us to try to recover as much as we can?"
 **Query Parameters**:
 - `month` (required): Month name (e.g., "April")
 - `year` (required): Year (e.g., 2025)
-- `main_lobs[]` (optional): Array of Main LOB values to filter
-- `case_types[]` (optional): Array of Case Type values to filter
-- `states[]` (optional): Array of State codes to filter
+- `main_lobs[]` (optional, typically not used): Array of Main LOB values to filter
+- `case_types[]` (optional, typically not used): Array of Case Type values to filter
+- `states[]` (optional, typically not used): Array of State codes to filter
 
 **Success Response** (200):
 ```json
@@ -1249,21 +1251,58 @@ Do you want us to try to recover as much as we can?"
 }
 ```
 
+**UI Workflow**:
+
+The Forecast Reallocation tab follows a "load-then-filter" pattern (similar to Target CPH tab):
+
+1. **Initial Selection Card**: User selects only the Report Month and clicks "Load Data"
+2. **Data Load**: Frontend calls this endpoint WITHOUT filter parameters to load ALL records
+3. **Filter Extraction**: Frontend extracts unique `main_lob`, `state`, and `case_type` values from loaded data
+4. **Filter Dropdowns**: Filter dropdowns (inside the data container card) are populated from extracted values
+5. **Client-Side Filtering**: User applies filters which filter the already-loaded records client-side
+6. **Clear Filters**: A "Clear Filters" button resets all filters and shows all loaded records
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Data Selection Card                                          │
+│ [Report Month ▼]                         [Load Data]         │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ Data Container Card (hidden until data loaded)               │
+│                                                              │
+│ Filters (populated from loaded data):                        │
+│ [Main LOB ▼]    [State ▼]    [Case Type ▼]  [Clear Filters] │
+│                                                              │
+│ [Month Checkboxes: ☑ Apr-25 ☑ May-25 ...]                   │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ Data Table                                               │ │
+│ └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
 **Notes**:
 - Returns forecast records with 6-month data starting from the selected report month
+- **Initial load fetches ALL records** - no filters applied server-side in typical workflow
+- **Filters are applied client-side** after data is loaded (cascading filter behavior)
+- Filter query parameters still supported for backward compatibility but typically not used
 - User can edit `target_cph` (per record) and `fte_avail` (per month) values in the frontend
 - `months` object mapping is required for rendering the table with correct month labels
-- Filters are applied server-side (AND logic between filter categories, OR logic within same category)
 - All numeric fields in month data are integers except `target_cph` which is a float
+
+**Client-Side Filter Behavior**:
+- Filter dropdowns use cascading/dependent behavior (selecting LOB limits available States/Case Types)
+- Filters use AND logic between categories, OR logic within same category
+- "Clear Filters" button resets all selections and shows all loaded records
 
 **Field Reference for Records**:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `case_id` | string | Unique identifier (UUID) for the forecast record |
-| `main_lob` | string | Main Line of Business |
-| `state` | string | State code (2-letter) |
-| `case_type` | string | Case type category |
+| `main_lob` | string | Main Line of Business (used for filter extraction) |
+| `state` | string | State code (2-letter) (used for filter extraction) |
+| `case_type` | string | Case type category (used for filter extraction) |
 | `target_cph` | float | Target Cases Per Hour (editable) |
 | `months` | object | Nested object with month-specific data |
 
@@ -1278,7 +1317,10 @@ Do you want us to try to recover as much as we can?"
 
 **Usage Example**:
 ```
+# Typical usage - load all data without filters
 GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025
+
+# Server-side filtering (supported but typically not used in current UI)
 GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&main_lobs[]=Medicaid&main_lobs[]=Medicare
 GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO&states[]=TX&case_types[]=Appeals
 ```
@@ -1308,32 +1350,44 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
             "months": {
                 "Apr-25": {
                     "forecast": 12500,
+                    "fte_req": 125,
                     "fte_avail": 125,
+                    "capacity": 12000,
                     "fte_avail_change": 5
                 },
                 "May-25": {
                     "forecast": 13000,
+                    "fte_req": 130,
                     "fte_avail": 125,
+                    "capacity": 12500,
                     "fte_avail_change": 0
                 },
                 "Jun-25": {
                     "forecast": 13500,
+                    "fte_req": 135,
                     "fte_avail": 135,
+                    "capacity": 13000,
                     "fte_avail_change": 5
                 },
                 "Jul-25": {
                     "forecast": 14000,
+                    "fte_req": 140,
                     "fte_avail": 135,
+                    "capacity": 13500,
                     "fte_avail_change": 0
                 },
                 "Aug-25": {
                     "forecast": 14500,
+                    "fte_req": 145,
                     "fte_avail": 140,
+                    "capacity": 14000,
                     "fte_avail_change": 0
                 },
                 "Sep-25": {
                     "forecast": 15000,
+                    "fte_req": 150,
                     "fte_avail": 145,
+                    "capacity": 14500,
                     "fte_avail_change": 0
                 }
             }
@@ -1354,63 +1408,77 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
         "month5": "Aug-25",
         "month6": "Sep-25"
     },
+    "month": "April",
+    "year": 2025,
     "modified_records": [
         {
-            "case_id": "550e8400-e29b-41d4-a716-446655440000",
             "main_lob": "Medicaid",
             "state": "MO",
             "case_type": "Appeals",
+            "case_id": "550e8400-e29b-41d4-a716-446655440000",
             "target_cph": 105.0,
             "target_cph_change": 5.0,
-            "modified_fields": ["target_cph", "Apr-25.fte_avail", "Jun-25.fte_avail"],
+            "modified_fields": ["target_cph", "Apr-25.forecast", "Apr-25.fte_req", "Apr-25.fte_avail", "Apr-25.capacity", "Jun-25.forecast", "Jun-25.fte_req", "Jun-25.fte_avail", "Jun-25.capacity"],
             "months": {
                 "Apr-25": {
                     "forecast": 12500,
                     "fte_req": 119,
                     "fte_avail": 125,
-                    "fte_avail_change": 5,
                     "capacity": 13125,
-                    "gap": 625
+                    "forecast_change": 0,
+                    "fte_req_change": -6,
+                    "fte_avail_change": 5,
+                    "capacity_change": 1125
                 },
                 "May-25": {
                     "forecast": 13000,
                     "fte_req": 124,
                     "fte_avail": 125,
-                    "fte_avail_change": 0,
                     "capacity": 13125,
-                    "gap": 125
+                    "forecast_change": 0,
+                    "fte_req_change": -6,
+                    "fte_avail_change": 0,
+                    "capacity_change": 625
                 },
                 "Jun-25": {
                     "forecast": 13500,
                     "fte_req": 129,
                     "fte_avail": 135,
-                    "fte_avail_change": 5,
                     "capacity": 14175,
-                    "gap": 675
+                    "forecast_change": 0,
+                    "fte_req_change": -6,
+                    "fte_avail_change": 5,
+                    "capacity_change": 1175
                 },
                 "Jul-25": {
                     "forecast": 14000,
                     "fte_req": 133,
                     "fte_avail": 135,
-                    "fte_avail_change": 0,
                     "capacity": 14175,
-                    "gap": 175
+                    "forecast_change": 0,
+                    "fte_req_change": -7,
+                    "fte_avail_change": 0,
+                    "capacity_change": 675
                 },
                 "Aug-25": {
                     "forecast": 14500,
                     "fte_req": 138,
                     "fte_avail": 140,
-                    "fte_avail_change": 0,
                     "capacity": 14700,
-                    "gap": 200
+                    "forecast_change": 0,
+                    "fte_req_change": -7,
+                    "fte_avail_change": 0,
+                    "capacity_change": 700
                 },
                 "Sep-25": {
                     "forecast": 15000,
                     "fte_req": 143,
                     "fte_avail": 145,
-                    "fte_avail_change": 0,
                     "capacity": 15225,
-                    "gap": 225
+                    "forecast_change": 0,
+                    "fte_req_change": -7,
+                    "fte_avail_change": 0,
+                    "capacity_change": 725
                 }
             }
         }
@@ -1418,7 +1486,7 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
     "total_modified": 1,
     "summary": {
         "total_fte_change": 10,
-        "total_records": 1
+        "total_capacity_change": 5025
     }
 }
 ```
@@ -1441,14 +1509,13 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
 
 **Notes**:
 - **Calculation Logic**: Backend recalculates based on user edits:
-  - `fte_req = ceil(forecast / target_cph)` (FTE Required based on new CPH)
-  - `capacity = fte_avail × target_cph` (Capacity based on new FTE Available and CPH)
-  - `gap = capacity - forecast` (Positive = surplus, Negative = deficit)
+  -  (FTE Required based on new CPH)
+  - (Capacity based on new FTE Available and CPH)
 - Only records with actual changes should be sent in `modified_records`
 - `modified_fields` uses DOT notation to track which fields changed (e.g., "target_cph", "Apr-25.fte_avail")
-- `target_cph_change` shows delta from original CPH (0 if CPH wasn't changed)
-- Each month object includes `fte_avail_change` showing delta from original value
-- Response includes `gap` field per month (not in original data, calculated in preview)
+- `_change` shows delta from original value (0 if value wasn't changed)
+- Each month object includes `fte_avail_change`, `fte_req_change`, `capacity_change` showing delta from original value
+
 - Preview response can be directly submitted to update endpoint after user approval
 
 **Request Validation**:
@@ -1476,12 +1543,13 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `forecast` | integer | Client forecast (unchanged) |
-| `fte_req` | integer | Recalculated FTE Required |
+| `forecast` | integer | Client forecast volume |
+| `fte_req` | integer | FTE Required (recalculated based on new CPH) |
+| `fte_req_change` | integer | Delta in FTE Required from original |
 | `fte_avail` | integer | FTE Available (user-modified or original) |
-| `fte_avail_change` | integer | Delta in FTE Available |
-| `capacity` | integer | Recalculated capacity |
-| `gap` | integer | Capacity minus forecast (positive = surplus) |
+| `fte_avail_change` | integer | Delta in FTE Available from original |
+| `capacity` | integer | Capacity (recalculated: FTE Avail × CPH × config) |
+| `capacity_change` | integer | Delta in Capacity from original |
 
 ---
 
@@ -1506,61 +1574,73 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
     },
     "modified_records": [
         {
-            "case_id": "550e8400-e29b-41d4-a716-446655440000",
             "main_lob": "Medicaid",
             "state": "MO",
             "case_type": "Appeals",
+            "case_id": "550e8400-e29b-41d4-a716-446655440000",
             "target_cph": 105.0,
             "target_cph_change": 5.0,
-            "modified_fields": ["target_cph", "Apr-25.fte_avail", "Jun-25.fte_avail"],
+            "modified_fields": ["target_cph", "Apr-25.forecast", "Apr-25.fte_req", "Apr-25.fte_avail", "Apr-25.capacity", "Jun-25.forecast", "Jun-25.fte_req", "Jun-25.fte_avail", "Jun-25.capacity"],
             "months": {
                 "Apr-25": {
                     "forecast": 12500,
                     "fte_req": 119,
                     "fte_avail": 125,
-                    "fte_avail_change": 5,
                     "capacity": 13125,
-                    "gap": 625
+                    "forecast_change": 0,
+                    "fte_req_change": -6,
+                    "fte_avail_change": 5,
+                    "capacity_change": 1125
                 },
                 "May-25": {
                     "forecast": 13000,
                     "fte_req": 124,
                     "fte_avail": 125,
-                    "fte_avail_change": 0,
                     "capacity": 13125,
-                    "gap": 125
+                    "forecast_change": 0,
+                    "fte_req_change": -6,
+                    "fte_avail_change": 0,
+                    "capacity_change": 625
                 },
                 "Jun-25": {
                     "forecast": 13500,
                     "fte_req": 129,
                     "fte_avail": 135,
-                    "fte_avail_change": 5,
                     "capacity": 14175,
-                    "gap": 675
+                    "forecast_change": 0,
+                    "fte_req_change": -6,
+                    "fte_avail_change": 5,
+                    "capacity_change": 1175
                 },
                 "Jul-25": {
                     "forecast": 14000,
                     "fte_req": 133,
                     "fte_avail": 135,
-                    "fte_avail_change": 0,
                     "capacity": 14175,
-                    "gap": 175
+                    "forecast_change": 0,
+                    "fte_req_change": -7,
+                    "fte_avail_change": 0,
+                    "capacity_change": 675
                 },
                 "Aug-25": {
                     "forecast": 14500,
                     "fte_req": 138,
                     "fte_avail": 140,
-                    "fte_avail_change": 0,
                     "capacity": 14700,
-                    "gap": 200
+                    "forecast_change": 0,
+                    "fte_req_change": -7,
+                    "fte_avail_change": 0,
+                    "capacity_change": 700
                 },
                 "Sep-25": {
                     "forecast": 15000,
                     "fte_req": 143,
                     "fte_avail": 145,
-                    "fte_avail_change": 0,
                     "capacity": 15225,
-                    "gap": 225
+                    "forecast_change": 0,
+                    "fte_req_change": -7,
+                    "fte_avail_change": 0,
+                    "capacity_change": 725
                 }
             }
         }
@@ -1575,8 +1655,7 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
     "success": true,
     "message": "Forecast reallocation updated successfully",
     "records_updated": 1,
-    "history_log_id": "550e8400-e29b-41d4-a716-446655440001",
-    "timestamp": "2025-04-15T14:30:00.000Z"
+    "history_log_id": "550e8400-e29b-41d4-a716-446655440001"
 }
 ```
 
@@ -1634,16 +1713,15 @@ GET /api/edit-view/forecast-reallocation/data/?month=April&year=2025&states[]=MO
 | `success` | boolean | Operation success status |
 | `message` | string | Success/error message |
 | `records_updated` | number | Number of forecast records updated |
-| `history_log_id` | string | UUID of created history log entry |
-| `timestamp` | string | ISO timestamp of the update |
+| `history_log_id` | string | UUID of created history log entry (for audit trail) |
 
 **Validation Rules**:
 - `month`: Must be full month name (January-December)
 - `year`: Must be integer between 2020-2050
 - `modified_records`: Must be non-empty array
 - `months`: Must have exactly 6 entries (month1-month6)
-- `target_cph`: Must be between 0.0 and 200.0
-- `fte_avail`: Must be between 0 and 999
+- `target_cph`: Must be above 0.0
+- `fte_avail`: Must be above 0
 - `modified_fields`: Must be non-empty array
 - `user_notes`: Required, max 500 characters
 
@@ -1678,6 +1756,85 @@ From `ForecastReallocationConfig` in config.py:
 - **FTE Increment Unit**: 1 (for ± buttons)
 - **Data Cache TTL**: 900 seconds (15 minutes)
 - **Filter Cache TTL**: 300 seconds (5 minutes)
+
+---
+
+## History Log Data Structure
+
+The update endpoints (Sections 3, 9, 13) all use a **standardized data structure** that provides sufficient information for creating per-record history log entries.
+
+### Required Fields for History Logging
+
+Each `modified_records` entry contains:
+
+| Field | Purpose in History Log |
+|-------|----------------------|
+| `main_lob` | Record identifier |
+| `state` | Record identifier |
+| `case_type` | Record identifier |
+| `case_id` | Unique record identifier |
+| `target_cph` | NEW value (after modification) |
+| `target_cph_change` | Delta from original (for before/after tracking) |
+| `modified_fields` | Array listing which fields changed (DOT notation) |
+| `months` | Contains ALL 6 months with current values and `*_change` deltas |
+
+### Month Data for History Logging
+
+Each month object in `months` provides:
+
+```json
+{
+    "Apr-25": {
+        "forecast": 12500,       // Current value
+        "fte_req": 119,          // Current value
+        "fte_avail": 125,        // Current value
+        "capacity": 13125,       // Current value
+        "forecast_change": 0,    // Delta from original
+        "fte_req_change": -6,    // Delta from original
+        "fte_avail_change": 5,   // Delta from original
+        "capacity_change": 1125  // Delta from original
+    }
+}
+```
+
+### Calculating Before Values
+
+The history log can calculate "before" values using:
+```
+before_value = current_value - change_value
+```
+
+Example:
+- `fte_avail` (current) = 125
+- `fte_avail_change` = 5
+- `fte_avail` (before) = 125 - 5 = 120
+
+### History Log Entry Creation
+
+When an update is processed, the backend:
+
+1. Creates a `HistoryLogModel` entry with:
+   - `history_log_id` (UUID)
+   - `change_type` (e.g., "Bench Allocation", "CPH Update", "Forecast Reallocation")
+   - `month`, `year` (report period)
+   - `user`, `user_notes`
+   - `records_modified` (count)
+   - `summary_data` (aggregated totals)
+
+2. Creates `HistoryLogChangesModel` entries for each modified record:
+   - Links to `history_log_id`
+   - Stores record identifiers (`main_lob`, `state`, `case_type`, `case_id`)
+   - Stores `modified_fields` array
+   - Stores full `months` data (for Excel export reconstruction)
+
+### Data Sufficiency Verification
+
+The update data structure is **sufficient** for:
+- ✅ Per-record change tracking (via `modified_fields` and `*_change` fields)
+- ✅ Before/after value calculation (current value - change = before value)
+- ✅ Field-level audit trail (via DOT notation in `modified_fields`)
+- ✅ Excel export generation (full month data preserved)
+- ✅ Summary aggregation (sum of individual changes)
 
 ---
 
