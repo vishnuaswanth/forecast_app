@@ -4256,14 +4256,14 @@
     }
 
     /**
-     * Transform modified records to API-expected format
-     * - Includes ALL 6 months in modified_fields and months object for complete history log
+     * Transform modified records for PREVIEW request
+     * - Converts modified_fields from objects to DOT notation strings
      * - Removes internal tracking fields like original_target_cph
-     * - Ensures all month data is properly structured with _change fields
+     * - Only includes months/fields that have actual changes
+     *
+     * NOTE: Update request uses preview response data directly, not this function
      */
-    function transformRecordsForAPI(records) {
-        const monthFields = ['forecast', 'fte_req', 'fte_avail', 'capacity'];
-
+    function transformRecordsForPreview(records) {
         return records.map(record => {
             // Create a clean copy without internal tracking fields
             const apiRecord = {
@@ -4277,22 +4277,25 @@
                 months: {}
             };
 
-            // Always include target_cph in modified_fields if there's a change
-            if (record.target_cph_change && record.target_cph_change !== 0) {
-                apiRecord.modified_fields.push('target_cph');
+            // Convert modified_fields from objects to DOT notation strings
+            if (Array.isArray(record.modified_fields)) {
+                record.modified_fields.forEach(ref => {
+                    if (typeof ref === 'string') {
+                        // Already a string, use as-is
+                        apiRecord.modified_fields.push(ref);
+                    } else if (typeof ref === 'object') {
+                        if (ref.field === 'target_cph') {
+                            // Target CPH change
+                            apiRecord.modified_fields.push('target_cph');
+                        } else if (ref.month_label && ref.field) {
+                            // Month-specific field change: "May-25.fte_avail"
+                            apiRecord.modified_fields.push(`${ref.month_label}.${ref.field}`);
+                        }
+                    }
+                });
             }
 
-            // Get all month labels from the record
-            const allMonths = record.months ? Object.keys(record.months) : [];
-
-            // Include ALL months and ALL fields in modified_fields for complete history log
-            allMonths.forEach(monthLabel => {
-                monthFields.forEach(field => {
-                    apiRecord.modified_fields.push(`${monthLabel}.${field}`);
-                });
-            });
-
-            // Copy ALL months data with proper structure including _change fields
+            // Copy months data, removing internal tracking fields
             if (record.months) {
                 Object.keys(record.months).forEach(monthLabel => {
                     const monthData = record.months[monthLabel];
@@ -4301,10 +4304,7 @@
                         fte_req: monthData.fte_req ?? 0,
                         fte_avail: monthData.fte_avail ?? 0,
                         capacity: monthData.capacity ?? 0,
-                        forecast_change: monthData.forecast_change ?? 0,
-                        fte_req_change: monthData.fte_req_change ?? 0,
-                        fte_avail_change: monthData.fte_avail_change ?? 0,
-                        capacity_change: monthData.capacity_change ?? 0
+                        fte_avail_change: monthData.fte_avail_change ?? 0
                     };
                 });
             }
@@ -4324,8 +4324,8 @@
 
         const { month, year } = STATE.reallocation.currentSelectedReport;
         const rawRecords = Array.from(STATE.reallocation.modifiedRecords.values());
-        // Transform records to API-expected format (DOT notation strings in modified_fields)
-        const modifiedRecords = transformRecordsForAPI(rawRecords);
+        // Transform records for preview request (DOT notation strings in modified_fields)
+        const modifiedRecords = transformRecordsForPreview(rawRecords);
 
         showElement(DOM.reallocationPreviewLoading);
         hideElement(DOM.reallocationPreviewError);
