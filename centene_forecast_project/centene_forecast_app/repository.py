@@ -1723,7 +1723,7 @@ class APIClient:
             'user_notes': user_notes
         }
         logger.info(f"[Reallocation Update] Submitting {len(modified_records)} records for {month} {year}")
-        response = self._make_request('POST', endpoint, data=data, timeout=EditViewConfig.UPDATE_TIMEOUT)
+        response = self._make_request('POST', endpoint, data=data, timeout=EditViewConfig.UPDATE_TIMEOUT_SECONDS)
 
         # Clear reallocation caches after successful update
         if response.get('success'):
