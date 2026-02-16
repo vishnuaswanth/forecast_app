@@ -4257,11 +4257,13 @@
 
     /**
      * Transform modified records to API-expected format
-     * - Converts modified_fields from objects to DOT notation strings
+     * - Includes ALL 6 months in modified_fields and months object for complete history log
      * - Removes internal tracking fields like original_target_cph
-     * - Ensures months data is properly structured
+     * - Ensures all month data is properly structured with _change fields
      */
     function transformRecordsForAPI(records) {
+        const monthFields = ['forecast', 'fte_req', 'fte_avail', 'capacity'];
+
         return records.map(record => {
             // Create a clean copy without internal tracking fields
             const apiRecord = {
@@ -4275,25 +4277,22 @@
                 months: {}
             };
 
-            // Convert modified_fields from objects to DOT notation strings
-            if (Array.isArray(record.modified_fields)) {
-                record.modified_fields.forEach(ref => {
-                    if (typeof ref === 'string') {
-                        // Already a string, use as-is
-                        apiRecord.modified_fields.push(ref);
-                    } else if (typeof ref === 'object') {
-                        if (ref.field === 'target_cph') {
-                            // Target CPH change
-                            apiRecord.modified_fields.push('target_cph');
-                        } else if (ref.month_label && ref.field) {
-                            // Month-specific field change: "May-25.fte_avail"
-                            apiRecord.modified_fields.push(`${ref.month_label}.${ref.field}`);
-                        }
-                    }
-                });
+            // Always include target_cph in modified_fields if there's a change
+            if (record.target_cph_change && record.target_cph_change !== 0) {
+                apiRecord.modified_fields.push('target_cph');
             }
 
-            // Copy months data, removing internal tracking fields
+            // Get all month labels from the record
+            const allMonths = record.months ? Object.keys(record.months) : [];
+
+            // Include ALL months and ALL fields in modified_fields for complete history log
+            allMonths.forEach(monthLabel => {
+                monthFields.forEach(field => {
+                    apiRecord.modified_fields.push(`${monthLabel}.${field}`);
+                });
+            });
+
+            // Copy ALL months data with proper structure including _change fields
             if (record.months) {
                 Object.keys(record.months).forEach(monthLabel => {
                     const monthData = record.months[monthLabel];
@@ -4302,7 +4301,10 @@
                         fte_req: monthData.fte_req ?? 0,
                         fte_avail: monthData.fte_avail ?? 0,
                         capacity: monthData.capacity ?? 0,
-                        fte_avail_change: monthData.fte_avail_change ?? 0
+                        forecast_change: monthData.forecast_change ?? 0,
+                        fte_req_change: monthData.fte_req_change ?? 0,
+                        fte_avail_change: monthData.fte_avail_change ?? 0,
+                        capacity_change: monthData.capacity_change ?? 0
                     };
                 });
             }
@@ -4494,7 +4496,16 @@
     async function handleReallocationAccept() {
         if (STATE.isSubmitting) return;
 
-        const modifiedCount = STATE.reallocation.modifiedRecords.size;
+        // Validate preview data exists (consistent with CPH update pattern)
+        if (!STATE.reallocation.previewData || !STATE.reallocation.previewData.modified_records) {
+            showErrorDialog(
+                'No Preview Data',
+                'Please generate a preview before submitting updates.'
+            );
+            return;
+        }
+
+        const modifiedCount = STATE.reallocation.previewData.modified_records.length;
         if (modifiedCount === 0) {
             showErrorDialog('No Changes', 'There are no changes to submit.');
             return;
@@ -4518,25 +4529,31 @@
 
         STATE.isSubmitting = true;
         const { month, year } = STATE.reallocation.currentSelectedReport;
-        const rawRecords = Array.from(STATE.reallocation.modifiedRecords.values());
-        // Transform records to API-expected format (DOT notation strings in modified_fields)
-        const modifiedRecords = transformRecordsForAPI(rawRecords);
         const userNotes = DOM.reallocationUserNotesInput.val().trim();
+
+        // Use FULL preview data (consistent with Bench Allocation and CPH updates)
+        // Preview response contains calculated values (fte_req_change, capacity_change, etc.)
+        const payload = {
+            month: month,
+            year: year,
+            months: STATE.reallocation.previewData.months,  // Top-level months mapping from preview
+            modified_records: STATE.reallocation.previewData.modified_records,  // Use FULL preview records
+            user_notes: userNotes
+        };
 
         try {
             showSubmittingDialog('Submitting reallocation changes...');
+
+            console.log('Edit View: Sending reallocation update with full preview structure', {
+                modifiedRecordsCount: payload.modified_records.length,
+                hasMonthsMapping: !!payload.months
+            });
 
             const response = await $.ajax({
                 url: CONFIG.urls.forecastReallocationUpdate,
                 method: 'POST',
                 contentType: 'application/json',
-                data: JSON.stringify({
-                    month: month,
-                    year: year,
-                    months: STATE.reallocation.monthsMapping,
-                    modified_records: modifiedRecords,
-                    user_notes: userNotes
-                })
+                data: JSON.stringify(payload)
             });
 
             Swal.close();
