@@ -11,10 +11,6 @@ from django.conf import settings
 # Import mock data (will be replaced with API calls)
 from centene_forecast_app.mock_data import (
     get_available_change_types,
-    get_reallocation_filter_options as mock_get_reallocation_filter_options,
-    get_reallocation_data as mock_get_reallocation_data,
-    get_reallocation_preview as mock_get_reallocation_preview,
-    submit_reallocation_update as mock_submit_reallocation_update
 )
 
 # Import caching utilities
@@ -1532,6 +1528,9 @@ class APIClient:
         """
         Get available filter options (LOBs, States, Case Types) for forecast reallocation.
 
+        NOTE: This endpoint is DEPRECATED. Filter options are now extracted client-side
+        from the loaded data. This method remains for backward compatibility.
+
         Args:
             month: Month name (e.g., 'April')
             year: Year (e.g., 2025)
@@ -1551,14 +1550,12 @@ class APIClient:
             >>> len(filters['main_lobs'])
             5
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/edit-view/forecast-reallocation/filters/"
-        # params = {'month': month, 'year': year}
-        # response = self._make_request('GET', endpoint, params=params)
-        # return response
-
-        # MOCK: Using mock data for now
-        return mock_get_reallocation_filter_options(month, year)
+        endpoint = "/api/edit-view/forecast-reallocation/filters/"
+        params = {'month': month, 'year': year}
+        logger.debug(f"[Reallocation Filters] Fetching for {month} {year}")
+        response = self._make_request('GET', endpoint, params=params)
+        logger.info(f"[Reallocation Filters] Retrieved filter options for {month} {year}")
+        return response
 
     @cache_with_ttl(ttl=900, key_prefix='reallocation:data')
     def get_reallocation_data(
@@ -1572,26 +1569,29 @@ class APIClient:
         """
         Get editable forecast records for reallocation.
 
+        Note: The typical workflow loads ALL records without filters. Filtering
+        is done client-side after data is loaded (load-then-filter pattern).
+
         Args:
             month: Month name (e.g., 'April')
             year: Year (e.g., 2025)
-            main_lobs: Optional list of Main LOBs to filter
-            case_types: Optional list of Case Types to filter
-            states: Optional list of States to filter
+            main_lobs: Optional list of Main LOBs to filter (typically not used)
+            case_types: Optional list of Case Types to filter (typically not used)
+            states: Optional list of States to filter (typically not used)
 
         Returns:
             Dictionary with forecast records:
             {
                 'success': True,
-                'months': {'month1': 'Jun-25', ..., 'month6': 'Nov-25'},
+                'months': {'month1': 'Apr-25', ..., 'month6': 'Sep-25'},
                 'data': [{
                     'case_id': 'uuid',
                     'main_lob': 'Medicaid',
                     'state': 'MO',
                     'case_type': 'Appeals',
-                    'target_cph': 100,
+                    'target_cph': 100.0,
                     'months': {
-                        'Jun-25': {'forecast': 12500, 'fte_req': 11, 'fte_avail': 8, 'capacity': 400},
+                        'Apr-25': {'forecast': 12500, 'fte_req': 125, 'fte_avail': 120, 'capacity': 12000},
                         ...
                     }
                 }],
@@ -1600,24 +1600,26 @@ class APIClient:
 
         Example:
             >>> client = get_api_client()
-            >>> data = client.get_reallocation_data('April', 2025, main_lobs=['Medicaid'])
+            >>> data = client.get_reallocation_data('April', 2025)
             >>> len(data['data'])
-            50
+            150
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/edit-view/forecast-reallocation/data/"
-        # params = {'month': month, 'year': year}
-        # if main_lobs:
-        #     params['main_lobs[]'] = main_lobs
-        # if case_types:
-        #     params['case_types[]'] = case_types
-        # if states:
-        #     params['states[]'] = states
-        # response = self._make_request('GET', endpoint, params=params)
-        # return response
+        endpoint = "/api/edit-view/forecast-reallocation/data/"
+        params = {'month': month, 'year': year}
 
-        # MOCK: Using mock data for now
-        return mock_get_reallocation_data(month, year, main_lobs, case_types, states)
+        # Add optional filter parameters (typically not used in load-then-filter workflow)
+        if main_lobs:
+            params['main_lobs[]'] = main_lobs
+        if case_types:
+            params['case_types[]'] = case_types
+        if states:
+            params['states[]'] = states
+
+        logger.debug(f"[Reallocation Data] Fetching for {month} {year}")
+        response = self._make_request('GET', endpoint, params=params)
+        record_count = len(response.get('data', []))
+        logger.info(f"[Reallocation Data] Retrieved {record_count} records for {month} {year}")
+        return response
 
     def get_reallocation_preview(
         self,
@@ -1626,41 +1628,50 @@ class APIClient:
         modified_records: list
     ) -> Dict:
         """
-        Calculate preview with user-edited values (NO CACHE - calculation).
+        Calculate preview with user-edited Target CPH and FTE Available values (NO CACHE).
+
+        Backend recalculates:
+        - FTE Required based on new CPH
+        - Capacity based on new FTE Available and CPH
 
         Args:
             month: Month name (e.g., 'April')
             year: Year (e.g., 2025)
-            modified_records: List of modified record dictionaries
+            modified_records: List of modified record dictionaries with:
+                - case_id, main_lob, state, case_type
+                - target_cph, target_cph_change
+                - modified_fields (DOT notation array)
+                - months (object with month-specific data including fte_avail_change)
 
         Returns:
-            Dictionary with preview data (same structure as bench allocation):
+            Dictionary with preview data:
             {
                 'success': True,
-                'months': {'month1': 'Jun-25', ...},
-                'modified_records': [...],
-                'total_modified': 15,
-                'summary': {...}
+                'months': {'month1': 'Apr-25', ..., 'month6': 'Sep-25'},
+                'month': 'April',
+                'year': 2025,
+                'modified_records': [...with recalculated fte_req and capacity...],
+                'total_modified': 1,
+                'summary': {'total_fte_change': 10, 'total_capacity_change': 5025}
             }
 
         Example:
             >>> client = get_api_client()
-            >>> preview = client.get_reallocation_preview('April', 2025, [...])
+            >>> preview = client.get_reallocation_preview('April', 2025, modified_records)
             >>> preview['total_modified']
-            15
+            1
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/edit-view/forecast-reallocation/preview/"
-        # data = {
-        #     'month': month,
-        #     'year': year,
-        #     'modified_records': modified_records
-        # }
-        # response = self._make_request('POST', endpoint, data=data)
-        # return response
-
-        # MOCK: Using mock data for now
-        return mock_get_reallocation_preview(month, year, modified_records)
+        endpoint = "/api/edit-view/forecast-reallocation/preview/"
+        data = {
+            'month': month,
+            'year': year,
+            'modified_records': modified_records
+        }
+        logger.debug(f"[Reallocation Preview] Calculating for {month} {year} with {len(modified_records)} records")
+        response = self._make_request('POST', endpoint, data=data, timeout=EditViewConfig.PREVIEW_TIMEOUT)
+        total_modified = response.get('total_modified', 0)
+        logger.info(f"[Reallocation Preview] Preview calculated: {total_modified} records affected")
+        return response
 
     def submit_reallocation_update(
         self,
@@ -1673,65 +1684,71 @@ class APIClient:
         """
         Submit and save reallocation changes (NO CACHE - write operation).
 
+        Creates a history log entry with change type 'Forecast Reallocation'.
+
         Args:
             month: Month name (e.g., 'April')
             year: Year (e.g., 2025)
-            months: Month index mapping (month1-month6 to labels)
-            modified_records: List of modified record dictionaries
-            user_notes: User-provided description
+            months: Month index mapping (month1-month6 to labels) - REQUIRED
+            modified_records: List of modified record dictionaries from preview response
+                - Must include: case_id, main_lob, state, case_type
+                - Must include: target_cph, target_cph_change, modified_fields
+                - Must include: months object with all 6 months and *_change fields
+            user_notes: User-provided description (required, max 500 chars)
 
         Returns:
             Success response:
             {
                 'success': True,
                 'message': 'Forecast reallocation updated successfully',
-                'records_updated': 15,
+                'records_updated': 1,
                 'history_log_id': 'uuid-string'
             }
 
         Example:
             >>> client = get_api_client()
-            >>> months_map = {'month1': 'Jun-25', 'month2': 'Jul-25', ...}
+            >>> months_map = {'month1': 'Apr-25', 'month2': 'May-25', ...}
             >>> response = client.submit_reallocation_update(
-            ...     'April', 2025, months_map, [...], 'Reallocated FTE for Q2'
+            ...     'April', 2025, months_map, modified_records, 'Reallocated FTE for Q2'
             ... )
             >>> response['success']
             True
         """
-        # TODO: Replace with actual API call when endpoint is ready
-        # endpoint = "/api/edit-view/forecast-reallocation/update/"
-        # data = {
-        #     'month': month,
-        #     'year': year,
-        #     'months': months,
-        #     'modified_records': modified_records,
-        #     'user_notes': user_notes
-        # }
-        # timeout = 60  # Update timeout
-        # response = self._make_request('POST', endpoint, data=data, timeout=timeout)
-
-        # MOCK: Using mock data for now
-        response = mock_submit_reallocation_update(month, year, months, modified_records, user_notes)
+        endpoint = "/api/edit-view/forecast-reallocation/update/"
+        data = {
+            'month': month,
+            'year': year,
+            'months': months,
+            'modified_records': modified_records,
+            'user_notes': user_notes
+        }
+        logger.info(f"[Reallocation Update] Submitting {len(modified_records)} records for {month} {year}")
+        response = self._make_request('POST', endpoint, data=data, timeout=EditViewConfig.UPDATE_TIMEOUT)
 
         # Clear reallocation caches after successful update
-        try:
-            from centene_forecast_app.app_utils.cache_utils import delete_pattern
+        if response.get('success'):
+            try:
+                from centene_forecast_app.app_utils.cache_utils import delete_pattern
 
-            # Clear reallocation data cache
-            data_cleared = delete_pattern('reallocation:data:*')
+                # Clear reallocation data cache
+                data_cleared = delete_pattern('reallocation:data:*')
 
-            # Clear reallocation filter cache
-            filter_cleared = delete_pattern('reallocation:filters:*')
+                # Clear reallocation filter cache
+                filter_cleared = delete_pattern('reallocation:filters:*')
 
-            # Also clear bench allocation preview since data changed
-            bench_cleared = delete_pattern('bench_allocation:*')
+                # Also clear bench allocation preview since data changed
+                bench_cleared = delete_pattern('bench_allocation:*')
 
-            logger.info(
-                f"[Reallocation Update] Cleared {data_cleared} data cache entries, "
-                f"{filter_cleared} filter cache entries, {bench_cleared} bench allocation entries"
-            )
-        except Exception as e:
-            logger.warning(f"[Reallocation Update] Failed to clear caches: {e}")
+                logger.info(
+                    f"[Reallocation Update] Cleared {data_cleared} data cache entries, "
+                    f"{filter_cleared} filter cache entries, {bench_cleared} bench allocation entries"
+                )
+            except Exception as e:
+                logger.warning(f"[Reallocation Update] Failed to clear caches: {e}")
+
+            records_updated = response.get('records_updated', 0)
+            history_log_id = response.get('history_log_id', 'N/A')
+            logger.info(f"[Reallocation Update] Success: {records_updated} records, history_log_id: {history_log_id}")
 
         return response
 
