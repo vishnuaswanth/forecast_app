@@ -1735,11 +1735,11 @@
                 if (!monthwiseSummary[month]) {
                     monthwiseSummary[month] = {};
 
-                    // Initialize all tracked fields
+                    // Initialize all tracked fields (editable OR showChange)
                     config.monthColumns.forEach(col => {
                         const fieldName = config.fields[col.key];
                         monthwiseSummary[month][`${fieldName}_total`] = 0;
-                        if (col.editable) {
+                        if (col.editable || col.showChange) {
                             monthwiseSummary[month][`${fieldName}_change`] = 0;
                         }
                     });
@@ -1755,7 +1755,8 @@
                     monthwiseSummary[month][`${fieldName}_total`] =
                         (monthwiseSummary[month][`${fieldName}_total`] || 0) + (value || 0);
 
-                    if (col.editable) {
+                    // Track changes for editable fields OR fields with showChange flag
+                    if (col.editable || col.showChange) {
                         monthwiseSummary[month][`${fieldName}_change`] =
                             (monthwiseSummary[month][`${fieldName}_change`] || 0) + (change || 0);
                     }
@@ -1792,7 +1793,8 @@
                 cardHtml += '<div class="edit-view-month-summary-details">';
 
                 config.monthColumns.forEach(col => {
-                    if (col.editable) {
+                    // Show changes for editable fields OR fields with showChange flag
+                    if (col.editable || col.showChange) {
                         const fieldName = config.fields[col.key];
                         const change = monthData[`${fieldName}_change`] || 0;
                         const sign = change > 0 ? '+' : '';
