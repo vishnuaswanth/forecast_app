@@ -483,7 +483,7 @@ class APIClient:
         }
 
         return self.get("/record_history/all", params=params)
-    
+
     def get_roster_page(self, skip=0, limit=10, search=None, searchable_field='', global_filter=None):
         params = {
             'skip': skip,
@@ -1378,7 +1378,7 @@ class APIClient:
         }
         timeout = 60  # Update timeout
         response = self._make_request('POST', endpoint, data=data, timeout=timeout)
-    
+
         # Clear CPH caches after successful update
         try:
             from centene_forecast_app.app_utils.cache_utils import delete_pattern
@@ -1668,7 +1668,7 @@ class APIClient:
             'modified_records': modified_records
         }
         logger.debug(f"[Reallocation Preview] Calculating for {month} {year} with {len(modified_records)} records")
-        response = self._make_request('POST', endpoint, data=data, timeout=EditViewConfig.PREVIEW_TIMEOUT)
+        response = self._make_request('POST', endpoint, data=data, timeout=EditViewConfig.PREVIEW_TIMEOUT_SECONDS)
         total_modified = response.get('total_modified', 0)
         logger.info(f"[Reallocation Preview] Preview calculated: {total_modified} records affected")
         return response

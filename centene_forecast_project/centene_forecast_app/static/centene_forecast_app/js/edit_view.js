@@ -4249,6 +4249,62 @@
     }
 
     /**
+     * Transform modified records to API-expected format
+     * - Converts modified_fields from objects to DOT notation strings
+     * - Removes internal tracking fields like original_target_cph
+     * - Ensures months data is properly structured
+     */
+    function transformRecordsForAPI(records) {
+        return records.map(record => {
+            // Create a clean copy without internal tracking fields
+            const apiRecord = {
+                case_id: record.case_id,
+                main_lob: record.main_lob,
+                state: record.state,
+                case_type: record.case_type,
+                target_cph: record.target_cph,
+                target_cph_change: record.target_cph_change || 0,
+                modified_fields: [],
+                months: {}
+            };
+
+            // Convert modified_fields from objects to DOT notation strings
+            if (Array.isArray(record.modified_fields)) {
+                record.modified_fields.forEach(ref => {
+                    if (typeof ref === 'string') {
+                        // Already a string, use as-is
+                        apiRecord.modified_fields.push(ref);
+                    } else if (typeof ref === 'object') {
+                        if (ref.field === 'target_cph') {
+                            // Target CPH change
+                            apiRecord.modified_fields.push('target_cph');
+                        } else if (ref.month_label && ref.field) {
+                            // Month-specific field change: "May-25.fte_avail"
+                            apiRecord.modified_fields.push(`${ref.month_label}.${ref.field}`);
+                        }
+                    }
+                });
+            }
+
+            // Copy months data, removing internal tracking fields
+            if (record.months) {
+                Object.keys(record.months).forEach(monthLabel => {
+                    const monthData = record.months[monthLabel];
+                    apiRecord.months[monthLabel] = {
+                        forecast: monthData.forecast ?? 0,
+                        fte_req: monthData.fte_req ?? 0,
+                        fte_avail: monthData.fte_avail ?? 0,
+                        capacity: monthData.capacity ?? 0,
+                        fte_avail_change: monthData.fte_avail_change ?? 0
+                    };
+                });
+            }
+
+            return apiRecord;
+        });
+    }
+
+    /**
      * Handle Show Preview button click
      */
     async function handleShowReallocationPreview() {
@@ -4258,7 +4314,9 @@
         }
 
         const { month, year } = STATE.reallocation.currentSelectedReport;
-        const modifiedRecords = Array.from(STATE.reallocation.modifiedRecords.values());
+        const rawRecords = Array.from(STATE.reallocation.modifiedRecords.values());
+        // Transform records to API-expected format (DOT notation strings in modified_fields)
+        const modifiedRecords = transformRecordsForAPI(rawRecords);
 
         showElement(DOM.reallocationPreviewLoading);
         hideElement(DOM.reallocationPreviewError);
@@ -4273,7 +4331,6 @@
                 data: JSON.stringify({
                     month: month,
                     year: year,
-                    months: STATE.reallocation.monthsMapping,  // Include month index mapping
                     modified_records: modifiedRecords
                 })
             });
@@ -4454,7 +4511,9 @@
 
         STATE.isSubmitting = true;
         const { month, year } = STATE.reallocation.currentSelectedReport;
-        const modifiedRecords = Array.from(STATE.reallocation.modifiedRecords.values());
+        const rawRecords = Array.from(STATE.reallocation.modifiedRecords.values());
+        // Transform records to API-expected format (DOT notation strings in modified_fields)
+        const modifiedRecords = transformRecordsForAPI(rawRecords);
         const userNotes = DOM.reallocationUserNotesInput.val().trim();
 
         try {
