@@ -346,11 +346,12 @@
             ],
 
             // Month columns configuration
+            // showChange: true means show change indicators in preview even if not editable
             monthColumns: [
                 { key: 'forecast', label: 'CF', editable: false },
-                { key: 'fteReq', label: 'FTE Req', editable: false },
+                { key: 'fteReq', label: 'FTE Req', editable: false, showChange: true },
                 { key: 'fteAvail', label: 'FTE Avail', editable: true },
-                { key: 'capacity', label: 'Cap', editable: false }
+                { key: 'capacity', label: 'Cap', editable: false, showChange: true }
             ],
 
             // Feature flags
@@ -1376,11 +1377,13 @@
 
                 config.monthColumns.forEach(col => {
                     const value = getFieldValue(monthData, col.key, config);
+                    const fieldName = config.fields[col.key];
+                    const change = getFieldChange(monthData, col.key, config);
+                    const isModified = modifiedFields.includes(`${month}.${fieldName}`);
 
-                    if (col.editable) {
-                        const fieldName = config.fields[col.key];
-                        const isModified = modifiedFields.includes(`${month}.${fieldName}`);
-                        const change = getFieldChange(monthData, col.key, config);
+                    // Show change indicators if there's a change value (non-zero)
+                    // This handles both editable fields and calculated fields with changes
+                    if (change !== 0 || col.editable || col.showChange) {
                         tr.append(renderCell(value, change, isModified));
                     } else {
                         tr.append(`<td class="text-end">${formatNumber(value)}</td>`);
@@ -1440,7 +1443,9 @@
                 const value = monthTotals[fieldName];
                 const change = monthTotals[`${fieldName}_change`];
 
-                if (col.editable) {
+                // Show change indicators if there's a change value (non-zero)
+                // This handles both editable fields and calculated fields with changes
+                if (change !== 0 || col.editable || col.showChange) {
                     tr.append(renderTotalCell(value, change));
                 } else {
                     tr.append(`<td class="text-end"><strong>${formatNumber(value)}</strong></td>`);
