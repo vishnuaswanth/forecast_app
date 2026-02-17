@@ -4284,9 +4284,9 @@
             const modifiedMonths = record.months || {};
 
             // Create a clean copy without internal tracking fields
-            // Use row_key as the unique identifier for the API
+            // Include case_id for API payload, row_key is only for internal state management
             const apiRecord = {
-                row_key: record.row_key,
+                case_id: record.case_id || originalRecord.case_id,
                 main_lob: record.main_lob,
                 state: record.state,
                 case_type: record.case_type,
