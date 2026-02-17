@@ -119,7 +119,7 @@
             currentSelectedReport: null,      // {month: "April", year: 2025}
             allRecords: [],                   // All records from API
             filteredRecords: [],              // After LOB/State/Case Type filters
-            modifiedRecords: new Map(),       // Map<case_id, modified_record> - only changed
+            modifiedRecords: new Map(),       // Map<row_key, modified_record> - only changed
             visibleMonths: [],                // Array of visible month keys
             allMonths: [],                    // All available months
             monthsMapping: {},                // {month1: 'Jun-25', month2: 'Jul-25', ...}
@@ -3701,7 +3701,14 @@
             });
 
             if (response.success !== false) {
-                STATE.reallocation.allRecords = response.data || [];
+                // Generate unique row_key from main_lob + state + case_type combination
+                const records = response.data || [];
+                records.forEach(record => {
+                    // Create composite key from the unique combination
+                    record.row_key = `${record.main_lob || ''}_${record.state || ''}_${record.case_type || ''}`;
+                });
+
+                STATE.reallocation.allRecords = records;
                 STATE.reallocation.filteredRecords = [...STATE.reallocation.allRecords];
                 STATE.reallocation.monthsMapping = response.months || {};
 
@@ -3892,44 +3899,50 @@
      * Render a single data row for reallocation table
      */
     function renderReallocationDataRow(record) {
-        const caseId = record.case_id;
-        const isModified = STATE.reallocation.modifiedRecords.has(caseId);
-        const modifiedRecord = isModified ? STATE.reallocation.modifiedRecords.get(caseId) : record;
+        const rowKey = record.row_key;
 
-        const row = $(`<tr data-case-id="${caseId}" class="${isModified ? 'edit-view-reallocation-row-modified' : ''}"></tr>`);
+        // Always get the original record from allRecords for proper fallback
+        const originalRecord = STATE.reallocation.allRecords.find(r => r.row_key === rowKey) || record;
+        const isModified = STATE.reallocation.modifiedRecords.has(rowKey);
+        const modifiedRecord = isModified ? STATE.reallocation.modifiedRecords.get(rowKey) : null;
 
-        // Fixed columns
-        row.append(`<td class="text-left">${escapeHtml(record.main_lob)}</td>`);
-        row.append(`<td class="text-center">${escapeHtml(record.state)}</td>`);
-        row.append(`<td class="text-center">${escapeHtml(record.case_type)}</td>`);
+        const row = $(`<tr data-row-key="${rowKey}" class="${isModified ? 'edit-view-reallocation-row-modified' : ''}"></tr>`);
+
+        // Fixed columns - always use original record for static fields
+        row.append(`<td class="text-left">${escapeHtml(originalRecord.main_lob)}</td>`);
+        row.append(`<td class="text-center">${escapeHtml(originalRecord.state)}</td>`);
+        row.append(`<td class="text-center">${escapeHtml(originalRecord.case_type)}</td>`);
 
         // Target CPH - editable
-        const targetCph = modifiedRecord.target_cph || record.target_cph || 0;
-        const originalCph = record.target_cph || 0;
+        const targetCph = (modifiedRecord ? modifiedRecord.target_cph : null) ?? originalRecord.target_cph ?? 0;
+        const originalCph = originalRecord.target_cph || 0;
         const cphModified = targetCph !== originalCph;
         row.append(`
             <td class="${cphModified ? 'edit-view-cell-modified' : ''}">
                 <div class="edit-view-cell-controls">
                     <button class="edit-view-btn-decrement reallocation-decrement-btn"
-                            data-case-id="${caseId}" data-field="target_cph" data-step="1">
+                            data-row-key="${rowKey}" data-field="target_cph" data-step="1">
                         <i class="fas fa-minus"></i>
                     </button>
                     <input type="number" class="edit-view-cell-input reallocation-input ${cphModified ? 'edit-view-cell-modified-input' : ''}"
-                           data-case-id="${caseId}" data-field="target_cph"
+                           data-row-key="${rowKey}" data-field="target_cph"
                            value="${targetCph.toFixed(2)}" min="0" max="200" step="1">
                     <button class="edit-view-btn-increment reallocation-increment-btn"
-                            data-case-id="${caseId}" data-field="target_cph" data-step="1">
+                            data-row-key="${rowKey}" data-field="target_cph" data-step="1">
                         <i class="fas fa-plus"></i>
                     </button>
                 </div>
             </td>
         `);
 
-        // Month columns
-        const months = modifiedRecord.months || record.months || {};
+        // Month columns - merge original months with modified months
+        // Modified months override original, but unmodified months fall back to original
+        const originalMonths = originalRecord.months || {};
+        const modifiedMonths = (modifiedRecord ? modifiedRecord.months : null) || {};
         STATE.reallocation.visibleMonths.forEach(monthLabel => {
-            const monthData = months[monthLabel] || {};
-            const originalMonthData = (record.months || {})[monthLabel] || {};
+            // Use modified month data if exists, otherwise fall back to original
+            const monthData = modifiedMonths[monthLabel] || originalMonths[monthLabel] || {};
+            const originalMonthData = originalMonths[monthLabel] || {};
 
             // CF (not editable)
             row.append(`<td class="text-center">${formatNumber(monthData.forecast || 0)}</td>`);
@@ -3945,14 +3958,14 @@
                 <td class="${fteModified ? 'edit-view-cell-modified' : ''}">
                     <div class="edit-view-cell-controls">
                         <button class="edit-view-btn-decrement reallocation-decrement-btn"
-                                data-case-id="${caseId}" data-field="fte_avail" data-month="${monthLabel}" data-step="1">
+                                data-row-key="${rowKey}" data-field="fte_avail" data-month="${monthLabel}" data-step="1">
                             <i class="fas fa-minus"></i>
                         </button>
                         <input type="number" class="edit-view-cell-input reallocation-input ${fteModified ? 'edit-view-cell-modified-input' : ''}"
-                               data-case-id="${caseId}" data-field="fte_avail" data-month="${monthLabel}"
+                               data-row-key="${rowKey}" data-field="fte_avail" data-month="${monthLabel}"
                                value="${fteAvail}" min="0" max="999" step="1">
                         <button class="edit-view-btn-increment reallocation-increment-btn"
-                                data-case-id="${caseId}" data-field="fte_avail" data-month="${monthLabel}" data-step="1">
+                                data-row-key="${rowKey}" data-field="fte_avail" data-month="${monthLabel}" data-step="1">
                             <i class="fas fa-plus"></i>
                         </button>
                     </div>
@@ -4000,12 +4013,12 @@
      */
     function handleReallocationIncrement(e) {
         const btn = $(e.currentTarget);
-        const caseId = btn.data('case-id');
+        const rowKey = btn.data('row-key');
         const field = btn.data('field');
         const month = btn.data('month');
         const step = parseFloat(btn.data('step') || 1);
 
-        updateReallocationValue(caseId, field, month, step);
+        updateReallocationValue(rowKey, field, month, step);
     }
 
     /**
@@ -4013,12 +4026,12 @@
      */
     function handleReallocationDecrement(e) {
         const btn = $(e.currentTarget);
-        const caseId = btn.data('case-id');
+        const rowKey = btn.data('row-key');
         const field = btn.data('field');
         const month = btn.data('month');
         const step = parseFloat(btn.data('step') || 1);
 
-        updateReallocationValue(caseId, field, month, -step);
+        updateReallocationValue(rowKey, field, month, -step);
     }
 
     /**
@@ -4026,22 +4039,22 @@
      */
     function handleReallocationInputChange(e) {
         const input = $(e.target);
-        const caseId = input.data('case-id');
+        const rowKey = input.data('row-key');
         const field = input.data('field');
         const month = input.data('month');
         const newValue = parseFloat(input.val()) || 0;
 
-        setReallocationValue(caseId, field, month, newValue);
+        setReallocationValue(rowKey, field, month, newValue);
     }
 
     /**
      * Update a reallocation value by delta
      */
-    function updateReallocationValue(caseId, field, month, delta) {
-        const originalRecord = STATE.reallocation.allRecords.find(r => r.case_id === caseId);
+    function updateReallocationValue(rowKey, field, month, delta) {
+        const originalRecord = STATE.reallocation.allRecords.find(r => r.row_key === rowKey);
         if (!originalRecord) return;
 
-        let modifiedRecord = STATE.reallocation.modifiedRecords.get(caseId);
+        let modifiedRecord = STATE.reallocation.modifiedRecords.get(rowKey);
         if (!modifiedRecord) {
             modifiedRecord = JSON.parse(JSON.stringify(originalRecord));
             modifiedRecord.modified_fields = [];
@@ -4101,15 +4114,15 @@
         const isActuallyModified = checkRecordModified(originalRecord, modifiedRecord);
 
         if (isActuallyModified) {
-            STATE.reallocation.modifiedRecords.set(caseId, modifiedRecord);
+            STATE.reallocation.modifiedRecords.set(rowKey, modifiedRecord);
         } else {
-            STATE.reallocation.modifiedRecords.delete(caseId);
+            STATE.reallocation.modifiedRecords.delete(rowKey);
         }
 
         // Update the row
-        const row = DOM.reallocationTableBody.find(`tr[data-case-id="${caseId}"]`);
+        const row = DOM.reallocationTableBody.find(`tr[data-row-key="${rowKey}"]`);
         row.replaceWith(renderReallocationDataRow(
-            STATE.reallocation.modifiedRecords.get(caseId) || originalRecord
+            STATE.reallocation.modifiedRecords.get(rowKey) || originalRecord
         ));
 
         updateReallocationModifiedCount();
@@ -4158,11 +4171,11 @@
     /**
      * Set a reallocation value directly
      */
-    function setReallocationValue(caseId, field, month, newValue) {
-        const originalRecord = STATE.reallocation.allRecords.find(r => r.case_id === caseId);
+    function setReallocationValue(rowKey, field, month, newValue) {
+        const originalRecord = STATE.reallocation.allRecords.find(r => r.row_key === rowKey);
         if (!originalRecord) return;
 
-        let modifiedRecord = STATE.reallocation.modifiedRecords.get(caseId);
+        let modifiedRecord = STATE.reallocation.modifiedRecords.get(rowKey);
         if (!modifiedRecord) {
             modifiedRecord = JSON.parse(JSON.stringify(originalRecord));
             modifiedRecord.modified_fields = [];
@@ -4213,9 +4226,9 @@
         const isActuallyModified = checkRecordModified(originalRecord, modifiedRecord);
 
         if (isActuallyModified) {
-            STATE.reallocation.modifiedRecords.set(caseId, modifiedRecord);
+            STATE.reallocation.modifiedRecords.set(rowKey, modifiedRecord);
         } else {
-            STATE.reallocation.modifiedRecords.delete(caseId);
+            STATE.reallocation.modifiedRecords.delete(rowKey);
         }
 
         updateReallocationModifiedCount();
@@ -4259,15 +4272,21 @@
      * Transform modified records for PREVIEW request
      * - Converts modified_fields from objects to DOT notation strings
      * - Removes internal tracking fields like original_target_cph
-     * - Only includes months/fields that have actual changes
+     * - Merges modified months with original months (all 6 months included)
      *
      * NOTE: Update request uses preview response data directly, not this function
      */
     function transformRecordsForPreview(records) {
         return records.map(record => {
+            // Find original record using row_key (main_lob + state + case_type combination)
+            const originalRecord = STATE.reallocation.allRecords.find(r => r.row_key === record.row_key) || {};
+            const originalMonths = originalRecord.months || {};
+            const modifiedMonths = record.months || {};
+
             // Create a clean copy without internal tracking fields
+            // Use row_key as the unique identifier for the API
             const apiRecord = {
-                case_id: record.case_id,
+                row_key: record.row_key,
                 main_lob: record.main_lob,
                 state: record.state,
                 case_type: record.case_type,
@@ -4295,19 +4314,31 @@
                 });
             }
 
-            // Copy months data, removing internal tracking fields
-            if (record.months) {
-                Object.keys(record.months).forEach(monthLabel => {
-                    const monthData = record.months[monthLabel];
+            // Merge ALL months - use modified data where available, original data otherwise
+            Object.keys(originalMonths).forEach(monthLabel => {
+                const origMonth = originalMonths[monthLabel] || {};
+                const modMonth = modifiedMonths[monthLabel];
+
+                if (modMonth) {
+                    // This month was modified - use modified data
                     apiRecord.months[monthLabel] = {
-                        forecast: monthData.forecast ?? 0,
-                        fte_req: monthData.fte_req ?? 0,
-                        fte_avail: monthData.fte_avail ?? 0,
-                        capacity: monthData.capacity ?? 0,
-                        fte_avail_change: monthData.fte_avail_change ?? 0
+                        forecast: modMonth.forecast ?? origMonth.forecast ?? 0,
+                        fte_req: modMonth.fte_req ?? origMonth.fte_req ?? 0,
+                        fte_avail: modMonth.fte_avail ?? origMonth.fte_avail ?? 0,
+                        capacity: modMonth.capacity ?? origMonth.capacity ?? 0,
+                        fte_avail_change: modMonth.fte_avail_change ?? 0
                     };
-                });
-            }
+                } else {
+                    // This month was not modified - use original data with zero change
+                    apiRecord.months[monthLabel] = {
+                        forecast: origMonth.forecast ?? 0,
+                        fte_req: origMonth.fte_req ?? 0,
+                        fte_avail: origMonth.fte_avail ?? 0,
+                        capacity: origMonth.capacity ?? 0,
+                        fte_avail_change: 0
+                    };
+                }
+            });
 
             return apiRecord;
         });
