@@ -27,8 +27,9 @@ from functools import wraps
 from django.conf import settings
 
 
-# Context variable for correlation ID propagation through async calls
+# Context variables for request propagation through async calls
 _correlation_id: ContextVar[Optional[str]] = ContextVar('correlation_id', default=None)
+_conversation_id: ContextVar[Optional[str]] = ContextVar('conversation_id', default=None)
 
 
 # =============================================================================
@@ -118,25 +119,36 @@ class CorrelationContext:
     start_time: float = field(default_factory=time.time)
 
     def __enter__(self):
-        self._token = _correlation_id.set(self.correlation_id)
+        self._corr_token = _correlation_id.set(self.correlation_id)
+        self._conv_token = _conversation_id.set(self.conversation_id) if self.conversation_id else None
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        _correlation_id.reset(self._token)
+        _correlation_id.reset(self._corr_token)
+        if self._conv_token is not None:
+            _conversation_id.reset(self._conv_token)
         return False
 
     async def __aenter__(self):
-        self._token = _correlation_id.set(self.correlation_id)
+        self._corr_token = _correlation_id.set(self.correlation_id)
+        self._conv_token = _conversation_id.set(self.conversation_id) if self.conversation_id else None
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        _correlation_id.reset(self._token)
+        _correlation_id.reset(self._corr_token)
+        if self._conv_token is not None:
+            _conversation_id.reset(self._conv_token)
         return False
 
 
 def get_correlation_id() -> Optional[str]:
     """Get current correlation ID from context."""
     return _correlation_id.get()
+
+
+def get_conversation_id() -> Optional[str]:
+    """Get current conversation ID from context."""
+    return _conversation_id.get()
 
 
 def create_correlation_id(
@@ -252,6 +264,9 @@ class LLMWorkflowLogger:
 
         if conversation_id:
             extra['conversation_id'] = conversation_id
+        elif get_conversation_id():
+            extra['conversation_id'] = get_conversation_id()
+
         if user_id:
             extra['user_id'] = user_id
 
@@ -648,7 +663,8 @@ class LLMWorkflowLogger:
             'user_id': user_id,
             'conversation_id': conversation_id,
         }
-        self._log(logging.INFO, 'websocket_connect', data, user_id=user_id)
+        self._log(logging.INFO, 'websocket_connect', data,
+                  conversation_id=conversation_id, user_id=user_id)
 
     def log_websocket_disconnect(
         self,

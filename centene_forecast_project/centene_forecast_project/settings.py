@@ -420,6 +420,10 @@ LOGGING = {
             'maxBytes': MAX_LOG_SIZE,
             'encoding': 'utf-8',
         },
+        'conversation_file': {
+            'class': 'chat_app.utils.conversation_log_handler.ConversationFileHandler',
+            'level': 'DEBUG',
+        },
     },
     'loggers': {
         'django': {
@@ -440,32 +444,32 @@ LOGGING = {
             'propagate': False,
         },
         'llm_workflow': {
-            'handlers': ['console', 'llm_file'],
+            'handlers': ['console', 'llm_file', 'conversation_file'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
         'llm_workflow.intent': {
-            'handlers': ['console', 'llm_file'],
+            'handlers': ['console', 'llm_file', 'conversation_file'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
         'llm_workflow.parameters': {
-            'handlers': ['console', 'llm_file'],
+            'handlers': ['console', 'llm_file', 'conversation_file'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
         'llm_workflow.validation': {
-            'handlers': ['console', 'llm_file'],
+            'handlers': ['console', 'llm_file', 'conversation_file'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
         'llm_workflow.query': {
-            'handlers': ['console', 'llm_file'],
+            'handlers': ['console', 'llm_file', 'conversation_file'],
             'level': 'DEBUG' if DEBUG else 'INFO',
             'propagate': False,
         },
         'llm_workflow.error': {
-            'handlers': ['console', 'llm_file'],
+            'handlers': ['console', 'llm_file', 'conversation_file'],
             'level': 'DEBUG',
             'propagate': False,
         },

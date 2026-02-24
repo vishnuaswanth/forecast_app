@@ -710,6 +710,167 @@ def generate_validation_confirmation_ui(
     return html
 
 
+def generate_fte_details_ui(row_data: dict) -> str:
+    """
+    Generate FTE details card for a selected forecast row.
+
+    Args:
+        row_data: Selected forecast row with months dict
+
+    Returns:
+        HTML string for FTE details card
+    """
+    main_lob = row_data.get('main_lob', '')
+    case_type = row_data.get('case_type', '')
+    is_domestic = 'domestic' in main_lob.lower() or 'domestic' in case_type.lower()
+    config_type = 'DOMESTIC' if is_domestic else 'GLOBAL'
+    badge_class = 'bg-primary' if is_domestic else 'bg-secondary'
+
+    months_html = ""
+    for month_name, month_data in row_data.get('months', {}).items():
+        gap = month_data.get('gap', 0)
+        gap_class = 'gap-negative' if gap < 0 else 'gap-positive' if gap > 0 else ''
+        fte_req = month_data.get('fte_required', 0)
+        fte_avail = month_data.get('fte_available', 0)
+
+        months_html += f'''
+        <div class="fte-detail-item">
+            <div class="fte-detail-label">{month_name}</div>
+            <div class="fte-detail-value">
+                FTE Req: {fte_req} |
+                FTE Avail: {fte_avail} |
+                <span class="{gap_class}">Gap: {gap:+d}</span>
+            </div>
+        </div>
+        '''
+
+    logger.info(f"[UI Tools] Generated FTE details UI for {main_lob}")
+    return f'''
+    <div class="fte-details-card">
+        <div class="fte-details-header">
+            FTE Details: {main_lob} | {row_data.get('state')} | {case_type}
+        </div>
+        <div class="fte-config-badge" style="margin-bottom: 12px;">
+            <span class="badge {badge_class}">
+                {config_type} Configuration
+            </span>
+            <span style="margin-left: 8px;">Target CPH: {row_data.get('target_cph', 'N/A')}</span>
+        </div>
+        <div class="fte-details-grid">
+            {months_html}
+        </div>
+    </div>
+    '''
+
+
+def generate_cph_preview_ui(row_data: dict, new_cph: float, impact_data: dict, locality: str) -> str:
+    """
+    Generate CPH change preview card.
+
+    Args:
+        row_data: Selected forecast row data
+        new_cph: New CPH value
+        impact_data: Output of calculate_cph_impact() - monthly old/new values
+        locality: 'Domestic' or 'Global'
+
+    Returns:
+        HTML string for CPH preview card with confirm/cancel buttons
+    """
+    import json as _json
+
+    old_cph = row_data.get('target_cph', 0)
+    main_lob = row_data.get('main_lob', '')
+    case_type = row_data.get('case_type', '')
+    config_type = locality.upper()
+    is_domestic = locality == 'Domestic'
+    badge_class = 'bg-primary' if is_domestic else 'bg-secondary'
+
+    preview_data = {
+        'main_lob': main_lob,
+        'state': row_data.get('state'),
+        'case_type': case_type,
+        'old_cph': old_cph,
+        'new_cph': new_cph,
+        'config_type': config_type,
+        'locality': locality,
+        'months': impact_data,
+    }
+
+    months_preview_html = ""
+    for month_name, month_impact in impact_data.items():
+        old_values = month_impact['old']
+        new_values = month_impact['new']
+        config_used = month_impact.get('config', {})
+
+        old_gap = old_values['gap']
+        new_gap = new_values['gap']
+        new_gap_class = 'gap-positive' if new_gap >= 0 else 'gap-negative'
+
+        config_info = ""
+        if config_used:
+            config_info = f'''
+            <div class="cph-config-info" style="font-size: 10px; color: #888; margin-top: 4px;">
+                {config_used.get('working_days', 22)}d &times; {config_used.get('work_hours', 8)}h &times;
+                {100 - int(config_used.get('shrinkage', 0.15) * 100)}% productivity
+            </div>
+            '''
+
+        months_preview_html += f'''
+        <div class="cph-month-preview">
+            <strong>{month_name}</strong>
+            <div class="cph-preview-row">
+                <span class="cph-preview-label">FTE Required:</span>
+                <span class="cph-preview-old">{old_values['fte_required']}</span>
+                <span class="cph-preview-arrow">&rarr;</span>
+                <span class="cph-preview-new">{new_values['fte_required']}</span>
+            </div>
+            <div class="cph-preview-row">
+                <span class="cph-preview-label">Capacity:</span>
+                <span class="cph-preview-old">{old_values['capacity']:,}</span>
+                <span class="cph-preview-arrow">&rarr;</span>
+                <span class="cph-preview-new">{new_values['capacity']:,}</span>
+            </div>
+            <div class="cph-preview-row">
+                <span class="cph-preview-label">Gap:</span>
+                <span class="cph-preview-old">{old_gap:+d}</span>
+                <span class="cph-preview-arrow">&rarr;</span>
+                <span class="cph-preview-new {new_gap_class}">{new_gap:+d}</span>
+            </div>
+            {config_info}
+        </div>
+        '''
+
+    preview_data_json = _json.dumps(preview_data).replace('"', '&quot;')
+
+    logger.info(f"[UI Tools] Generated CPH preview UI: {old_cph} -> {new_cph}")
+    return f'''
+    <div class="cph-preview-card">
+        <div class="cph-preview-header">
+            CPH Change Preview
+            <span class="badge {badge_class} ms-2">{config_type}</span>
+        </div>
+        <div class="cph-preview-row" style="margin-bottom: 16px;">
+            <span class="cph-preview-label">Target CPH:</span>
+            <span class="cph-preview-old">{old_cph}</span>
+            <span class="cph-preview-arrow">&rarr;</span>
+            <span class="cph-preview-new">{new_cph}</span>
+        </div>
+        <div class="cph-preview-subtitle">
+            <strong>{main_lob}</strong> | {row_data.get('state')} | {case_type}
+        </div>
+        <div class="cph-months-preview">
+            {months_preview_html}
+        </div>
+        <div class="cph-preview-actions">
+            <button class="cph-confirm-btn" data-update="{preview_data_json}">
+                Confirm Change
+            </button>
+            <button class="cph-reject-btn">Cancel</button>
+        </div>
+    </div>
+    '''
+
+
 def generate_combination_diagnostic_ui(
     diagnosis_message: str,
     working_combinations: Dict[str, List[str]],

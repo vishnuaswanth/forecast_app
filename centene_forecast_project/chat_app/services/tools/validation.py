@@ -452,11 +452,30 @@ class PreprocessedMessage(BaseModel):
     """
     Result of message preprocessing pipeline.
 
-    Contains normalized text, XML-tagged text, and extracted entities.
+    Pipeline: normalize → spell-correct → detect intent → extract entities
+              → craft resolved message.
+
+    The `resolved_message` field is a clean, unambiguous directive that
+    combines detected intent, extracted entities, and stored context.
+    It is used as the actual input to LLM tool-call classification.
     """
     original: str = Field(description="Original user input")
     normalized_text: str = Field(description="Clean, corrected text")
-    tagged_text: str = Field(description="Text with XML entity tags")
+    tagged_text: str = Field(description="Text with XML entity tags (kept for compatibility)")
+    intent: str = Field(
+        default="unknown",
+        description=(
+            "Detected user intent: query_data | extend_filters | remove_filters | "
+            "replace_filters | reset_filters | use_context | unknown"
+        )
+    )
+    resolved_message: str = Field(
+        default="",
+        description=(
+            "Clear, unambiguous directive crafted from intent + entities + context. "
+            "Used as the actual LLM input for tool-call classification."
+        )
+    )
     extracted_entities: Dict[str, List[str]] = Field(
         default_factory=dict,
         description="Extracted entities by type: {entity_type: [values]}"
@@ -484,7 +503,7 @@ class PreprocessedMessage(BaseModel):
 
     def has_filters(self) -> bool:
         """Check if any filter entities were extracted."""
-        filter_types = ['platforms', 'markets', 'localities', 'states', 'case_types', 'main_lobs']
+        filter_types = ['platforms', 'localities', 'states', 'case_types', 'main_lobs']
         return any(self.extracted_entities.get(ft) for ft in filter_types)
 
     def uses_previous_context(self) -> bool:

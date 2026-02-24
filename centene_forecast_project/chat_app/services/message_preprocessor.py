@@ -1,16 +1,23 @@
 """
 Message Preprocessor Service
 
-Preprocesses user messages for clarity and entity tagging.
-Pipeline: Normalize -> Spell Correct -> Sentence Correct -> XML Entity Tag
+Redesigned pipeline — intent-first approach:
 
-This module handles:
-1. Text normalization (casing, spacing, punctuation)
-2. Spell correction using domain-specific vocabulary
-3. XML entity tagging for easy parsing
-4. Robust multi-pass entity extraction
+  1. Normalize     — fix whitespace, punctuation
+  2. Spell-correct — fix domain typos (platforms, localities, case types)
+  3. Detect intent — what does the user want to DO?
+  4. Extract entities — specific values mentioned in the message
+  5. Validate entities — normalise extracted values
+  6. Detect implicit info — context references, extend/remove signals
+  7. Craft resolved message — combine intent + entities + stored context
+                              into a clear directive for tool-call accuracy
+  8. Score confidence
+
+Markets are NOT extracted here — their scope is too broad and they are
+passed through only as part of a full main_lob string (Platform Market Locality).
 """
 import re
+import calendar
 import logging
 from typing import Dict, List, Tuple, Optional, Any
 from difflib import SequenceMatcher
@@ -21,69 +28,75 @@ from chat_app.services.tools.validation import PreprocessedMessage
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Intent labels (used in crafted message)
+# ---------------------------------------------------------------------------
+_INTENT_LABELS: Dict[str, str] = {
+    'query_data':      'Show forecast data',
+    'extend_filters':  'Add to current filters and show data',
+    'remove_filters':  'Remove from filters and show data',
+    'replace_filters': 'Show data with new filters',
+    'reset_filters':   'Show all data (reset filters)',
+    'use_context':     'Show data using same filters as before',
+    'unknown':         'Show data',
+}
+
+
 class MessagePreprocessor:
     """
-    Preprocesses user messages for clarity and entity tagging.
+    Preprocesses user messages using an intent-first pipeline.
 
-    Handles normalization, spell correction, and XML entity tagging
-    to ensure entities are reliably extracted from user input.
+    If an LLM is provided, intent classification and entity extraction
+    are performed via a single structured LLM call.  Without an LLM,
+    both steps fall back to deterministic regex rules.
     """
 
-    # Domain-specific vocabulary for spell correction
-    # NOTE: Only validate fixed lists. Markets have many values - don't restrict.
-    DOMAIN_VOCABULARY = {
+    # ------------------------------------------------------------------
+    # Domain vocabulary (markets removed — scope too large)
+    # ------------------------------------------------------------------
+    DOMAIN_VOCABULARY: Dict[str, Any] = {
         'platforms': {
             'canonical': ['Amisys', 'Facets', 'Xcelys'],
             'aliases': {
-                'amysis': 'Amisys',
-                'amysys': 'Amisys',
-                'amisyss': 'Amisys',
-                'fecets': 'Facets',
-                'facet': 'Facets',
-                'xceles': 'Xcelys',
-                'xcelys': 'Xcelys',
-                'xcylys': 'Xcelys',
-            }
-        },
-        'markets': {
-            'canonical': ['Medicaid', 'Medicare', 'Marketplace'],
-            'aliases': {
-                'medcaid': 'Medicaid',
-                'medicad': 'Medicaid',
-                'medicaide': 'Medicaid',
-                'medicaire': 'Medicare',
-                'medicair': 'Medicare',
-                'market place': 'Marketplace',
-                'market-place': 'Marketplace',
-            }
+                'amysis':   'Amisys',
+                'amysys':   'Amisys',
+                'amisyss':  'Amisys',
+                'fecets':   'Facets',
+                'facet':    'Facets',
+                'xceles':   'Xcelys',
+                'xcelys':   'Xcelys',
+                'xcylys':   'Xcelys',
+            },
         },
         'localities': {
             'canonical': ['Domestic', 'Global'],
             'aliases': {
                 'domestic': 'Domestic',
-                'dom': 'Domestic',
-                'global': 'Global',
-                'gbl': 'Global',
+                'dom':      'Domestic',
+                'onshore':  'Domestic',
+                'global':   'Global',
+                'gbl':      'Global',
                 'offshore': 'Global',
-                'onshore': 'Domestic',
-            }
+            },
         },
         'case_types': {
             'canonical': ['Claims Processing', 'Enrollment', 'Appeals', 'Adjustments'],
             'aliases': {
-                'claims': 'Claims Processing',
-                'claim processing': 'Claims Processing',
-                'claims proc': 'Claims Processing',
-                'enroll': 'Enrollment',
-                'enrollments': 'Enrollment',
-                'appeal': 'Appeals',
-                'adjustment': 'Adjustments',
-            }
-        }
+                'claims':            'Claims Processing',
+                'claim processing':  'Claims Processing',
+                'claims proc':       'Claims Processing',
+                'enroll':            'Enrollment',
+                'enrollments':       'Enrollment',
+                'appeal':            'Appeals',
+                'adjustment':        'Adjustments',
+            },
+        },
     }
 
-    # US State codes and names
-    US_STATES = {
+    # ------------------------------------------------------------------
+    # US state reference data
+    # ------------------------------------------------------------------
+    US_STATES: Dict[str, str] = {
         'alabama': 'AL', 'alaska': 'AK', 'arizona': 'AZ', 'arkansas': 'AR',
         'california': 'CA', 'colorado': 'CO', 'connecticut': 'CT', 'delaware': 'DE',
         'florida': 'FL', 'georgia': 'GA', 'hawaii': 'HI', 'idaho': 'ID',
@@ -98,13 +111,14 @@ class MessagePreprocessor:
         'vermont': 'VT', 'virginia': 'VA', 'washington': 'WA', 'west virginia': 'WV',
         'wisconsin': 'WI', 'wyoming': 'WY', 'district of columbia': 'DC',
     }
-    VALID_STATE_CODES = set(US_STATES.values()) | {'N/A'}
+    VALID_STATE_CODES: set = set(US_STATES.values()) | {'N/A'}
+    # ME, IN, OR, OK are common English words — require state-context to match
+    AMBIGUOUS_STATE_CODES: set = {'ME', 'IN', 'OR', 'OK'}
 
-    # State codes that are also common English words - require context to match
-    AMBIGUOUS_STATE_CODES = {'ME', 'IN', 'OR', 'OK'}
-
-    # Month mappings
-    MONTH_NAMES = {
+    # ------------------------------------------------------------------
+    # Month reference
+    # ------------------------------------------------------------------
+    MONTH_NAMES: Dict[str, int] = {
         'january': 1, 'february': 2, 'march': 3, 'april': 4,
         'may': 5, 'june': 6, 'july': 7, 'august': 8,
         'september': 9, 'october': 10, 'november': 11, 'december': 12,
@@ -113,14 +127,16 @@ class MessagePreprocessor:
         'oct': 10, 'nov': 11, 'dec': 12,
     }
 
-    # Comprehensive entity patterns for fallback parsing
-    ENTITY_PATTERNS = {
+    # ------------------------------------------------------------------
+    # Regex entity patterns (markets removed)
+    # ------------------------------------------------------------------
+    ENTITY_PATTERNS: Dict[str, List[str]] = {
         'month': [
             r'\b(january|february|march|april|may|june|july|august|september|october|november|december)\b',
             r'\b(jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b',
         ],
         'year': [
-            r'\b(20\d{2})\b',  # 2020-2099
+            r'\b(20\d{2})\b',
         ],
         'state_full': [
             r'\b(california|texas|florida|new york|ohio|illinois|pennsylvania|'
@@ -133,25 +149,25 @@ class MessagePreprocessor:
             r'vermont|wyoming|district of columbia)\b',
         ],
         'state_code': [
-            # Non-ambiguous state codes only (excludes ME, IN, OR, OK which are common English words)
-            r'\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b',
+            # Non-ambiguous codes (excludes ME, IN, OR, OK)
+            r'\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|'
+            r'MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b',
         ],
         'state_code_contextual': [
-            # Ambiguous codes (ME, IN, OR, OK) - only match with state-related context
-            # Require preposition or "state" keyword before the ambiguous code
+            # Ambiguous codes only when a state-related preposition or keyword precedes them
             r'\b(?:for|from|in|state[s]?)\s+(ME|IN|OR|OK)\b',
-            # After another state code in a list (e.g., "CA and ME", "TX, IN")
-            r'\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)[,\s]+(?:and\s+)?(ME|IN|OR|OK)\b',
-            # Before another state code in a list (e.g., "ME and CA", "IN, TX")
-            r'\b(ME|IN|OR|OK)[,\s]+(?:and\s+)?(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b',
+            # After another unambiguous state code in a list
+            r'\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|KS|KY|LA|MD|MA|MI|MN|MS|'
+            r'MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)'
+            r'[,\s]+(?:and\s+)?(ME|IN|OR|OK)\b',
+            # Before another unambiguous state code
+            r'\b(ME|IN|OR|OK)[,\s]+(?:and\s+)?(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IA|'
+            r'KS|KY|LA|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|PA|RI|SC|SD|TN|TX|'
+            r'UT|VT|VA|WA|WV|WI|WY|DC)\b',
         ],
         'platform': [
             r'\b(amisys|facets|xcelys)\b',
-            r'\b(amysis|fecets|xceles)\b',  # Common misspellings
-        ],
-        'market': [
-            r'\b(medicaid|medicare|marketplace)\b',
-            r'\b(medcaid|medicad|medicaire)\b',  # Common misspellings
+            r'\b(amysis|fecets|xceles)\b',   # common misspellings caught pre-correction
         ],
         'locality': [
             r'\b(domestic|global)\b',
@@ -160,11 +176,11 @@ class MessagePreprocessor:
             r'\b(claims?\s*processing|enrollment|appeals?|adjustments?)\b',
         ],
         'main_lob': [
-            # Full LOB strings like "Amisys Medicaid Domestic"
-            r'\b(amisys|facets|xcelys)\s+(medicaid|medicare|marketplace)\s+(domestic|global)\b',
+            # Full three-part LOB string: Platform Market Locality
+            r'\b(amisys|facets|xcelys)\s+\w+\s+(domestic|global)\b',
         ],
         'forecast_month_filter': [
-            r'\b(apr|may|jun|jul|aug|sep|oct|nov|dec|jan|feb|mar)-\d{2}\b',  # Apr-25 format
+            r'\b(apr|may|jun|jul|aug|sep|oct|nov|dec|jan|feb|mar)-\d{2}\b',
         ],
         'preference': [
             r'\b(totals?\s*only|just\s*totals?|summary\s*only)\b',
@@ -173,139 +189,161 @@ class MessagePreprocessor:
         ],
     }
 
-    def __init__(self, llm=None):
-        """
-        Initialize preprocessor.
+    # ------------------------------------------------------------------
+    # Intent patterns (regex-based fallback)
+    # ------------------------------------------------------------------
+    INTENT_PATTERNS: Dict[str, List[str]] = {
+        'reset_filters': [
+            r'\b(reset|clear all|remove all|no filters|start fresh|forget everything|'
+            r'show everything|show all data|full data reset)\b',
+        ],
+        'extend_filters': [
+            r'\b(also|add|include|plus\b|and also)\b',
+        ],
+        'remove_filters': [
+            r'\b(remove|exclude|without|except)\b',
+        ],
+        'replace_filters': [
+            r'\b(change|switch|use only|just show|only show)\b',
+        ],
+        'use_context': [
+            r'\b(same|that|those|previous|last time|again|keep|like before)\b',
+            r'\bfor (that|the same)\b',
+        ],
+        'query_data': [
+            r'\b(show|get|display|fetch|give me|what|how many|list)\b',
+        ],
+    }
 
-        Args:
-            llm: Optional LangChain LLM for advanced tagging. If None, uses regex only.
-        """
+    # Priority order for intent resolution (higher index = higher priority)
+    INTENT_PRIORITY: List[str] = [
+        'query_data', 'use_context', 'replace_filters',
+        'remove_filters', 'extend_filters', 'reset_filters',
+    ]
+
+    def __init__(self, llm=None) -> None:
         self.llm = llm
         self._compile_patterns()
 
-    def _compile_patterns(self):
-        """Compile regex patterns for efficiency."""
-        self.compiled_patterns = {}
-        for entity_type, patterns in self.ENTITY_PATTERNS.items():
-            self.compiled_patterns[entity_type] = [
-                re.compile(p, re.IGNORECASE) for p in patterns
-            ]
+    def _compile_patterns(self) -> None:
+        self._entity_compiled: Dict[str, List[re.Pattern]] = {
+            etype: [re.compile(p, re.IGNORECASE) for p in plist]
+            for etype, plist in self.ENTITY_PATTERNS.items()
+        }
+        self._intent_compiled: Dict[str, List[re.Pattern]] = {
+            intent: [re.compile(p, re.IGNORECASE) for p in plist]
+            for intent, plist in self.INTENT_PATTERNS.items()
+        }
 
-    async def preprocess(self, raw_message: str) -> PreprocessedMessage:
+    # ==================================================================
+    # PUBLIC API
+    # ==================================================================
+
+    async def preprocess(self, raw_message: str, context=None) -> PreprocessedMessage:
         """
         Full preprocessing pipeline.
 
         Args:
-            raw_message: Raw user input
+            raw_message: Raw user input (after sanitization).
+            context:     Optional ConversationContext with stored entities
+                         used to craft the resolved message.
 
         Returns:
-            PreprocessedMessage with normalized text, tagged text, and extracted entities
+            PreprocessedMessage with intent, entities, and resolved_message.
         """
-        logger.debug(f"[Preprocessor] Starting preprocessing: '{raw_message[:50]}...'")
+        logger.debug(f"[Preprocessor] Input: '{raw_message[:80]}'")
 
-        # Step 1: Basic normalization
+        # Step 1 — Normalize
         text = self._normalize(raw_message)
 
-        # Step 2: Spell correction (domain-aware)
+        # Step 2 — Spell-correct (no market corrections)
         text, corrections = self._spell_correct(text)
 
-        # Step 3: Entity tagging with XML (LLM or regex)
+        # Step 3 — Detect intent  (LLM-assisted or regex)
+        # Step 4 — Extract entities  (LLM-assisted or regex)
         if self.llm:
             try:
-                tagged_text, llm_entities = await self._tag_entities_with_llm(text)
-            except Exception as e:
-                logger.warning(f"[Preprocessor] LLM tagging failed: {e}, using regex fallback")
+                intent, tagged_text, llm_entities = await self._llm_intent_and_entities(text)
+            except Exception as exc:
+                logger.warning(f"[Preprocessor] LLM call failed ({exc}), using regex fallback")
+                intent = self._detect_intent_regex(text)
                 tagged_text = text
                 llm_entities = {}
         else:
+            intent = self._detect_intent_regex(text)
             tagged_text = text
             llm_entities = {}
 
-        # Step 4: Regex fallback extraction (catches what LLM might miss)
+        # Regex extraction (fills gaps left by LLM or provides all results without LLM)
         regex_entities = self._extract_with_regex(text)
 
-        # Step 5: Merge entities (LLM + regex, LLM takes precedence)
-        merged_entities = self._merge_entities(llm_entities, regex_entities)
+        # Step 5 — Merge (LLM takes precedence) + validate
+        merged = self._merge_entities(llm_entities, regex_entities)
+        validated_entities = self._validate_entities(merged)
 
-        # Step 6: Validate and normalize entities
-        validated_entities = self._validate_entities(merged_entities)
-
-        # Step 7: Detect implicit information
+        # Step 6 — Detect implicit info (context references, operation hints)
         implicit_info = self._detect_implicit_info(text, validated_entities)
 
-        # Step 8: Calculate confidence
+        # Step 7 — Craft resolved message
+        resolved_message = self._craft_resolved_message(intent, validated_entities, context)
+
+        # Step 8 — Confidence score
         confidence = self._calculate_confidence(validated_entities)
 
-        result = PreprocessedMessage(
+        logger.info(
+            f"[Preprocessor] intent={intent}, entities={list(validated_entities.keys())}, "
+            f"confidence={confidence:.2f}"
+        )
+
+        return PreprocessedMessage(
             original=raw_message,
             normalized_text=text,
             tagged_text=tagged_text,
+            intent=intent,
+            resolved_message=resolved_message,
             extracted_entities=validated_entities,
             corrections_made=corrections,
             parsing_confidence=confidence,
-            implicit_info=implicit_info
+            implicit_info=implicit_info,
         )
 
-        logger.info(
-            f"[Preprocessor] Extracted entities: {list(validated_entities.keys())}, "
-            f"confidence: {confidence:.2f}"
-        )
-
-        return result
+    # ==================================================================
+    # STEP 1 — NORMALIZE
+    # ==================================================================
 
     def _normalize(self, text: str) -> str:
-        """
-        Basic text normalization.
-
-        - Fix extra whitespace
-        - Normalize punctuation
-        - Preserve case (will be handled by spell correction)
-        """
-        # Remove extra whitespace
         text = re.sub(r'\s+', ' ', text).strip()
-
-        # Normalize some common punctuation issues
         text = re.sub(r'\s*,\s*', ', ', text)
-        text = re.sub(r'\s*\?\s*', '? ', text)
-
+        text = re.sub(r'\s*\?\s*$', '?', text)
         return text
 
+    # ==================================================================
+    # STEP 2 — SPELL CORRECT (platforms, localities, case types only)
+    # ==================================================================
+
     def _spell_correct(self, text: str) -> Tuple[str, List[Dict[str, str]]]:
-        """
-        Domain-aware spell correction.
+        corrections: List[Dict[str, str]] = []
+        corrected_words: List[str] = []
 
-        Corrects common misspellings of domain vocabulary.
-        """
-        corrections = []
-        words = text.split()
-        corrected_words = []
-
-        for word in words:
+        for word in text.split():
             word_lower = word.lower().strip('.,?!')
             corrected = word
 
-            # Check each vocabulary category
             for category, vocab in self.DOMAIN_VOCABULARY.items():
-                # Check aliases first
+                # Exact alias match
                 if word_lower in vocab.get('aliases', {}):
                     corrected = vocab['aliases'][word_lower]
-                    corrections.append({
-                        'original': word,
-                        'corrected': corrected,
-                        'category': category
-                    })
+                    corrections.append({'original': word, 'corrected': corrected, 'category': category})
                     break
 
-                # Check for fuzzy match to canonical values
+                # Fuzzy match against canonical values
                 for canonical in vocab.get('canonical', []):
                     if self._fuzzy_match(word_lower, canonical.lower()) > 0.85:
                         if word_lower != canonical.lower():
                             corrected = canonical
                             corrections.append({
-                                'original': word,
-                                'corrected': corrected,
-                                'category': category,
-                                'match_type': 'fuzzy'
+                                'original': word, 'corrected': corrected,
+                                'category': category, 'match_type': 'fuzzy',
                             })
                         break
 
@@ -314,205 +352,198 @@ class MessagePreprocessor:
         return ' '.join(corrected_words), corrections
 
     def _fuzzy_match(self, s1: str, s2: str) -> float:
-        """Calculate fuzzy match ratio between two strings."""
         return SequenceMatcher(None, s1, s2).ratio()
 
-    async def _tag_entities_with_llm(self, text: str) -> Tuple[str, Dict[str, List[str]]]:
-        """
-        Tag entities with XML tags using LLM.
+    # ==================================================================
+    # STEP 3+4 — LLM: combined intent + entity tagging (one call)
+    # ==================================================================
 
-        Uses LLM with structured output to identify and tag:
-        - <month>March</month>
-        - <year>2025</year>
-        - <platform>Amisys</platform>
-        - etc.
+    async def _llm_intent_and_entities(
+        self, text: str
+    ) -> Tuple[str, str, Dict[str, List[str]]]:
         """
-        tagging_prompt = f'''Tag entities in this message with XML tags:
+        Single LLM call that returns:
+          - the primary user intent
+          - the message with XML entity tags
+        """
+        prompt = f'''Analyze this message in two steps.
 
 Message: "{text}"
 
-Entity types to tag:
-- <month>: Month names (January-December) or abbreviations (Jan-Dec)
-- <year>: Year numbers (2020-2030)
-- <platform>: Amisys, Facets, Xcelys
-- <market>: Insurance market segments (Medicaid, Medicare, Marketplace, etc.)
-- <state>: US state names or codes (California/CA, Texas/TX, etc.)
-- <locality>: Domestic, Global
-- <main_lob>: Full LOB string like "Amisys Medicaid Domestic" (platform + market + locality combined)
-- <case_type>: Claims Processing, Enrollment, Appeals, Adjustments, etc.
-- <forecast_month>: Specific month columns like Apr-25, May-25, Jun-25
-- <preference>: User preferences like "totals only", "full data", "all months"
+STEP 1 — INTENT
+Choose the single best intent:
+  query_data      — user wants to fetch / view forecast data
+  extend_filters  — user wants to ADD filters (keywords: also, add, include, plus)
+  remove_filters  — user wants to REMOVE filters (keywords: remove, without, exclude)
+  replace_filters — user wants to CHANGE existing filters (keywords: change, switch, only, just)
+  reset_filters   — user wants to clear all filters (keywords: reset, clear all, show everything)
+  use_context     — user refers to a previous query (keywords: same, that, again, previous)
+  unknown         — intent is unclear
+
+STEP 2 — TAG ENTITIES
+Wrap recognised values with XML tags.  DO NOT tag market names individually.
+
+Available tags:
+  <platform>   Amisys | Facets | Xcelys
+  <year>       4-digit year (2020-2030)
+  <month>      Month name or abbreviation
+  <state>      US state name or 2-letter code
+  <locality>   Domestic | Global
+  <case_type>  Claims Processing | Enrollment | Appeals | Adjustments
+  <main_lob>   Full LOB phrase e.g. "Amisys Medicaid Domestic"
+  <forecast_month>  Column label e.g. Apr-25, May-25
+  <preference> Display preference e.g. "totals only", "full data"
 
 IMPORTANT:
-- If user mentions "Amisys Medicaid Domestic" as a single phrase, tag as <main_lob>
-- If mentioned separately (e.g., "Amisys" and "Medicaid"), tag individually as <platform> and <market>
-- <main_lob> takes precedence and overrides individual platform/market/locality
+- Do NOT tag market names (Medicaid, Medicare, Marketplace) on their own.
+- If a full LOB phrase is present (Platform + Market + Locality), tag it as <main_lob>.
+- Only tag clear, unambiguous values.
 
-Return the message with XML tags added around identified entities.
-Do NOT tag words that are not clear entities.
+Return exactly two lines:
+INTENT: <intent_keyword>
+TAGGED: <message with XML tags>
 '''
+        response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+        raw = response.content.strip()
 
-        response = await self.llm.ainvoke([HumanMessage(content=tagging_prompt)])
-        tagged_text = response.content.strip()
+        intent = 'unknown'
+        tagged_text = text
+        for line in raw.splitlines():
+            if line.startswith('INTENT:'):
+                intent = line.split(':', 1)[1].strip().lower()
+            elif line.startswith('TAGGED:'):
+                tagged_text = line.split(':', 1)[1].strip()
 
-        # Parse tagged text to extract entities
+        # Validate extracted intent
+        valid_intents = set(_INTENT_LABELS.keys())
+        if intent not in valid_intents:
+            intent = 'unknown'
+
         entities = self._parse_xml_tags(tagged_text)
-
-        return tagged_text, entities
+        return intent, tagged_text, entities
 
     def _parse_xml_tags(self, tagged_text: str) -> Dict[str, List[str]]:
-        """Parse XML tags from tagged text to extract entities."""
-        entities = {}
-
         tag_patterns = [
-            ('month', r'<month>([^<]+)</month>'),
-            ('year', r'<year>([^<]+)</year>'),
-            ('platform', r'<platform>([^<]+)</platform>'),
-            ('market', r'<market>([^<]+)</market>'),
-            ('state', r'<state>([^<]+)</state>'),
-            ('locality', r'<locality>([^<]+)</locality>'),
-            ('main_lob', r'<main_lob>([^<]+)</main_lob>'),
-            ('case_type', r'<case_type>([^<]+)</case_type>'),
-            ('forecast_month', r'<forecast_month>([^<]+)</forecast_month>'),
-            ('preference', r'<preference>([^<]+)</preference>'),
+            ('month',            r'<month>([^<]+)</month>'),
+            ('year',             r'<year>([^<]+)</year>'),
+            ('platform',         r'<platform>([^<]+)</platform>'),
+            ('state',            r'<state>([^<]+)</state>'),
+            ('locality',         r'<locality>([^<]+)</locality>'),
+            ('main_lob',         r'<main_lob>([^<]+)</main_lob>'),
+            ('case_type',        r'<case_type>([^<]+)</case_type>'),
+            ('forecast_month',   r'<forecast_month>([^<]+)</forecast_month>'),
+            ('preference',       r'<preference>([^<]+)</preference>'),
         ]
-
-        for entity_type, pattern in tag_patterns:
+        entities: Dict[str, List[str]] = {}
+        for etype, pattern in tag_patterns:
             matches = re.findall(pattern, tagged_text, re.IGNORECASE)
             if matches:
-                entities[entity_type] = [m.strip() for m in matches]
-
+                entities[etype] = [m.strip() for m in matches]
         return entities
+
+    # ==================================================================
+    # STEP 3 (regex fallback) — DETECT INTENT
+    # ==================================================================
+
+    def _detect_intent_regex(self, text: str) -> str:
+        """
+        Rule-based intent detection.
+        Higher-priority intents in INTENT_PRIORITY override lower ones.
+        """
+        detected = 'unknown'
+        for intent in self.INTENT_PRIORITY:
+            patterns = self._intent_compiled.get(intent, [])
+            if any(p.search(text) for p in patterns):
+                detected = intent
+        return detected
+
+    # ==================================================================
+    # STEP 4 (regex fallback) — EXTRACT ENTITIES
+    # ==================================================================
 
     def _extract_with_regex(self, text: str) -> Dict[str, List[str]]:
-        """
-        Fallback regex extraction to catch entities LLM might miss.
-        """
-        entities = {}
+        entities: Dict[str, List[str]] = {}
         text_lower = text.lower()
 
-        for entity_type, patterns in self.compiled_patterns.items():
-            matches = []
+        for etype, patterns in self._entity_compiled.items():
+            matches: List[str] = []
             for pattern in patterns:
                 found = pattern.findall(text_lower)
-                if isinstance(found, list) and found:
+                if found:
                     matches.extend(found if isinstance(found[0], str) else [f[0] for f in found])
             if matches:
-                entities[entity_type] = list(set(matches))
-
+                entities[etype] = list(set(matches))
         return entities
+
+    # ==================================================================
+    # STEP 5 — MERGE + VALIDATE
+    # ==================================================================
 
     def _merge_entities(
         self,
         llm_entities: Dict[str, List[str]],
-        regex_entities: Dict[str, List[str]]
+        regex_entities: Dict[str, List[str]],
     ) -> Dict[str, List[str]]:
-        """
-        Merge LLM and regex extracted entities.
-
-        LLM entities take precedence, regex fills gaps.
-        """
         merged = dict(llm_entities)
-
-        for entity_type, values in regex_entities.items():
-            if entity_type not in merged or not merged[entity_type]:
-                merged[entity_type] = values
+        for etype, values in regex_entities.items():
+            if etype not in merged or not merged[etype]:
+                merged[etype] = values
             else:
-                # Add any values from regex not in LLM results
-                existing_lower = {v.lower() for v in merged[entity_type]}
+                existing_lower = {v.lower() for v in merged[etype]}
                 for v in values:
                     if v.lower() not in existing_lower:
-                        merged[entity_type].append(v)
-
+                        merged[etype].append(v)
         return merged
 
     def _validate_entities(self, entities: Dict[str, List[str]]) -> Dict[str, List[str]]:
-        """
-        Validate and normalize extracted entities.
-        """
-        validated = {}
+        validated: Dict[str, List[str]] = {}
 
-        # Validate month
-        if 'month' in entities and entities['month']:
-            month_val = self._normalize_month(entities['month'][0])
+        # Month → integer string
+        if entities.get('month'):
+            month_val = self._normalise_month(entities['month'][0])
             if month_val:
                 validated['month'] = [str(month_val)]
 
-        # Validate year
-        if 'year' in entities and entities['year']:
-            year_val = self._normalize_year(entities['year'][0])
+        # Year
+        if entities.get('year'):
+            year_val = self._normalise_year(entities['year'][0])
             if year_val:
                 validated['year'] = [str(year_val)]
 
-        # Validate platforms against known list
-        if 'platform' in entities and entities['platform']:
-            validated['platforms'] = self._validate_against_vocabulary(
-                entities['platform'],
-                'platforms'
-            )
+        # Platforms
+        if entities.get('platform'):
+            validated['platforms'] = self._validate_against_vocab(entities['platform'], 'platforms')
 
-        # Validate markets (be more permissive, just capitalize)
-        if 'market' in entities and entities['market']:
-            validated['markets'] = [m.title() for m in entities['market']]
+        # Localities
+        if entities.get('locality'):
+            validated['localities'] = self._validate_against_vocab(entities['locality'], 'localities')
 
-        # Validate localities
-        if 'locality' in entities and entities['locality']:
-            validated['localities'] = self._validate_against_vocabulary(
-                entities['locality'],
-                'localities'
-            )
+        # States (merge all state-related keys)
+        state_pool: List[str] = []
+        for key in ('state', 'state_full', 'state_code', 'state_code_contextual'):
+            if entities.get(key):
+                state_pool.extend(entities[key])
+        if state_pool:
+            validated['states'] = list(set(self._validate_states(state_pool)))
 
-        # Validate states
-        if 'state' in entities and entities['state']:
-            validated['states'] = self._validate_states(entities['state'])
-        if 'state_full' in entities and entities['state_full']:
-            state_codes = self._validate_states(entities['state_full'])
-            if 'states' in validated:
-                validated['states'].extend(state_codes)
-            else:
-                validated['states'] = state_codes
-        if 'state_code' in entities and entities['state_code']:
-            state_codes = self._validate_states(entities['state_code'])
-            if 'states' in validated:
-                validated['states'].extend(state_codes)
-            else:
-                validated['states'] = state_codes
-        if 'state_code_contextual' in entities and entities['state_code_contextual']:
-            contextual_codes = self._validate_states(entities['state_code_contextual'])
-            if 'states' in validated:
-                validated['states'].extend(contextual_codes)
-            else:
-                validated['states'] = contextual_codes
+        # Case types
+        if entities.get('case_type'):
+            validated['case_types'] = self._validate_against_vocab(entities['case_type'], 'case_types')
 
-        # Remove duplicates from states
-        if 'states' in validated:
-            validated['states'] = list(set(validated['states']))
-
-        # Validate case types
-        if 'case_type' in entities and entities['case_type']:
-            validated['case_types'] = self._validate_against_vocabulary(
-                entities['case_type'],
-                'case_types'
-            )
-
-        # Validate main LOBs (just title case)
-        if 'main_lob' in entities and entities['main_lob']:
+        # Main LOBs
+        if entities.get('main_lob'):
             validated['main_lobs'] = [lob.title() for lob in entities['main_lob']]
 
-        # Validate forecast month filters (Apr-25 format)
-        if 'forecast_month_filter' in entities and entities['forecast_month_filter']:
-            validated['active_forecast_months'] = self._validate_forecast_months(
-                entities['forecast_month_filter']
-            )
-        if 'forecast_month' in entities and entities['forecast_month']:
-            forecast_months = self._validate_forecast_months(entities['forecast_month'])
-            if 'active_forecast_months' in validated:
-                validated['active_forecast_months'].extend(forecast_months)
-            else:
-                validated['active_forecast_months'] = forecast_months
+        # Forecast month filters (Apr-25 format)
+        forecast_month_pool: List[str] = []
+        for key in ('forecast_month_filter', 'forecast_month'):
+            if entities.get(key):
+                forecast_month_pool.extend(entities[key])
+        if forecast_month_pool:
+            validated['active_forecast_months'] = self._validate_forecast_months(forecast_month_pool)
 
-        # Handle preferences
-        if 'preference' in entities and entities['preference']:
+        # Preferences
+        if entities.get('preference'):
             for pref in entities['preference']:
                 pref_lower = pref.lower()
                 if any(t in pref_lower for t in ['total', 'summary']):
@@ -522,175 +553,242 @@ Do NOT tag words that are not clear entities.
 
         return validated
 
-    def _normalize_month(self, month_str: str) -> Optional[int]:
-        """Convert month string to number."""
-        month_str = month_str.lower().strip()
+    # ------------------------------------------------------------------
+    # Validation helpers
+    # ------------------------------------------------------------------
 
-        # Check month names
+    def _normalise_month(self, month_str: str) -> Optional[int]:
+        month_str = month_str.lower().strip()
         if month_str in self.MONTH_NAMES:
             return self.MONTH_NAMES[month_str]
-
-        # Try parsing as number
         try:
-            month_num = int(month_str)
-            if 1 <= month_num <= 12:
-                return month_num
-        except ValueError:
-            pass
-
-        return None
-
-    def _normalize_year(self, year_str: str) -> Optional[int]:
-        """Validate and normalize year."""
-        try:
-            year = int(year_str.strip())
-            if 2020 <= year <= 2100:
-                return year
+            v = int(month_str)
+            if 1 <= v <= 12:
+                return v
         except ValueError:
             pass
         return None
 
-    def _validate_against_vocabulary(
-        self,
-        values: List[str],
-        vocabulary_key: str
-    ) -> List[str]:
-        """Validate values against known vocabulary."""
-        vocab = self.DOMAIN_VOCABULARY.get(vocabulary_key, {})
+    def _normalise_year(self, year_str: str) -> Optional[int]:
+        try:
+            y = int(year_str.strip())
+            if 2020 <= y <= 2100:
+                return y
+        except ValueError:
+            pass
+        return None
+
+    def _validate_against_vocab(self, values: List[str], vocab_key: str) -> List[str]:
+        vocab = self.DOMAIN_VOCABULARY.get(vocab_key, {})
         canonical = vocab.get('canonical', [])
         aliases = vocab.get('aliases', {})
-
-        validated = []
+        out: List[str] = []
         for v in values:
             v_lower = v.lower().strip()
-
-            # Check aliases
             if v_lower in aliases:
-                validated.append(aliases[v_lower])
+                out.append(aliases[v_lower])
                 continue
-
-            # Check canonical (case-insensitive)
             for c in canonical:
                 if v_lower == c.lower():
-                    validated.append(c)
+                    out.append(c)
                     break
             else:
-                # Not found in canonical, use title case
-                validated.append(v.title())
-
-        return list(set(validated))
+                out.append(v.title())
+        return list(set(out))
 
     def _validate_states(self, states: List[str]) -> List[str]:
-        """Validate and normalize state names/codes."""
-        validated = []
-
-        for state in states:
-            state_clean = state.strip()
-            state_lower = state_clean.lower()
-
-            # Check if it's a full state name
-            if state_lower in self.US_STATES:
-                validated.append(self.US_STATES[state_lower])
-                continue
-
-            # Check if it's already a valid code
-            state_upper = state_clean.upper()
-            if state_upper in self.VALID_STATE_CODES:
-                validated.append(state_upper)
-                continue
-
+        validated: List[str] = []
+        for s in states:
+            s_clean = s.strip()
+            s_lower = s_clean.lower()
+            if s_lower in self.US_STATES:
+                validated.append(self.US_STATES[s_lower])
+            elif s_clean.upper() in self.VALID_STATE_CODES:
+                validated.append(s_clean.upper())
         return list(set(validated))
 
     def _validate_forecast_months(self, months: List[str]) -> List[str]:
-        """Validate forecast month format (e.g., 'Apr-25', 'May-25')."""
-        validated = []
         pattern = re.compile(r'^([A-Za-z]{3})-(\d{2})$')
-
-        for month in months:
-            month_clean = month.strip()
-            match = pattern.match(month_clean)
+        validated: List[str] = []
+        for m in months:
+            match = pattern.match(m.strip())
             if match:
-                # Capitalize properly: Apr-25
                 validated.append(f"{match.group(1).title()}-{match.group(2)}")
-
         return list(set(validated))
 
-    def _detect_implicit_info(
-        self,
-        text: str,
-        entities: Dict[str, List[str]]
-    ) -> Dict[str, Any]:
-        """
-        Detect implicit information that might not be explicit entities.
+    # ==================================================================
+    # STEP 6 — DETECT IMPLICIT INFO
+    # ==================================================================
 
-        Examples:
-        - "same as before" -> uses_previous_context = True
-        - "also add" -> operation = 'extend'
-        - "remove the filter" -> operation = 'remove'
-        - "for that report" -> uses_previous_context = True
-        """
-        implicit = {}
+    def _detect_implicit_info(
+        self, text: str, entities: Dict[str, List[str]]
+    ) -> Dict[str, Any]:
+        implicit: Dict[str, Any] = {}
         text_lower = text.lower()
 
-        # Context references
         context_patterns = [
             r'\b(same|that|those|previous|last|again|keep)\b',
             r'\bfor (that|the same)\b',
             r'\blike (before|last time)\b',
         ]
-        for pattern in context_patterns:
-            if re.search(pattern, text_lower):
-                implicit['uses_previous_context'] = True
-                break
+        if any(re.search(p, text_lower) for p in context_patterns):
+            implicit['uses_previous_context'] = True
 
-        # Add/extend operations
         if re.search(r'\b(also|add|include|plus|and also|too)\b', text_lower):
             implicit['operation'] = 'extend'
 
-        # Remove/clear operations
         if re.search(r'\b(remove|clear|reset|without|exclude|except)\b', text_lower):
             implicit['operation'] = 'remove'
 
-        # Replace operations (default)
         if re.search(r'\b(change|switch|use|only|just)\b', text_lower):
-            if 'operation' not in implicit:  # Don't override extend/remove
+            if 'operation' not in implicit:
                 implicit['operation'] = 'replace'
 
-        # Show all / reset filter
         if re.search(r'\b(all\s*months?|every\s*month|all\s*data|full\s*data|reset)\b', text_lower):
             implicit['reset_filter'] = True
 
         return implicit
 
-    def _calculate_confidence(self, entities: Dict[str, List[str]]) -> float:
-        """
-        Calculate parsing confidence based on extracted entities.
+    # ==================================================================
+    # STEP 7 — CRAFT RESOLVED MESSAGE
+    # ==================================================================
 
-        High confidence: month + year + at least one filter
-        Medium confidence: month or year
-        Low confidence: only filters, no time context
+    def _craft_resolved_message(
+        self,
+        intent: str,
+        entities: Dict[str, List[str]],
+        context=None,
+    ) -> str:
         """
-        has_month = 'month' in entities and entities['month']
-        has_year = 'year' in entities and entities['year']
-        has_filter = any(k in entities and entities[k] for k in
-                        ['platforms', 'markets', 'states', 'case_types', 'localities', 'main_lobs'])
+        Combine intent + entities from message + stored context entities
+        into one clear, unambiguous directive.
+
+        This replaces the raw user message as input to LLM tool classification.
+        """
+        # --- Effective time period (message entities take precedence over context) ---
+        month_num = entities.get('month', [None])[0]
+        year_num  = entities.get('year',  [None])[0]
+
+        if not month_num and context:
+            ctx_month = getattr(context, 'forecast_report_month', None)
+            if ctx_month:
+                month_num = str(ctx_month)
+        if not year_num and context:
+            ctx_year = getattr(context, 'forecast_report_year', None)
+            if ctx_year:
+                year_num = str(ctx_year)
+
+        # --- Effective filters ---
+        msg_platforms  = entities.get('platforms', [])
+        msg_localities = entities.get('localities', [])
+        msg_states     = entities.get('states', [])
+        msg_case_types = entities.get('case_types', [])
+        msg_main_lobs  = entities.get('main_lobs', [])
+        msg_f_months   = entities.get('active_forecast_months')
+        totals_only    = (entities.get('show_totals_only') or [None])[0]
+
+        ctx_platforms  = list(getattr(context, 'active_platforms',  []) or []) if context else []
+        ctx_localities = list(getattr(context, 'active_localities', []) or []) if context else []
+        ctx_states     = list(getattr(context, 'active_states',     []) or []) if context else []
+        ctx_case_types = list(getattr(context, 'active_case_types', []) or []) if context else []
+        ctx_main_lobs  = list(getattr(context, 'active_main_lobs',  []) or []) if context else []
+
+        if intent == 'extend_filters':
+            platforms  = list(set(ctx_platforms  + msg_platforms))
+            localities = list(set(ctx_localities + msg_localities))
+            states     = list(set(ctx_states     + msg_states))
+            case_types = list(set(ctx_case_types + msg_case_types))
+            main_lobs  = list(set(ctx_main_lobs  + msg_main_lobs))
+
+        elif intent == 'remove_filters':
+            platforms  = [p for p in ctx_platforms  if p not in msg_platforms]
+            localities = [l for l in ctx_localities if l not in msg_localities]
+            states     = [s for s in ctx_states     if s not in msg_states]
+            case_types = [c for c in ctx_case_types if c not in msg_case_types]
+            main_lobs  = [l for l in ctx_main_lobs  if l not in msg_main_lobs]
+
+        elif intent == 'reset_filters':
+            platforms = localities = states = case_types = main_lobs = []
+
+        elif intent in ('query_data', 'use_context'):
+            # Message entities override; fall back to context for anything not mentioned
+            platforms  = msg_platforms  or ctx_platforms
+            localities = msg_localities or ctx_localities
+            states     = msg_states     or ctx_states
+            case_types = msg_case_types or ctx_case_types
+            main_lobs  = msg_main_lobs  or ctx_main_lobs
+
+        else:
+            # replace_filters / unknown — use only what the message says
+            platforms  = msg_platforms
+            localities = msg_localities
+            states     = msg_states
+            case_types = msg_case_types
+            main_lobs  = msg_main_lobs
+
+        # --- Assemble the directive ---
+        intent_phrase = _INTENT_LABELS.get(intent, 'Show data')
+        parts = [intent_phrase]
+
+        if month_num and year_num:
+            parts.append(f"for {calendar.month_name[int(month_num)]} {year_num}")
+        elif month_num:
+            parts.append(f"for {calendar.month_name[int(month_num)]}")
+        elif year_num:
+            parts.append(f"for year {year_num}")
+
+        filter_parts: List[str] = []
+        if main_lobs:
+            filter_parts.append(f"LOB: {', '.join(main_lobs)}")
+        else:
+            if platforms:
+                filter_parts.append(f"Platform: {', '.join(platforms)}")
+            if localities:
+                filter_parts.append(f"Locality: {', '.join(localities)}")
+        if states:
+            filter_parts.append(f"States: {', '.join(states[:10])}")
+        if case_types:
+            filter_parts.append(f"Case Type: {', '.join(case_types)}")
+        if msg_f_months:
+            filter_parts.append(f"Forecast Months: {', '.join(msg_f_months)}")
+        if totals_only is True:
+            filter_parts.append("Display: Totals Only")
+        elif totals_only is False:
+            filter_parts.append("Display: All Records")
+
+        if filter_parts:
+            parts.append("| " + " | ".join(filter_parts))
+
+        return " ".join(parts)
+
+    # ==================================================================
+    # STEP 8 — CONFIDENCE SCORE
+    # ==================================================================
+
+    def _calculate_confidence(self, entities: Dict[str, List[str]]) -> float:
+        has_month  = bool(entities.get('month'))
+        has_year   = bool(entities.get('year'))
+        has_filter = any(
+            entities.get(k)
+            for k in ('platforms', 'localities', 'states', 'case_types', 'main_lobs')
+        )
 
         if has_month and has_year:
             return 0.95 if has_filter else 0.85
-        elif has_month or has_year:
+        if has_month or has_year:
             return 0.70
-        elif has_filter:
+        if has_filter:
             return 0.60
-        else:
-            return 0.40
+        return 0.40
 
 
-# Singleton instance
+# ---------------------------------------------------------------------------
+# Singleton
+# ---------------------------------------------------------------------------
 _preprocessor: Optional[MessagePreprocessor] = None
 
 
 def get_preprocessor(llm=None) -> MessagePreprocessor:
-    """Get or create preprocessor instance."""
     global _preprocessor
     if _preprocessor is None or (llm is not None and _preprocessor.llm is None):
         _preprocessor = MessagePreprocessor(llm=llm)

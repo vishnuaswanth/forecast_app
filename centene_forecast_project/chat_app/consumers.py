@@ -15,7 +15,7 @@ from django.contrib.auth.models import AbstractUser
 
 from chat_app.models import ChatConversation, ChatMessage
 from chat_app.services.chat_service import ChatService
-from chat_app.utils.llm_logger import get_llm_logger, create_correlation_id, CorrelationContext
+from chat_app.utils.llm_logger import get_llm_logger, create_correlation_id
 
 logger = logging.getLogger(__name__)
 llm_logger = get_llm_logger()
@@ -134,10 +134,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
             if message_type == 'user_message':
                 await self.handle_user_message(data)
-            elif message_type == 'confirm_category':
-                await self.handle_confirm_category(data)
-            elif message_type == 'reject_category':
-                await self.handle_reject_category(data)
             elif message_type == 'new_conversation':
                 await self.handle_new_conversation(data)
             elif message_type == 'confirm_cph_update':
@@ -227,144 +223,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'is_typing': False
         })
 
-        # Determine response type based on category
-        response_type = response.get('response_type', 'assistant_response')
+        # Save assistant response to database
+        assistant_text = response.get('message', '')
+        if assistant_text:
+            try:
+                await self.save_message('assistant', assistant_text, metadata=response.get('metadata', {}))
+            except Exception as e:
+                logger.error(f"Failed to save assistant response: {str(e)}")
 
-        # Send response to client
+        # Send response to client – always assistant_response in the new flow
         await self.send_json({
-            'type': response_type,
-            'category': response.get('category'),
-            'confidence': response.get('confidence'),
-            'ui_component': response.get('ui_component'),
+            'type': 'assistant_response',
+            'ui_component': response.get('ui_component', ''),
             'message_id': str(message_id),
-            'message': response.get('message', ''),
+            'message': assistant_text,
             'metadata': response.get('metadata', {})
-        })
-
-    async def handle_confirm_category(self, data: Dict[str, Any]) -> None:
-        """
-        Handle user confirmation of categorized intent.
-        Execute the tool and return results.
-        """
-        if not self.chat_service or not self.conversation_id:
-            await self.send_error("Chat service not initialized")
-            return
-
-        category = data.get('category')
-        if not category:
-            await self.send_error("Category is required")
-            return
-
-        parameters = data.get('parameters', {})
-        message_id = data.get('message_id')
-
-        # Create correlation ID for this action
-        correlation_id = create_correlation_id(str(self.conversation_id), str(message_id) if message_id else None)
-        user_id = self.user.portal_id if hasattr(self.user, 'portal_id') else str(self.user.id)
-        start_time = time.time()
-
-        # Log tool execution start
-        llm_logger.log_tool_execution(
-            correlation_id=correlation_id,
-            tool_name=f'confirm_category_{category}',
-            parameters=parameters,
-            status='started'
-        )
-
-        # Send typing indicator
-        await self.send_json({
-            'type': 'typing',
-            'is_typing': True
-        })
-
-        # Execute the confirmed action (async method, call directly)
-        try:
-            async with CorrelationContext(
-                correlation_id=correlation_id,
-                conversation_id=str(self.conversation_id),
-                user_id=user_id
-            ):
-                result = await self.chat_service.execute_confirmed_action(
-                    category=category,
-                    parameters=parameters,
-                    conversation_id=self.conversation_id,
-                    user=self.user
-                )
-        except Exception as e:
-            logger.error(f"Failed to execute confirmed action: {str(e)}")
-            duration_ms = (time.time() - start_time) * 1000
-            llm_logger.log_tool_execution(
-                correlation_id=correlation_id,
-                tool_name=f'confirm_category_{category}',
-                parameters=parameters,
-                status='failed',
-                error=str(e),
-                duration_ms=duration_ms
-            )
-            await self.send_error("Failed to execute action")
-            return
-
-        # Log tool execution complete
-        duration_ms = (time.time() - start_time) * 1000
-        llm_logger.log_tool_execution(
-            correlation_id=correlation_id,
-            tool_name=f'confirm_category_{category}',
-            parameters=parameters,
-            result_summary={
-                'success': result.get('success', False),
-                'record_count': result.get('metadata', {}).get('record_count')
-            },
-            duration_ms=duration_ms,
-            status='success' if result.get('success', False) else 'failed'
-        )
-
-        # Stop typing indicator
-        await self.send_json({
-            'type': 'typing',
-            'is_typing': False
-        })
-
-        # Save assistant response
-        try:
-            await self.save_message('assistant', result.get('message', ''), metadata=result.get('metadata', {}))
-        except Exception as e:
-            logger.error(f"Failed to save assistant response: {str(e)}")
-            # Continue execution - don't fail the entire operation for logging issues
-
-        # Send result to client
-        await self.send_json({
-            'type': 'tool_result',
-            'category': category,
-            'success': result.get('success', False),
-            'ui_component': result.get('ui_component'),
-            'message': result.get('message'),
-            'data': result.get('data'),
-            'metadata': result.get('metadata', {})
-        })
-
-    async def handle_reject_category(self, data: Dict[str, Any]) -> None:
-        """
-        Handle user rejection of categorized intent.
-        Show fallback message to contact admin.
-        """
-        category = data.get('category')
-
-        message = (
-            "I understand this isn't quite what you're looking for. "
-            "Please contact the administrator to request this feature. "
-            "We're constantly improving and your feedback helps us prioritize new capabilities."
-        )
-
-        try:
-            await self.save_message('assistant', message)
-        except Exception as e:
-            logger.error(f"Failed to save rejection response: {str(e)}")
-            # Continue execution - don't fail for logging issues
-
-        await self.send_json({
-            'type': 'rejection_response',
-            'message': message,
-            'rejected_category': category
         })
 
     async def handle_confirm_cph_update(self, data: Dict[str, Any]) -> None:
