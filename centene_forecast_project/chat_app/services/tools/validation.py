@@ -476,7 +476,7 @@ class PreprocessedMessage(BaseModel):
             "Used as the actual LLM input for tool-call classification."
         )
     )
-    extracted_entities: Dict[str, List[str]] = Field(
+    extracted_entities: Dict[str, List[Any]] = Field(
         default_factory=dict,
         description="Extracted entities by type: {entity_type: [values]}"
     )
