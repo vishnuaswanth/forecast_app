@@ -432,10 +432,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.send_json({'type': 'typing', 'is_typing': True})
 
+        fetch_params = data.get('fetch_params')
+
         try:
             result = await self.chat_service.execute_confirmed_forecast_fetch(
                 conversation_id=self.conversation_id,
                 user=self.user,
+                fetch_params=fetch_params,
             )
 
             await self.send_json({'type': 'typing', 'is_typing': False})

@@ -47,6 +47,22 @@ def generate_forecast_confirmation_card(month: int, year: int, filters: dict) ->
     filter_summary = html_module.escape(', '.join(parts)) if parts else 'None — all data'
     display_mode = 'Totals only' if filters.get('show_totals_only') else 'Full records'
 
+    # Embed full params in the confirm button so the frontend sends them back directly.
+    # This avoids any dependency on context state for the execution step.
+    params_all = {
+        'month': month,
+        'year': year,
+        'platforms': filters.get('platforms') or [],
+        'markets': filters.get('markets') or [],
+        'localities': filters.get('localities') or [],
+        'main_lobs': filters.get('main_lobs') or [],
+        'states': filters.get('states') or [],
+        'case_types': filters.get('case_types') or [],
+        'forecast_months': filters.get('forecast_months') or [],
+        'show_totals_only': bool(filters.get('show_totals_only', False)),
+    }
+    params_json_escaped = html_module.escape(json.dumps(params_all))
+
     logger.info(f"[UI Tools] Generated forecast confirmation card for {month_name} {year}")
 
     return f"""
@@ -70,7 +86,7 @@ def generate_forecast_confirmation_card(month: int, year: int, filters: dict) ->
         </div>
     </div>
     <div class="forecast-confirm-actions">
-        <button class="btn btn-primary btn-sm forecast-fetch-confirm-btn">
+        <button class="btn btn-primary btn-sm forecast-fetch-confirm-btn" data-params="{params_json_escaped}">
             &#10003; Yes, Fetch Data
         </button>
         <button class="btn btn-outline-secondary btn-sm forecast-fetch-cancel-btn">

@@ -305,13 +305,18 @@ class ChatService:
         self,
         conversation_id: str,
         user,
+        fetch_params: dict = None,
     ) -> Dict[str, Any]:
         """
-        Execute the confirmed forecast data fetch using params stored in context.
+        Execute the confirmed forecast data fetch.
 
         Args:
             conversation_id: Current conversation ID
             user: Django user object
+            fetch_params: Params sent back directly from the frontend confirmation button
+                          (embedded as data-params when the card was rendered). This is
+                          the primary source. Falls back to context.pending_forecast_fetch
+                          only if fetch_params is absent.
 
         Returns:
             Dictionary with success status, message, and ui_component
@@ -329,9 +334,13 @@ class ChatService:
         context_manager = get_context_manager()
         ctx = await context_manager.get_context(conversation_id)
 
-        params_dict = ctx.pending_forecast_fetch
+        # Primary source: params embedded in the confirmation button by the frontend
+        params_dict = fetch_params
 
-        # Fallback: if pending params are missing, rebuild from current context
+        # Secondary source: params stored in context when the card was proposed
+        if not params_dict:
+            params_dict = ctx.pending_forecast_fetch
+
         if not params_dict:
             if not ctx.forecast_report_month or not ctx.forecast_report_year:
                 msg = "No report period in context. Please request forecast data first."
@@ -341,7 +350,7 @@ class ChatService:
                     "ui_component": generate_error_ui(msg, error_type="validation", admin_contact=False),
                 }
             logger.info(
-                "[Chat Service] pending_forecast_fetch missing — rebuilding params from context"
+                "[Chat Service] fetch_params and pending_forecast_fetch missing — rebuilding from context"
             )
             params_dict = {
                 'month': ctx.forecast_report_month,

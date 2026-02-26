@@ -443,6 +443,11 @@ LOGGING = {
             'level': 'ERROR',
             'propagate': False,
         },
+        'chat_app': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
         'llm_workflow': {
             'handlers': ['console', 'llm_file', 'conversation_file'],
             'level': 'DEBUG' if DEBUG else 'INFO',

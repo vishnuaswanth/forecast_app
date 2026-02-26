@@ -972,7 +972,18 @@
             card.querySelectorAll('button').forEach(b => b.disabled = true);
         }
 
-        sendWebSocketMessage({ type: 'confirm_forecast_fetch' });
+        // Read params embedded directly in the button — avoids context state dependency
+        let fetchParams = null;
+        const paramsStr = btn.getAttribute('data-params');
+        if (paramsStr) {
+            try {
+                fetchParams = JSON.parse(paramsStr.replace(/&quot;/g, '"'));
+            } catch (e) {
+                console.error('[Chat] Error parsing forecast fetch params:', e);
+            }
+        }
+
+        sendWebSocketMessage({ type: 'confirm_forecast_fetch', fetch_params: fetchParams });
         addMessage('assistant', 'Fetching forecast data...');
     }
 
