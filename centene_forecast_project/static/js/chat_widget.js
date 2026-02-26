@@ -20,6 +20,10 @@
         messageQueue: [],
         pendingConfirmations: new Map(),
         selectedForecastRow: null, // Currently selected forecast row data
+        // ── Ramp modal state ──────────────────────────────────────────────
+        pendingRampWeeks: null,      // Raw week data from backend trigger card
+        pendingRampMonthKey: null,
+        pendingRampForecastId: null,
     };
 
     // ========================================================================
@@ -46,6 +50,14 @@
             modalBody: document.getElementById('chat-modal-body'),
             modalCloseBtn: document.getElementById('chat-modal-close-btn'),
             modalCloseFooterBtn: document.getElementById('chat-modal-close-footer-btn'),
+            // Ramp modal
+            rampModalOverlay: document.getElementById('ramp-modal-overlay'),
+            rampModalTitle: document.getElementById('ramp-modal-title'),
+            rampModalBody: document.getElementById('ramp-modal-body'),
+            rampModalCloseBtn: document.getElementById('ramp-modal-close-btn'),
+            rampModalCancelBtn: document.getElementById('ramp-modal-cancel-btn'),
+            rampModalSubmitBtn: document.getElementById('ramp-modal-submit-btn'),
+            rampModalError: document.getElementById('ramp-modal-error'),
         };
     }
 
@@ -114,6 +126,15 @@
                     break;
                 case 'fte_details':
                     handleFteDetails(data);
+                    break;
+                case 'ramp_confirmation':
+                    handleRampConfirmation(data);
+                    break;
+                case 'ramp_preview':
+                    handleRampPreview(data);
+                    break;
+                case 'ramp_apply_result':
+                    handleRampApplyResult(data);
                     break;
                 default:
                     console.warn('[Chat] Unknown message type:', data.type);
@@ -205,6 +226,9 @@
 
         // Attach event listeners to buttons
         attachConfirmationListeners();
+        attachViewFullDataListeners();
+        attachCphConfirmListeners();
+        attachRampOpenListeners();
     }
 
     function handleToolResult(data) {
@@ -212,8 +236,9 @@
             // Inject result UI (table, etc.)
             addMessageWithHTML('assistant', data.ui_component);
 
-            // Attach event listeners for "View Full Data" buttons
+            // Attach event listeners
             attachViewFullDataListeners();
+            attachRampOpenListeners();
         } else {
             addMessage('assistant', data.message || 'Failed to execute action.');
         }
@@ -908,6 +933,309 @@
         addMessage('assistant', 'CPH change cancelled.');
     }
 
+    // ========================================================================
+    // Ramp Modal
+    // ========================================================================
+
+    function openRampModal(sourceElement) {
+        const weeksJson = sourceElement.getAttribute('data-ramp-weeks');
+        const monthKey = sourceElement.getAttribute('data-ramp-month-key');
+        const forecastId = sourceElement.getAttribute('data-forecast-id');
+
+        if (!weeksJson || !monthKey) {
+            console.error('[Chat] Missing ramp data attributes on trigger button');
+            return;
+        }
+
+        try {
+            const weeks = JSON.parse(weeksJson.replace(/&quot;/g, '"'));
+            ChatState.pendingRampWeeks = weeks;
+            ChatState.pendingRampMonthKey = monthKey;
+            ChatState.pendingRampForecastId = forecastId;
+
+            elements.rampModalTitle.textContent = `Configure Ramp — ${monthKey}`;
+            buildWeekCards(weeks);
+            hideRampError();
+            elements.rampModalOverlay.style.display = 'flex';
+        } catch (err) {
+            console.error('[Chat] Error opening ramp modal:', err);
+        }
+    }
+
+    function buildWeekCards(weeks) {
+        elements.rampModalBody.innerHTML = weeks.map((week, idx) => {
+            const label = escapeHtml(week.label || `Week ${idx + 1}`);
+            const workingDays = parseInt(week.workingDays, 10) || 0;
+            return `
+            <div class="ramp-week-card" data-week-index="${idx}">
+                <div class="ramp-week-label">${label}</div>
+                <div class="ramp-week-fields">
+                    <div class="ramp-field-group">
+                        <label>Working Days</label>
+                        <input type="number" class="form-control ramp-input-working-days"
+                               value="${workingDays}" min="1" max="5" step="1">
+                        <span class="ramp-field-error" style="display:none;"></span>
+                    </div>
+                    <div class="ramp-field-group">
+                        <label>Ramp %</label>
+                        <input type="number" class="form-control ramp-input-ramp-pct"
+                               value="100" min="0" max="100" step="0.1">
+                        <span class="ramp-field-error" style="display:none;"></span>
+                    </div>
+                    <div class="ramp-field-group">
+                        <label>Ramp Employees</label>
+                        <input type="number" class="form-control ramp-input-ramp-emp"
+                               value="0" min="0" step="1">
+                        <span class="ramp-field-error" style="display:none;"></span>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function validateRampForm() {
+        const cards = elements.rampModalBody.querySelectorAll('.ramp-week-card');
+        const errors = [];
+        let valid = true;
+
+        cards.forEach((card, idx) => {
+            const wdInput = card.querySelector('.ramp-input-working-days');
+            const pctInput = card.querySelector('.ramp-input-ramp-pct');
+            const empInput = card.querySelector('.ramp-input-ramp-emp');
+            const label = card.querySelector('.ramp-week-label').textContent;
+
+            const wd = parseFloat(wdInput.value);
+            const pct = parseFloat(pctInput.value);
+            const emp = parseFloat(empInput.value);
+
+            // Clear previous errors
+            card.querySelectorAll('.ramp-field-error').forEach(el => {
+                el.style.display = 'none';
+                el.textContent = '';
+            });
+
+            if (isNaN(wd) || wd <= 0) {
+                showFieldError(wdInput, 'Working days must be > 0');
+                errors.push(`${label}: invalid working days`);
+                valid = false;
+            }
+            if (isNaN(pct) || pct < 0 || pct > 100) {
+                showFieldError(pctInput, 'Ramp % must be 0–100');
+                errors.push(`${label}: invalid ramp %`);
+                valid = false;
+            }
+            if (isNaN(emp) || emp < 0) {
+                showFieldError(empInput, 'Must be ≥ 0');
+                errors.push(`${label}: invalid ramp employees`);
+                valid = false;
+            } else if (!Number.isInteger(emp)) {
+                showFieldError(empInput, 'Must be a whole number (no decimals)');
+                errors.push(`${label}: ramp employees must be a whole number`);
+                valid = false;
+            }
+        });
+
+        if (valid) {
+            const allZero = Array.from(elements.rampModalBody.querySelectorAll('.ramp-week-card'))
+                .every(card => parseInt(card.querySelector('.ramp-input-ramp-emp').value, 10) === 0);
+            if (allZero) {
+                showRampError('At least one week must have Ramp Employees > 0');
+                errors.push('At least one week must have Ramp Employees > 0');
+                valid = false;
+            }
+        }
+
+        return { valid, errors };
+    }
+
+    function showFieldError(inputEl, message) {
+        const errEl = inputEl.parentElement.querySelector('.ramp-field-error');
+        if (errEl) {
+            errEl.textContent = message;
+            errEl.style.display = 'block';
+        }
+    }
+
+    function serializeRampForm() {
+        const cards = elements.rampModalBody.querySelectorAll('.ramp-week-card');
+        const weeks = [];
+
+        cards.forEach((card, idx) => {
+            const wdInput = card.querySelector('.ramp-input-working-days');
+            const pctInput = card.querySelector('.ramp-input-ramp-pct');
+            const empInput = card.querySelector('.ramp-input-ramp-emp');
+            const label = card.querySelector('.ramp-week-label').textContent;
+            const rawWeek = (ChatState.pendingRampWeeks || [])[idx] || {};
+
+            weeks.push({
+                label: label,
+                startDate: rawWeek.startDate || '',
+                endDate: rawWeek.endDate || '',
+                workingDays: parseInt(wdInput.value, 10),
+                rampPercent: parseFloat(pctInput.value),
+                rampEmployees: parseInt(empInput.value, 10),
+            });
+        });
+
+        const totalRampEmployees = weeks.reduce((sum, w) => sum + (w.rampEmployees || 0), 0);
+        return { weeks, totalRampEmployees };
+    }
+
+    function handleRampModalSubmit() {
+        const { valid, errors } = validateRampForm();
+
+        if (!valid) {
+            showRampError(errors.join('; '));
+            return;
+        }
+
+        hideRampError();
+        const ramp_submission = serializeRampForm();
+
+        closeRampModal();
+
+        sendWebSocketMessage({
+            type: 'submit_ramp_data',
+            ramp_submission: ramp_submission,
+        });
+    }
+
+    function closeRampModal() {
+        elements.rampModalOverlay.style.display = 'none';
+        elements.rampModalBody.innerHTML = '';
+        ChatState.pendingRampWeeks = null;
+        ChatState.pendingRampMonthKey = null;
+        ChatState.pendingRampForecastId = null;
+        hideRampError();
+    }
+
+    function showRampError(message) {
+        elements.rampModalError.textContent = message;
+        elements.rampModalError.style.display = 'block';
+    }
+
+    function hideRampError() {
+        elements.rampModalError.textContent = '';
+        elements.rampModalError.style.display = 'none';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    // ── Ramp WS message handlers ─────────────────────────────────────────────
+
+    function handleRampConfirmation(data) {
+        if (data.ui_component) {
+            addMessageWithHTML('assistant', data.ui_component);
+        } else if (data.message) {
+            addMessage('assistant', data.message);
+        }
+        attachRampConfirmListeners();
+        scrollToBottom();
+    }
+
+    function handleRampPreview(data) {
+        if (data.ui_component) {
+            addMessageWithHTML('assistant', data.ui_component);
+        } else if (data.message) {
+            addMessage('assistant', data.message);
+        }
+        attachRampApplyListeners();
+        scrollToBottom();
+    }
+
+    function handleRampApplyResult(data) {
+        if (data.ui_component) {
+            addMessageWithHTML('assistant', data.ui_component);
+        } else {
+            addMessage('assistant', data.message || (data.success ? 'Ramp applied.' : 'Ramp apply failed.'));
+        }
+        scrollToBottom();
+    }
+
+    // ── Ramp button listener attachers ───────────────────────────────────────
+
+    function attachRampOpenListeners() {
+        const openBtns = elements.messagesArea.querySelectorAll('.ramp-open-modal-btn');
+        openBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    openRampModal(this);
+                });
+            }
+        });
+    }
+
+    function attachRampConfirmListeners() {
+        const confirmBtns = elements.messagesArea.querySelectorAll('.ramp-confirm-btn');
+        confirmBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    // Disable all buttons in card
+                    const card = this.closest('.ramp-confirmation-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+
+                    sendWebSocketMessage({ type: 'confirm_ramp_submission' });
+                });
+            }
+        });
+
+        const editBtns = elements.messagesArea.querySelectorAll('.ramp-edit-btn');
+        editBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.ramp-confirmation-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+
+                    // Re-open modal with preserved state
+                    if (ChatState.pendingRampWeeks) {
+                        buildWeekCards(ChatState.pendingRampWeeks);
+                        elements.rampModalOverlay.style.display = 'flex';
+                    }
+                });
+            }
+        });
+    }
+
+    function attachRampApplyListeners() {
+        const applyBtns = elements.messagesArea.querySelectorAll('.ramp-apply-btn');
+        applyBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.ramp-preview-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+
+                    sendWebSocketMessage({ type: 'apply_ramp_calculation' });
+                });
+            }
+        });
+
+        const cancelBtns = elements.messagesArea.querySelectorAll('.ramp-cancel-btn');
+        cancelBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.ramp-preview-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+
+                    // Clear ramp state on cancel
+                    ChatState.pendingRampWeeks = null;
+                    ChatState.pendingRampMonthKey = null;
+                    ChatState.pendingRampForecastId = null;
+
+                    addMessage('assistant', 'Ramp apply cancelled.');
+                });
+            }
+        });
+    }
+
     function openModal(title, data) {
         elements.modalTitle.textContent = title;
 
@@ -1031,6 +1359,17 @@
         elements.modalOverlay.addEventListener('click', (e) => {
             if (e.target === elements.modalOverlay) {
                 closeModal();
+            }
+        });
+
+        // Ramp modal
+        elements.rampModalCloseBtn.addEventListener('click', closeRampModal);
+        elements.rampModalCancelBtn.addEventListener('click', closeRampModal);
+        elements.rampModalSubmitBtn.addEventListener('click', handleRampModalSubmit);
+
+        elements.rampModalOverlay.addEventListener('click', (e) => {
+            if (e.target === elements.rampModalOverlay) {
+                closeRampModal();
             }
         });
     }

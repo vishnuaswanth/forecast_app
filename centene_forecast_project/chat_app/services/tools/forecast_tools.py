@@ -469,6 +469,137 @@ async def get_available_reports_tool() -> dict:
         return {"success": False, "error": str(e)}
 
 
+async def call_preview_ramp(forecast_id: int, month_key: str, ramp_payload: dict) -> dict:
+    """
+    Preview the impact of a ramp calculation without applying it.
+
+    Args:
+        forecast_id: Forecast record ID
+        month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+        ramp_payload: Dict containing 'weeks' list and 'totalRampEmployees'
+
+    Returns:
+        Dictionary with preview data from backend
+
+    Raises:
+        APIConnectionError: If cannot connect to API
+        APITimeoutError: If API request times out
+        APIResponseError: If API returns error status
+    """
+    import asyncio
+    endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/preview"
+    try:
+        client = get_chat_api_client()
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: client.preview_ramp_calculation(forecast_id, month_key, ramp_payload)
+        )
+        logger.info(f"[Forecast Tools] Ramp preview fetched for forecast {forecast_id}, month {month_key}")
+        return data
+    except httpx.ConnectError as e:
+        raise APIConnectionError(message=f"Cannot connect to API: {str(e)}", details={"endpoint": endpoint})
+    except httpx.TimeoutException as e:
+        raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
+    except httpx.HTTPStatusError as e:
+        raise APIResponseError(
+            message=f"API error: {str(e)}",
+            status_code=e.response.status_code,
+            response_body=e.response.text[:500] if e.response.text else None,
+            details={"endpoint": endpoint}
+        )
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Failed to preview ramp: {str(e)}", exc_info=True)
+        raise classify_httpx_error(e, endpoint)
+
+
+async def call_apply_ramp(forecast_id: int, month_key: str, ramp_payload: dict) -> dict:
+    """
+    Apply a ramp calculation to persist it.
+
+    Args:
+        forecast_id: Forecast record ID
+        month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+        ramp_payload: Dict containing 'weeks' list and 'totalRampEmployees'
+
+    Returns:
+        Dictionary with apply result from backend
+
+    Raises:
+        APIConnectionError: If cannot connect to API
+        APITimeoutError: If API request times out
+        APIResponseError: If API returns error status
+    """
+    import asyncio
+    endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/apply"
+    try:
+        client = get_chat_api_client()
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: client.apply_ramp_calculation(forecast_id, month_key, ramp_payload)
+        )
+        logger.info(f"[Forecast Tools] Ramp applied for forecast {forecast_id}, month {month_key}")
+        return data
+    except httpx.ConnectError as e:
+        raise APIConnectionError(message=f"Cannot connect to API: {str(e)}", details={"endpoint": endpoint})
+    except httpx.TimeoutException as e:
+        raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
+    except httpx.HTTPStatusError as e:
+        raise APIResponseError(
+            message=f"API error: {str(e)}",
+            status_code=e.response.status_code,
+            response_body=e.response.text[:500] if e.response.text else None,
+            details={"endpoint": endpoint}
+        )
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Failed to apply ramp: {str(e)}", exc_info=True)
+        raise classify_httpx_error(e, endpoint)
+
+
+async def call_get_applied_ramp(forecast_id: int, month_key: str) -> dict:
+    """
+    Retrieve the currently applied ramp for a forecast row and month.
+
+    Args:
+        forecast_id: Forecast record ID
+        month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+
+    Returns:
+        Dictionary with applied ramp data from backend
+
+    Raises:
+        APIConnectionError: If cannot connect to API
+        APITimeoutError: If API request times out
+        APIResponseError: If API returns error status
+    """
+    import asyncio
+    endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp"
+    try:
+        client = get_chat_api_client()
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: client.get_applied_ramp(forecast_id, month_key)
+        )
+        logger.info(f"[Forecast Tools] Applied ramp fetched for forecast {forecast_id}, month {month_key}")
+        return data
+    except httpx.ConnectError as e:
+        raise APIConnectionError(message=f"Cannot connect to API: {str(e)}", details={"endpoint": endpoint})
+    except httpx.TimeoutException as e:
+        raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
+    except httpx.HTTPStatusError as e:
+        raise APIResponseError(
+            message=f"API error: {str(e)}",
+            status_code=e.response.status_code,
+            response_body=e.response.text[:500] if e.response.text else None,
+            details={"endpoint": endpoint}
+        )
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Failed to get applied ramp: {str(e)}", exc_info=True)
+        raise classify_httpx_error(e, endpoint)
+
+
 @tool("calculate_forecast_totals")
 async def calculate_totals_tool(forecast_data: dict) -> dict:
     """

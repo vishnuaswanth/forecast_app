@@ -353,6 +353,215 @@ class ChatService:
                 'ui_component': '',
             }
 
+    async def process_ramp_submission(
+        self,
+        ramp_submission: dict,
+        conversation_id: str,
+        user,
+    ) -> Dict[str, Any]:
+        """
+        Validate and persist pending ramp week data from the modal form.
+
+        Args:
+            ramp_submission: Dict with 'weeks' list and optional 'totalRampEmployees'
+            conversation_id: Current conversation ID
+            user: Django user object
+
+        Returns:
+            Dictionary with ui_component (confirmation card) and message
+        """
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.ui_tools import generate_ramp_confirmation_ui, generate_error_ui
+        import calendar as cal
+
+        context_manager = get_context_manager()
+        ctx = await context_manager.get_context(conversation_id)
+
+        weeks = ramp_submission.get('weeks', [])
+        errors = []
+
+        for i, w in enumerate(weeks):
+            working_days = w.get('workingDays', 0)
+            ramp_pct = w.get('rampPercent', 0)
+            ramp_emp = w.get('rampEmployees', 0)
+            label = w.get('label', f'Week {i+1}')
+
+            if not isinstance(working_days, (int, float)) or working_days <= 0:
+                errors.append(f"{label}: workingDays must be > 0 (got {working_days})")
+            if not isinstance(ramp_pct, (int, float)) or not (0 <= ramp_pct <= 100):
+                errors.append(f"{label}: rampPercent must be 0–100 (got {ramp_pct})")
+            if not isinstance(ramp_emp, (int, float)) or ramp_emp < 0:
+                errors.append(f"{label}: rampEmployees must be >= 0 (got {ramp_emp})")
+            elif isinstance(ramp_emp, float) and not ramp_emp.is_integer():
+                errors.append(f"{label}: rampEmployees must be a whole number, no decimals (got {ramp_emp})")
+
+        if not errors and not any(w.get('rampEmployees', 0) > 0 for w in weeks):
+            errors.append("At least one week must have Ramp Employees > 0")
+
+        if errors:
+            msg = "Validation failed: " + "; ".join(errors)
+            logger.warning(f"[Chat Service] Ramp submission validation errors: {errors}")
+            return {
+                "success": False,
+                "message": msg,
+                "ui_component": generate_error_ui(msg, error_type="validation", admin_contact=False),
+            }
+
+        total_ramp_employees = int(ramp_submission.get(
+            'totalRampEmployees',
+            sum(w.get('rampEmployees', 0) for w in weeks)
+        ))
+        payload = {"weeks": weeks, "totalRampEmployees": total_ramp_employees}
+
+        await context_manager.update_entities(conversation_id, pending_ramp_data=payload)
+
+        row_data = ctx.selected_forecast_row or {}
+        main_lob = row_data.get('main_lob', 'N/A')
+        state = row_data.get('state', 'N/A')
+        case_type = row_data.get('case_type', 'N/A')
+        row_label = f"{main_lob} | {state} | {case_type}"
+
+        month_key = ctx.selected_ramp_month_key or ''
+        try:
+            year, month = int(month_key[:4]), int(month_key[5:7])
+            month_label = f"{cal.month_name[month]} {year}"
+        except (ValueError, IndexError):
+            month_label = month_key
+
+        ui = generate_ramp_confirmation_ui(row_label, month_label, weeks)
+        return {
+            "success": True,
+            "message": f"Ramp data ready for {row_label} — {month_label}",
+            "ui_component": ui,
+        }
+
+    async def execute_ramp_preview(
+        self,
+        conversation_id: str,
+        user,
+    ) -> Dict[str, Any]:
+        """
+        Call the backend preview API and return a preview diff card.
+
+        Args:
+            conversation_id: Current conversation ID
+            user: Django user object
+
+        Returns:
+            Dictionary with ui_component (preview card) and message
+        """
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.forecast_tools import call_preview_ramp
+        from chat_app.services.tools.ui_tools import generate_ramp_preview_ui, generate_error_ui
+        import calendar as cal
+
+        context_manager = get_context_manager()
+        ctx = await context_manager.get_context(conversation_id)
+
+        row_data = ctx.selected_forecast_row
+        month_key = ctx.selected_ramp_month_key
+        pending_data = ctx.pending_ramp_data
+
+        if not row_data or not month_key or not pending_data:
+            msg = "Missing ramp context. Please resubmit ramp data."
+            return {
+                "success": False,
+                "message": msg,
+                "ui_component": generate_error_ui(msg, error_type="validation", admin_contact=False),
+            }
+
+        forecast_id = int(row_data.get('forecast_id', row_data.get('id', 0)))
+
+        try:
+            preview_response = await call_preview_ramp(forecast_id, month_key, pending_data)
+        except Exception as e:
+            logger.error(f"[Chat Service] Ramp preview API error: {e}")
+            return {
+                "success": False,
+                "message": f"Preview failed: {str(e)}",
+                "ui_component": generate_error_ui(
+                    "Could not retrieve ramp preview from server.",
+                    error_type="api", admin_contact=True
+                ),
+            }
+
+        await context_manager.update_entities(
+            conversation_id, pending_ramp_preview=preview_response
+        )
+
+        try:
+            year, month = int(month_key[:4]), int(month_key[5:7])
+            month_label = f"{cal.month_name[month]} {year}"
+        except (ValueError, IndexError):
+            month_label = month_key
+
+        main_lob = row_data.get('main_lob', 'N/A')
+        ui = generate_ramp_preview_ui(preview_response)
+        return {
+            "success": True,
+            "message": f"Ramp preview ready for {main_lob} — {month_label}",
+            "ui_component": ui,
+        }
+
+    async def execute_ramp_apply(
+        self,
+        conversation_id: str,
+        user,
+    ) -> Dict[str, Any]:
+        """
+        Call the backend apply API and clear ramp state on success.
+
+        Args:
+            conversation_id: Current conversation ID
+            user: Django user object
+
+        Returns:
+            Dictionary with success status, message, and ui_component
+        """
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.forecast_tools import call_apply_ramp
+        from chat_app.services.tools.ui_tools import generate_ramp_result_ui, generate_error_ui
+
+        context_manager = get_context_manager()
+        ctx = await context_manager.get_context(conversation_id)
+
+        row_data = ctx.selected_forecast_row
+        month_key = ctx.selected_ramp_month_key
+        pending_data = ctx.pending_ramp_data
+
+        if not row_data or not month_key or not pending_data:
+            msg = "Missing ramp context. Please resubmit ramp data."
+            return {
+                "success": False,
+                "message": msg,
+                "ui_component": generate_error_ui(msg, error_type="validation", admin_contact=False),
+            }
+
+        forecast_id = int(row_data.get('forecast_id', row_data.get('id', 0)))
+
+        try:
+            await call_apply_ramp(forecast_id, month_key, pending_data)
+        except Exception as e:
+            logger.error(f"[Chat Service] Ramp apply API error: {e}")
+            return {
+                "success": False,
+                "message": f"Apply failed: {str(e)}",
+                "ui_component": generate_ramp_result_ui(False, f"Apply failed: {str(e)}"),
+            }
+
+        # Clear ramp state
+        fresh_ctx = await context_manager.get_context(conversation_id)
+        fresh_ctx.clear_ramp_state()
+        await context_manager.save_context(fresh_ctx)
+
+        main_lob = row_data.get('main_lob', 'N/A')
+        ui = generate_ramp_result_ui(True, f"Ramp applied successfully for {main_lob} — {month_key}")
+        return {
+            "success": True,
+            "message": f"Ramp applied for {main_lob} — {month_key}",
+            "ui_component": ui,
+        }
+
     async def _get_message_history(self, conversation_id: str, limit: int = 10) -> list:
         """
         Retrieve recent message history from database as role/content dicts.

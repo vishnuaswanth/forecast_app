@@ -138,6 +138,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_new_conversation(data)
             elif message_type == 'confirm_cph_update':
                 await self.handle_confirm_cph_update(data)
+            elif message_type == 'submit_ramp_data':
+                await self.handle_submit_ramp_data(data)
+            elif message_type == 'confirm_ramp_submission':
+                await self.handle_confirm_ramp_submission(data)
+            elif message_type == 'apply_ramp_calculation':
+                await self.handle_apply_ramp_calculation(data)
             else:
                 await self.send_error(f"Unknown message type: {message_type}")
 
@@ -291,6 +297,126 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'type': 'cph_update_result',
                 'success': False,
                 'message': str(e)
+            })
+
+    async def handle_submit_ramp_data(self, data: Dict[str, Any]) -> None:
+        """
+        Handle ramp week data submitted from the ramp modal.
+        Validates the submission and returns a confirmation card.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        ramp_submission = data.get('ramp_submission', {})
+
+        if not ramp_submission or not ramp_submission.get('weeks'):
+            await self.send_json({
+                'type': 'ramp_confirmation',
+                'success': False,
+                'message': 'No ramp data provided',
+                'ui_component': '',
+            })
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.process_ramp_submission(
+                ramp_submission=ramp_submission,
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+
+            await self.send_json({'type': 'typing', 'is_typing': False})
+
+            await self.send_json({
+                'type': 'ramp_confirmation',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', ''),
+            })
+
+        except Exception as e:
+            logger.error(f"Error processing ramp submission: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'ramp_confirmation',
+                'success': False,
+                'message': str(e),
+                'ui_component': '',
+            })
+
+    async def handle_confirm_ramp_submission(self, data: Dict[str, Any]) -> None:
+        """
+        Handle user confirming the ramp submission (Yes, Proceed).
+        Calls the backend preview API and returns a diff card.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.execute_ramp_preview(
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+
+            await self.send_json({'type': 'typing', 'is_typing': False})
+
+            await self.send_json({
+                'type': 'ramp_preview',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', ''),
+            })
+
+        except Exception as e:
+            logger.error(f"Error executing ramp preview: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'ramp_preview',
+                'success': False,
+                'message': str(e),
+                'ui_component': '',
+            })
+
+    async def handle_apply_ramp_calculation(self, data: Dict[str, Any]) -> None:
+        """
+        Handle user confirming the ramp apply (Confirm Apply).
+        Calls the backend apply API and clears ramp state.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.execute_ramp_apply(
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+
+            await self.send_json({'type': 'typing', 'is_typing': False})
+
+            await self.send_json({
+                'type': 'ramp_apply_result',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', ''),
+            })
+
+        except Exception as e:
+            logger.error(f"Error applying ramp calculation: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'ramp_apply_result',
+                'success': False,
+                'message': str(e),
+                'ui_component': '',
             })
 
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:

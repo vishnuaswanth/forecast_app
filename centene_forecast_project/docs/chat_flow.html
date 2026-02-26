@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Centene Chat – Flow Diagrams</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+      border-bottom: 1px solid #4338ca;
+      padding: 20px 32px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; color: #a5b4fc; }
+    header p  { font-size: 0.875rem; color: #94a3b8; margin-top: 4px; }
+
+    nav {
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      gap: 2px;
+      padding: 0 24px;
+    }
+    nav button {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      padding: 14px 20px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+    nav button:hover  { color: #c7d2fe; }
+    nav button.active { color: #818cf8; border-bottom-color: #818cf8; }
+
+    .tab-content { display: none; padding: 32px; }
+    .tab-content.active { display: block; }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #c7d2fe;
+      margin-bottom: 8px;
+    }
+    .section-desc {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .diagram-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 32px;
+      overflow-x: auto;
+    }
+    .diagram-card .label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #475569;
+      margin-bottom: 16px;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      min-height: 100px;
+    }
+    .mermaid svg { max-width: 100%; height: auto; }
+
+    /* legend */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: #94a3b8;
+    }
+    .legend-dot {
+      width: 12px; height: 12px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* return-value table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin-top: 16px;
+    }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: #0f172a;
+      color: #818cf8;
+      font-weight: 600;
+      border-bottom: 1px solid #334155;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #1e293b;
+      color: #cbd5e1;
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    code {
+      background: #0f172a;
+      color: #7dd3fc;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-family: "Fira Code", "Cascadia Code", monospace;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+    .badge-tool   { background: #312e81; color: #a5b4fc; }
+    .badge-ui     { background: #064e3b; color: #6ee7b7; }
+    .badge-error  { background: #450a0a; color: #fca5a5; }
+    .badge-ws     { background: #082f49; color: #7dd3fc; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Centene Chat — Flow Diagrams</h1>
+  <p>CoT Tool-Calling Agent · WebSocket · Django Channels</p>
+</header>
+
+<nav>
+  <button class="active" onclick="showTab('main', this)">Main Flow</button>
+  <button onclick="showTab('tools', this)">Tool Scenarios</button>
+  <button onclick="showTab('cph', this)">CPH Confirm Flow</button>
+  <button onclick="showTab('reference', this)">Reference</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TAB 1 — MAIN FLOW
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="tab-main" class="tab-content active">
+  <div class="section-title">Main Message Processing Pipeline</div>
+  <div class="section-desc">
+    Three inbound WebSocket message types, each routing to a dedicated handler.
+    The <strong>user_message</strong> path runs sanitization → history retrieval → CoT LLM agent → tool execution → response.
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>LLM Call</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#0ea5e9"></div>WebSocket I/O</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Database</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Error path</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6"></div>Decision</div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">consumers.py → chat_service.py → llm_service.py → agent_tools.py</div>
+    <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor':'#312e81','primaryTextColor':'#e0e7ff','primaryBorderColor':'#6366f1','lineColor':'#64748b','secondaryColor':'#1e1b4b','tertiaryColor':'#0f172a','edgeLabelBackground':'#1e293b'}}}%%
+flowchart TD
+    WS_IN([Browser WebSocket]) -->|JSON message| MSG_TYPE{message\ntype?}
+
+    MSG_TYPE -->|user_message| HUM[handle_user_message]
+    MSG_TYPE -->|confirm_cph_update| HCPH[handle_confirm_cph_update]
+    MSG_TYPE -->|new_conversation| HNEW[handle_new_conversation]
+
+    HUM --> SAVE_U[(DB: save user\nChatMessage)]
+    SAVE_U --> TYP_ON([send typing = true])
+    TYP_ON --> PROC[chat_service\nprocess_message]
+
+    PROC --> SAN{sanitize\ninput}
+    SAN -->|empty| ERR_SAN([error response])
+    SAN -->|ok| HIST[get last 10 msgs\nfrom DB]
+    HIST --> AGENT[llm_service\nrun_agent]
+
+    AGENT --> CTX[(get_context\nRedis → Cache → DB)]
+    CTX --> MK_T[make_agent_tools\n6 closures]
+    MK_T --> SYS_P[build_system_prompt\ncontext + selected_row]
+    SYS_P --> LLM1[[LLM Call 1\nbind_tools + ainvoke]]
+
+    LLM1 -->|no tool_calls| CLAR[plain text reply\nui_component = empty]
+    LLM1 -->|tool_calls present| TOOL[_invoke_tool\nfor each tool_call]
+
+    TOOL --> TMSG[append ToolMessage\nto messages]
+    TMSG --> LLM2[[LLM Call 2\nnatural language summary]]
+
+    LLM2 --> RESULT[text + ui_component + data]
+    CLAR --> RESULT
+
+    RESULT --> TYP_OFF([send typing = false])
+    TYP_OFF --> SAVE_A[(DB: save assistant\nChatMessage)]
+    SAVE_A --> OUT([type = assistant_response\nmessage + ui_component])
+
+    PROC -->|LLMError\nAPIError\nValidationError| ERR_SVC([error assistant_response\nwith error_ui card])
+
+    HCPH --> CPH_TYP([send typing = true])
+    CPH_TYP --> EXEC[execute_cph_update]
+    EXEC --> CPH_OFF([send typing = false])
+    CPH_OFF --> CPH_OUT([type = cph_update_result\nsuccess + ui_component])
+
+    HNEW --> MARK[(mark old conv\ninactive in DB)]
+    MARK --> CLR[clear_context\nold conversation]
+    CLR --> NEW_C[(create new\nChatConversation)]
+    NEW_C --> SYS_OUT([type = system\nnew conversation_id])
+
+    classDef llmCall fill:#6366f1,color:#fff,stroke:#4338ca,font-weight:bold
+    classDef wsMsg   fill:#0369a1,color:#fff,stroke:#0284c7
+    classDef dbNode  fill:#b45309,color:#fff,stroke:#d97706
+    classDef errNode fill:#b91c1c,color:#fff,stroke:#dc2626
+    classDef decision fill:#7c3aed,color:#fff,stroke:#6d28d9
+
+    class LLM1,LLM2 llmCall
+    class WS_IN,TYP_ON,TYP_OFF,OUT,CPH_TYP,CPH_OFF,CPH_OUT,SYS_OUT,ERR_SAN wsMsg
+    class SAVE_U,CTX,SAVE_A,MARK,NEW_C dbNode
+    class ERR_SVC,ERR_SAN errNode
+    class MSG_TYPE,SAN decision
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TAB 2 — TOOL SCENARIOS
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="tab-tools" class="tab-content">
+  <div class="section-title">Tool Execution — All 6 Scenarios</div>
+  <div class="section-desc">
+    Each tool is an async closure capturing <code>conversation_id</code> and <code>context_manager</code>.
+    All tools return the same shape: <code>{ message, ui_component, data }</code>.
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">agent_tools.py → ui_tools.py  (tool call → HTML result)</div>
+    <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor':'#1e3a5f','primaryTextColor':'#e0e7ff','lineColor':'#64748b','edgeLabelBackground':'#1e293b'}}}%%
+flowchart LR
+    CALL{Tool\nCalled?}
+
+    CALL -->|get_forecast_data| TF["fetch_forecast_data(params)\nFastAPI /api/llm/forecast/data\nupdate_entities in context"]
+    CALL -->|get_available_reports| TR["fetch_available_reports()\nFastAPI /api/llm/forecast/available-reports"]
+    CALL -->|get_fte_details| TFTE["read context.selected_forecast_row"]
+    CALL -->|preview_cph_change| TCPH["resolve final_cph from operation\ncalculate_cph_impact(row, cph, config)"]
+    CALL -->|update_filters| TUF["extend / replace / remove / reset\ncontext_manager.update_entities()"]
+    CALL -->|clear_context| TCL["context_manager.clear_context()"]
+
+    TF -->|records found ≤ 5| UI1["generate_forecast_table_html\nshow_full=True"]
+    TF -->|records found > 5| UI2["generate_forecast_table_html\npreview=5 + View All btn"]
+    TF -->|show_totals_only| UI3["generate_totals_table_html"]
+    TF -->|no records| ERR1["generate_error_ui\nvalidation · no admin"]
+    TF -->|APIClientError| ERR2["generate_error_ui\nvalidation · no admin"]
+    TF -->|APIError| ERR3["generate_error_ui\napi · admin contact"]
+
+    TR --> UI4["generate_available_reports_ui\nperiod · status · record count"]
+
+    TFTE -->|row found| UI5["generate_fte_details_ui\nFTE Req/Avail/Capacity/Gap\nper forecast month"]
+    TFTE -->|no row selected| ERR4["generate_error_ui\nSelect a row first"]
+
+    TCPH -->|valid CPH\nrow found| UI6["generate_cph_preview_ui\nold→new per month\nConfirm + Cancel buttons"]
+    TCPH -->|invalid CPH| ERR5["generate_error_ui\nvalidation"]
+    TCPH -->|no row selected| ERR6["generate_error_ui\nSelect a row first"]
+
+    TUF --> UI7["generate_context_update_ui\nwhat was added/removed/reset"]
+    TCL --> UI8["generate_clear_context_ui\ngreen success card"]
+
+    UI1 & UI2 & UI3 & ERR1 & ERR2 & ERR3 --> RES
+    UI4 --> RES
+    UI5 & ERR4 --> RES
+    UI6 & ERR5 & ERR6 --> RES
+    UI7 --> RES
+    UI8 --> RES
+
+    RES(["{ message: str\nui_component: HTML\ndata: dict }"])
+
+    classDef fetchNode fill:#1e3a5f,color:#bae6fd,stroke:#0369a1
+    classDef uiNode    fill:#064e3b,color:#6ee7b7,stroke:#059669
+    classDef errNode   fill:#450a0a,color:#fca5a5,stroke:#b91c1c
+    classDef result    fill:#312e81,color:#c7d2fe,stroke:#6366f1,font-weight:bold
+
+    class TF,TR,TFTE,TCPH,TUF,TCL fetchNode
+    class UI1,UI2,UI3,UI4,UI5,UI6,UI7,UI8 uiNode
+    class ERR1,ERR2,ERR3,ERR4,ERR5,ERR6 errNode
+    class RES result
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">update_filters — operation variants</div>
+    <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': {'lineColor':'#64748b','edgeLabelBackground':'#1e293b'}}}%%
+flowchart TD
+    IN["update_filters called\noperation + platforms/localities/states/case_types"] --> OP{operation?}
+
+    OP -->|extend| EXT["final = union(existing, new)\nfor each filter field"]
+    OP -->|replace| REP["final = new values\n(only for mentioned fields,\nelse keep existing)"]
+    OP -->|remove| REM["final = existing minus new\nfor each filter field"]
+    OP -->|reset| RST["context_manager.reset_filters\nkeep_month_year=True"]
+
+    EXT & REP & REM --> UPD["context_manager.update_entities\nactive_platforms/localities/states/case_types"]
+    RST --> UPD
+
+    UPD --> UI["generate_context_update_ui\nmessage + preserved items"]
+    UI --> OUT(["{ message, ui_component, data }"])
+
+    classDef op fill:#7c3aed,color:#fff,stroke:#6d28d9
+    class OP op
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TAB 3 — CPH CONFIRM FLOW
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="tab-cph" class="tab-content">
+  <div class="section-title">CPH Change — Two-Phase Confirm Flow</div>
+  <div class="section-desc">
+    CPH changes are <strong>destructive</strong> and go through a preview-then-confirm pattern.
+    Phase 1 is handled by the CoT agent (<code>preview_cph_change</code> tool).
+    Phase 2 is triggered by the user clicking "Confirm Change" in the UI.
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">Sequence: Browser ↔ consumers.py ↔ chat_service ↔ llm_service ↔ tool</div>
+    <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': {'actorBkg':'#1e1b4b','actorBorder':'#6366f1','actorTextColor':'#e0e7ff','noteBkgColor':'#312e81','noteTextColor':'#c7d2fe','activationBkgColor':'#0f172a','signalColor':'#94a3b8','signalTextColor':'#cbd5e1','labelBoxBkgColor':'#1e293b','labelTextColor':'#94a3b8'}}}%%
+sequenceDiagram
+    autonumber
+    participant B  as Browser
+    participant C  as consumers.py
+    participant S  as chat_service
+    participant L  as llm_service
+    participant T  as preview_cph_change tool
+    participant DB as Database
+
+    Note over B,DB: Phase 1 — Preview
+
+    B->>C: {type: user_message,<br>message: "Increase CPH to 14"}
+    C->>DB: save user ChatMessage
+    C->>B: {type: typing, is_typing: true}
+    C->>S: process_message(text, conversation_id, user, selected_row)
+    S->>L: run_agent(sanitized_text, conv_id, history, selected_row)
+    L->>L: LLM Call 1 → decides tool: preview_cph_change(new_cph=14, operation="set_to")
+    L->>T: invoke preview_cph_change(14, "set_to")
+    T->>T: resolve final_cph = 14
+    T->>T: validate_cph_value(14) → ok
+    T->>T: determine_locality(main_lob, case_type)
+    T->>T: calculate_cph_impact(row_data, 14, report_config)
+    T-->>L: {ui: cph_preview_ui with Confirm+Cancel, data: {old_cph, new_cph, impact}}
+    L->>L: LLM Call 2 → "Here's the preview of changing CPH from 12 to 14…"
+    L-->>S: {text: summary, ui_component: preview_card}
+    S-->>C: {response_type: assistant_response, message, ui_component}
+    C->>B: {type: typing, is_typing: false}
+    C->>DB: save assistant ChatMessage
+    C->>B: {type: assistant_response,<br>ui_component: cph_preview_card (with Confirm/Cancel)}
+
+    Note over B: User reviews old→new FTE/Capacity/Gap per month
+
+    Note over B,DB: Phase 2 — Confirm (user clicks "Confirm Change")
+
+    B->>C: {type: confirm_cph_update,<br>update_data: {main_lob, state, case_type, old_cph, new_cph, …}}
+    C->>B: {type: typing, is_typing: true}
+    C->>S: execute_cph_update(update_data, conversation_id, user)
+    Note over S: TODO: call backend API when ready
+    S-->>C: {success: true, message: "CPH update recorded.", ui_component: success_card}
+    C->>B: {type: typing, is_typing: false}
+    C->>B: {type: cph_update_result,<br>success: true, message, ui_component: success_card}
+    </div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">CPH operation resolution — how new_cph is computed from operation</div>
+    <div class="mermaid">
+%%{init: {'theme': 'dark', 'themeVariables': {'lineColor':'#64748b','edgeLabelBackground':'#1e293b'}}}%%
+flowchart LR
+    IN["preview_cph_change called\nnew_cph=X  operation=Y\ncurrent_cph from selected row"] --> OP{operation?}
+
+    OP -->|set_to| A["final_cph = X"]
+    OP -->|increase_by_pct| B["final_cph = current × (1 + X/100)"]
+    OP -->|decrease_by_pct| C["final_cph = current × (1 - X/100)"]
+    OP -->|add_to| D["final_cph = current + X"]
+    OP -->|subtract_from| E["final_cph = current - X"]
+
+    A & B & C & D & E --> VAL{validate_cph_value\nfinal_cph}
+    VAL -->|invalid| ERR["generate_error_ui\nvalidation"]
+    VAL -->|valid| IMPACT["calculate_cph_impact\nrow_data + final_cph + report_config"]
+    IMPACT --> UI["generate_cph_preview_ui\nConfirm + Cancel buttons\ndata-update JSON embedded"]
+    UI --> OUT(["{ message, ui_component: preview_card,\ndata: {old_cph, new_cph, impact} }"])
+
+    classDef op fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef err fill:#450a0a,color:#fca5a5,stroke:#b91c1c
+    class OP,VAL op
+    class ERR err
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     TAB 4 — REFERENCE
+═══════════════════════════════════════════════════════════════════════════ -->
+<div id="tab-reference" class="tab-content">
+  <div class="section-title">WebSocket Message Types</div>
+  <div class="section-desc">All messages are JSON objects sent over the WebSocket connection.</div>
+
+  <div class="diagram-card">
+    <div class="label">Inbound — Browser → Server</div>
+    <table>
+      <thead><tr><th>type</th><th>Key Fields</th><th>Handler</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-ws">user_message</span></td>
+          <td><code>message: str</code>, <code>selected_row?: dict</code></td>
+          <td><code>handle_user_message()</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-ws">confirm_cph_update</span></td>
+          <td><code>update_data: {main_lob, state, case_type, old_cph, new_cph, …}</code></td>
+          <td><code>handle_confirm_cph_update()</code></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-ws">new_conversation</span></td>
+          <td><code>old_conversation_id?: str</code></td>
+          <td><code>handle_new_conversation()</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">Outbound — Server → Browser</div>
+    <table>
+      <thead><tr><th>type</th><th>Key Fields</th><th>When</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-ws">system</span></td>
+          <td><code>message: str</code>, <code>conversation_id: str</code></td>
+          <td>On connect; after new conversation created</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-ws">typing</span></td>
+          <td><code>is_typing: bool</code></td>
+          <td>Before and after processing</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-ws">assistant_response</span></td>
+          <td><code>message: str</code>, <code>ui_component: str</code>, <code>message_id: str</code>, <code>metadata: dict</code></td>
+          <td>Always — all user_message responses use this type</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-ws">cph_update_result</span></td>
+          <td><code>success: bool</code>, <code>message: str</code>, <code>ui_component: str</code></td>
+          <td>After confirm_cph_update</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-ws">error</span></td>
+          <td><code>message: str</code></td>
+          <td>Fatal consumer-level errors (empty msg, bad JSON, DB failure)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:8px">Return Value Shapes per Layer</div>
+  <div class="section-desc" style="margin-top:6px">Each layer returns a consistent shape to the layer above it.</div>
+
+  <div class="diagram-card">
+    <div class="label">Tool → LLM Service</div>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>message</code></td><td>str</td><td>Short summary injected into ToolMessage for LLM Call 2</td></tr>
+        <tr><td><code>ui_component</code></td><td>str (HTML)</td><td>HTML card rendered in chat; empty string if none</td></tr>
+        <tr><td><code>data</code></td><td>dict</td><td>Raw data (full API response, row key, impact data, etc.)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">LLM Service → Chat Service</div>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>text</code></td><td>str</td><td>Natural language response from LLM Call 2 (or direct reply if no tool)</td></tr>
+        <tr><td><code>ui_component</code></td><td>str (HTML)</td><td>Passed through from tool result</td></tr>
+        <tr><td><code>data</code></td><td>dict</td><td>Passed through from tool result</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="diagram-card">
+    <div class="label">Chat Service → Consumer</div>
+    <table>
+      <thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>response_type</code></td><td>str</td><td>Always <code>"assistant_response"</code></td></tr>
+        <tr><td><code>message</code></td><td>str</td><td>Natural language text</td></tr>
+        <tr><td><code>ui_component</code></td><td>str (HTML)</td><td>HTML to render; empty string when no UI card</td></tr>
+        <tr><td><code>metadata</code></td><td>dict</td><td><code>correlation_id</code>, <code>sanitization</code>, <code>data</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:8px">Tool Summary</div>
+  <div class="section-desc" style="margin-top:6px">All 6 tools and when the LLM picks each one.</div>
+
+  <div class="diagram-card">
+    <table>
+      <thead><tr><th>Tool</th><th>Input Schema</th><th>LLM picks this when…</th><th>UI Generated</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-tool">get_forecast_data</span></td>
+          <td><code>month, year, platforms[], localities[], states[], case_types[], forecast_months[], show_totals_only</code></td>
+          <td>User wants to view forecast data for a period</td>
+          <td><span class="badge badge-ui">forecast_table_html</span> or <span class="badge badge-ui">totals_table_html</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-tool">get_available_reports</span></td>
+          <td>(none)</td>
+          <td>User asks which reports/periods exist</td>
+          <td><span class="badge badge-ui">available_reports_ui</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-tool">get_fte_details</span></td>
+          <td><code>row_key?</code></td>
+          <td>User asks for FTE breakdown of selected row</td>
+          <td><span class="badge badge-ui">fte_details_ui</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-tool">preview_cph_change</span></td>
+          <td><code>new_cph, operation</code></td>
+          <td>User wants to change CPH on selected row</td>
+          <td><span class="badge badge-ui">cph_preview_ui</span> (with Confirm/Cancel)</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-tool">update_filters</span></td>
+          <td><code>operation, platforms[], localities[], states[], case_types[]</code></td>
+          <td>User changes filters WITHOUT requesting new data</td>
+          <td><span class="badge badge-ui">context_update_ui</span></td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-tool">clear_context</span></td>
+          <td>(none)</td>
+          <td>"Start over" / "Reset all" / "Clear everything"</td>
+          <td><span class="badge badge-ui">clear_context_ui</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title" style="margin-top:8px">Error UI Cards</div>
+  <div class="diagram-card">
+    <table>
+      <thead><tr><th>error_type</th><th>Icon</th><th>Title</th><th>admin_contact</th><th>When</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="badge badge-error">validation</span></td>
+          <td>ℹ️</td>
+          <td>Invalid Input</td>
+          <td>No</td>
+          <td>Bad filters, empty result, invalid CPH, no row selected</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-error">api</span></td>
+          <td>⚠️</td>
+          <td>Data Service Issue</td>
+          <td>Yes</td>
+          <td>FastAPI server error, network failure</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-error">llm</span></td>
+          <td>⚠️</td>
+          <td>AI Service Issue</td>
+          <td>Yes</td>
+          <td>OpenAI API failure, token limit, rate limit</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-error">context</span></td>
+          <td>ℹ️</td>
+          <td>Session Issue</td>
+          <td>No</td>
+          <td>Context not found or corrupt</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-error">unknown</span></td>
+          <td>⚠️</td>
+          <td>Error</td>
+          <td>Yes</td>
+          <td>Unexpected exception</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { curve: 'basis', padding: 20 },
+    sequence: { actorMargin: 60, mirrorActors: false },
+  });
+
+  function showTab(name, btn) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+</script>
+</body>
+</html>

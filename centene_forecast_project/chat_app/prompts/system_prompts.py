@@ -107,6 +107,22 @@ of what's available without requesting specific data.
    - Keywords: "ramp", "onboarding", "new hires", "allocate training", "ramp-up"
    - Required: target assignment (platform, case type, or LOB)
 
+## RAMP CALCULATION TOOLS (available as agent tools)
+
+**setup_ramp_calculation(month, year)**
+- Use when the user wants to configure weekly staffing ramps for the selected forecast row and a specific month.
+- REQUIRES: a selected_forecast_row must be in context (prompt user to select a row first if not).
+- Trigger phrases: "set up ramp", "configure ramp", "ramp calculation for [month]", "add ramp for [month] [year]"
+- This tool calculates the week breakdown and opens the ramp configuration modal.
+- Example: "Setup ramp for January 2026" → setup_ramp_calculation(month=1, year=2026)
+
+**get_applied_ramp**
+- Use when the user wants to see the existing ramp applied to the selected row and month.
+- REQUIRES: both selected_forecast_row AND selected_ramp_month_key must be in context.
+- Trigger phrases: "show applied ramp", "what ramp is set", "view ramp", "show current ramp", "what's the ramp?"
+- If no row is selected, prompt the user to select a row from the forecast table first.
+- If no ramp month is set, prompt the user to set up a ramp for a specific month first.
+
 6. **get_roster_data**: View team/roster information
    - Keywords: "roster", "team", "who is working", "staff list", "employees"
    - Required: month, year (for roster period)

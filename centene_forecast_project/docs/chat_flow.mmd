@@ -1,0 +1,65 @@
+---
+title: Centene Chat – Main Message Flow
+---
+flowchart TD
+    WS_IN([Browser WebSocket]) -->|JSON message| MSG_TYPE{message\ntype?}
+
+    MSG_TYPE -->|user_message| HUM[handle_user_message]
+    MSG_TYPE -->|confirm_cph_update| HCPH[handle_confirm_cph_update]
+    MSG_TYPE -->|new_conversation| HNEW[handle_new_conversation]
+
+    %% ── user_message path ─────────────────────────────────────────────────
+    HUM --> SAVE_U[(DB: save user\nChatMessage)]
+    SAVE_U --> TYP_ON([send typing = true])
+    TYP_ON --> PROC[chat_service\nprocess_message]
+
+    PROC --> SAN{sanitize\ninput}
+    SAN -->|empty after sanitize| ERR_SAN([error response])
+    SAN -->|ok| HIST[get last 10 msgs\nfrom DB]
+    HIST --> AGENT[llm_service\nrun_agent]
+
+    AGENT --> CTX[(get_context\nRedis → Cache → DB)]
+    CTX --> MK_T[make_agent_tools\n6 closures]
+    MK_T --> SYS_P[build_system_prompt\ncontext + selected_row]
+    SYS_P --> LLM1[[LLM Call 1\nbind_tools + ainvoke]]
+
+    LLM1 -->|no tool_calls| CLAR[plain text reply\nui_component is empty]
+    LLM1 -->|tool_calls present| TOOL[_invoke_tool\nfor each tool_call]
+
+    TOOL --> TMSG[append ToolMessage\nto messages]
+    TMSG --> LLM2[[LLM Call 2\nnatural language summary]]
+
+    LLM2 --> RESULT[text + ui_component + data]
+    CLAR --> RESULT
+
+    RESULT --> TYP_OFF([send typing = false])
+    TYP_OFF --> SAVE_A[(DB: save assistant\nChatMessage)]
+    SAVE_A --> OUT([send\ntype = assistant_response\nmessage + ui_component])
+
+    %% ── confirm_cph_update path ───────────────────────────────────────────
+    HCPH --> CPH_TYP([send typing = true])
+    CPH_TYP --> EXEC[chat_service\nexecute_cph_update]
+    EXEC --> CPH_OFF([send typing = false])
+    CPH_OFF --> CPH_OUT([send\ntype = cph_update_result\nsuccess + ui_component])
+
+    %% ── new_conversation path ─────────────────────────────────────────────
+    HNEW --> MARK[(mark old conv\ninactive in DB)]
+    MARK --> CLR[clear_context\nold conversation]
+    CLR --> NEW_C[(create new\nChatConversation)]
+    NEW_C --> SYS_OUT([send\ntype = system\nnew conversation_id])
+
+    %% ── error path ────────────────────────────────────────────────────────
+    PROC -->|LLMError / APIError\nValidationError| ERR_SVC([error assistant_response\nwith error_ui card])
+
+    %% ── styles ────────────────────────────────────────────────────────────
+    classDef llmCall fill:#6366f1,color:#fff,stroke:#4338ca,font-weight:bold
+    classDef wsMsg fill:#0ea5e9,color:#fff,stroke:#0284c7
+    classDef dbNode fill:#f59e0b,color:#fff,stroke:#d97706
+    classDef errorNode fill:#ef4444,color:#fff,stroke:#dc2626
+    classDef decision fill:#8b5cf6,color:#fff,stroke:#7c3aed
+
+    class LLM1,LLM2 llmCall
+    class WS_IN,TYP_ON,TYP_OFF,OUT,CPH_TYP,CPH_OFF,CPH_OUT,SYS_OUT,ERR_SAN wsMsg
+    class SAVE_U,CTX,SAVE_A,MARK,NEW_C dbNode
+    class ERR_SVC,ERR_SAN errorNode
+    class MSG_TYPE,SAN decision

@@ -282,6 +282,20 @@ class ConversationContext(BaseModel):
         description="Configuration for current report (working_days, work_hours, shrinkage by month and locality)"
     )
 
+    # ===== RAMP CALCULATION STATE =====
+    selected_ramp_month_key: Optional[str] = Field(
+        default=None,
+        description="Month targeted for ramp calculation. Format: 'YYYY-MM'"
+    )
+    pending_ramp_data: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Week-level ramp inputs submitted by user (not yet previewed)"
+    )
+    pending_ramp_preview: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Preview response from backend (awaiting apply confirmation)"
+    )
+
     # ===== METADATA =====
     last_updated: datetime = Field(default_factory=datetime.now)
     turn_count: int = Field(default=0, description="Number of conversation turns")
@@ -424,6 +438,12 @@ class ConversationContext(BaseModel):
             parts.append(f"Selected: {self.selected_row_key}")
 
         return " | ".join(parts) if parts else "No context set"
+
+    def clear_ramp_state(self):
+        """Clear ramp calculation state after apply or cancel."""
+        self.selected_ramp_month_key = None
+        self.pending_ramp_data = None
+        self.pending_ramp_preview = None
 
     def sync_legacy_fields(self):
         """

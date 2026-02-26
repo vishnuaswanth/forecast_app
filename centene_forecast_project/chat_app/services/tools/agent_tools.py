@@ -19,7 +19,11 @@ from typing import List, Optional
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from chat_app.services.tools.forecast_tools import fetch_forecast_data, fetch_available_reports
+from chat_app.services.tools.forecast_tools import (
+    fetch_forecast_data,
+    fetch_available_reports,
+    call_get_applied_ramp,
+)
 from chat_app.services.tools.validation import ForecastQueryParams, ConversationContext
 from chat_app.services.tools.ui_tools import (
     generate_forecast_table_html,
@@ -30,6 +34,8 @@ from chat_app.services.tools.ui_tools import (
     generate_clear_context_ui,
     generate_context_update_ui,
     generate_error_ui,
+    generate_ramp_trigger_ui,
+    generate_applied_ramp_ui,
 )
 from chat_app.services.tools.calculation_tools import (
     calculate_cph_impact,
@@ -99,6 +105,11 @@ class UpdateFiltersInput(BaseModel):
 class NoInput(BaseModel):
     """Tool that requires no parameters."""
     pass
+
+
+class SetupRampInput(BaseModel):
+    month: int = Field(description="Forecast month to configure ramp for (1-12)")
+    year: int = Field(description="Forecast year (e.g. 2026)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -446,6 +457,124 @@ def make_agent_tools(
             "data": {"cleared": True},
         }
 
+    # ── setup_ramp_calculation ───────────────────────────────────────────────
+
+    async def _setup_ramp_calculation(month: int, year: int) -> dict:
+        """Set up the ramp configuration modal for the selected forecast row and month."""
+        from chat_app.utils.week_calculator import calculate_weeks
+        import calendar as cal
+
+        fresh_ctx = await context_manager.get_context(conversation_id)
+        row_data = fresh_ctx.selected_forecast_row
+
+        if not row_data:
+            return {
+                "message": "No row selected. Please select a forecast row first.",
+                "ui_component": generate_error_ui(
+                    "Please select a forecast row before setting up a ramp.",
+                    error_type="validation", admin_contact=False
+                ),
+                "data": {},
+            }
+
+        month_key = f"{year:04d}-{month:02d}"
+
+        # Verify month_key is one of the 6 available forecast months in context
+        if fresh_ctx.forecast_months:
+            available_month_labels = set(fresh_ctx.forecast_months.values())
+            # Build month label from month_key to match (e.g. "Jan-26")
+            month_label_short = f"{cal.month_abbr[month]}-{str(year)[2:]}"
+            if available_month_labels and month_label_short not in available_month_labels:
+                avail_str = ", ".join(sorted(available_month_labels))
+                return {
+                    "message": f"{month_label_short} is not among the available forecast months ({avail_str}).",
+                    "ui_component": generate_error_ui(
+                        f"{month_label_short} is not in the available forecast months. Available: {avail_str}",
+                        error_type="validation", admin_contact=False
+                    ),
+                    "data": {},
+                }
+
+        weeks = calculate_weeks(year, month)
+
+        await context_manager.update_entities(
+            conversation_id,
+            selected_ramp_month_key=month_key,
+        )
+
+        month_label = f"{cal.month_name[month]} {year}"
+        main_lob = row_data.get('main_lob', '')
+        state = row_data.get('state', '')
+        case_type = row_data.get('case_type', '')
+        row_label = f"{main_lob} | {state} | {case_type}"
+
+        ui = generate_ramp_trigger_ui(row_data, month_key, weeks)
+        return {
+            "message": f"Ramp input modal ready for {row_label} — {month_label}",
+            "ui_component": ui,
+            "data": {"month_key": month_key, "weeks": weeks},
+        }
+
+    # ── get_applied_ramp ─────────────────────────────────────────────────────
+
+    async def _get_applied_ramp() -> dict:
+        """Show the currently applied ramp for the selected forecast row and month."""
+        fresh_ctx = await context_manager.get_context(conversation_id)
+        row_data = fresh_ctx.selected_forecast_row
+        month_key = fresh_ctx.selected_ramp_month_key
+
+        if not row_data:
+            return {
+                "message": "No row selected. Please select a forecast row first.",
+                "ui_component": generate_error_ui(
+                    "Please select a forecast row first, then specify a month to view its ramp.",
+                    error_type="validation", admin_contact=False
+                ),
+                "data": {},
+            }
+
+        if not month_key:
+            return {
+                "message": "No ramp month selected. Please set up a ramp for a specific month first.",
+                "ui_component": generate_error_ui(
+                    "No ramp month is set. Ask me to 'set up ramp for [month] [year]' first.",
+                    error_type="validation", admin_contact=False
+                ),
+                "data": {},
+            }
+
+        forecast_id = int(row_data.get('forecast_id', row_data.get('id', 0)))
+        main_lob = row_data.get('main_lob', '')
+        state = row_data.get('state', '')
+        case_type = row_data.get('case_type', '')
+        row_label = f"{main_lob} | {state} | {case_type}"
+
+        try:
+            import calendar as cal
+            year, month = int(month_key[:4]), int(month_key[5:7])
+            month_label = f"{cal.month_name[month]} {year}"
+        except (ValueError, IndexError):
+            month_label = month_key
+
+        try:
+            data = await call_get_applied_ramp(forecast_id, month_key)
+        except Exception as e:
+            return {
+                "message": f"Failed to retrieve applied ramp: {str(e)}",
+                "ui_component": generate_error_ui(
+                    "Could not retrieve the applied ramp from the server.",
+                    error_type="api", admin_contact=True
+                ),
+                "data": {},
+            }
+
+        ui = generate_applied_ramp_ui(data, row_label, month_label)
+        return {
+            "message": f"Applied ramp for {row_label} — {month_label}",
+            "ui_component": ui,
+            "data": data,
+        }
+
     # ── Assemble tool list ───────────────────────────────────────────────────
 
     get_forecast_tool = StructuredTool.from_function(
@@ -510,6 +639,29 @@ def make_agent_tools(
         args_schema=NoInput,
     )
 
+    setup_ramp_tool = StructuredTool.from_function(
+        coroutine=_setup_ramp_calculation,
+        name="setup_ramp_calculation",
+        description=(
+            "Set up a weekly ramp configuration for the selected forecast row and a specific month. "
+            "Calculates weeks for the month and opens the ramp input modal. "
+            "REQUIRES a selected_forecast_row in context. "
+            "Use when user says 'set up ramp', 'configure ramp', 'ramp calculation for [month]'."
+        ),
+        args_schema=SetupRampInput,
+    )
+
+    get_applied_ramp_tool = StructuredTool.from_function(
+        coroutine=_get_applied_ramp,
+        name="get_applied_ramp",
+        description=(
+            "Show the currently applied ramp for the selected forecast row and ramp month. "
+            "REQUIRES both selected_forecast_row and selected_ramp_month_key in context. "
+            "Use when user says 'show applied ramp', 'what ramp is set', 'view ramp'."
+        ),
+        args_schema=NoInput,
+    )
+
     return [
         get_forecast_tool,
         get_reports_tool,
@@ -517,4 +669,6 @@ def make_agent_tools(
         preview_cph_tool,
         update_filters_tool,
         clear_context_tool,
+        setup_ramp_tool,
+        get_applied_ramp_tool,
     ]

@@ -933,3 +933,374 @@ def generate_combination_diagnostic_ui(
 
     logger.info("[UI Tools] Generated combination diagnostic UI")
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ramp Calculation UI Generators
+# ─────────────────────────────────────────────────────────────────────────────
+
+def generate_ramp_trigger_ui(
+    row_data: dict,
+    month_key: str,
+    weeks: list,
+) -> str:
+    """
+    Generate a chat card with a "Configure Ramp" button.
+
+    Embeds the pre-calculated weeks JSON as a data attribute so the JS
+    modal never needs to re-derive weeks from scratch.
+
+    Args:
+        row_data: Selected forecast row (main_lob, state, case_type, forecast_id)
+        month_key: Target month in 'YYYY-MM' format
+        weeks: Output of calculate_weeks() for the given month
+
+    Returns:
+        HTML string for ramp trigger card
+    """
+    import calendar as cal
+    main_lob = html_module.escape(str(row_data.get('main_lob', 'N/A')))
+    state = html_module.escape(str(row_data.get('state', 'N/A')))
+    case_type = html_module.escape(str(row_data.get('case_type', 'N/A')))
+    forecast_id = int(row_data.get('forecast_id', row_data.get('id', 0)))
+
+    try:
+        year, month = int(month_key[:4]), int(month_key[5:7])
+        month_label = f"{cal.month_name[month]} {year}"
+    except (ValueError, IndexError):
+        month_label = month_key
+
+    weeks_json = html_module.escape(json.dumps(weeks))
+
+    logger.info(f"[UI Tools] Generated ramp trigger UI for {main_lob} | {month_key}")
+    return f'''
+    <div class="ramp-trigger-card card border-info">
+        <div class="card-header bg-info text-white d-flex align-items-center justify-content-between">
+            <span><i class="bi bi-graph-up-arrow"></i> Ramp Configuration</span>
+            <span class="badge bg-white text-info">{month_label}</span>
+        </div>
+        <div class="card-body">
+            <p class="mb-1"><strong>Row:</strong> {main_lob} &bull; {state} &bull; {case_type}</p>
+            <p class="mb-3 text-muted"><small>{len(weeks)} week{'' if len(weeks) == 1 else 's'} in {month_label}</small></p>
+            <button class="btn btn-info ramp-open-modal-btn"
+                    data-ramp-weeks="{weeks_json}"
+                    data-ramp-month-key="{html_module.escape(month_key)}"
+                    data-forecast-id="{forecast_id}">
+                Configure Ramp
+            </button>
+        </div>
+    </div>
+    '''
+
+
+def generate_ramp_confirmation_ui(
+    row_label: str,
+    month_label: str,
+    weeks: list,
+) -> str:
+    """
+    Generate a confirmation card summarising the per-week ramp data the user submitted.
+
+    Two action buttons:
+      - "Yes, Proceed"   → class="ramp-confirm-btn"
+      - "No, Edit Again" → class="ramp-edit-btn"
+
+    Args:
+        row_label: Human-readable row identifier (e.g. "Amisys | CA | Claims Processing")
+        month_label: Human-readable month label (e.g. "January 2026")
+        weeks: List of submitted week dicts (label, workingDays, rampPercent, rampEmployees)
+
+    Returns:
+        HTML string for ramp confirmation card
+    """
+    safe_row = html_module.escape(str(row_label))
+    safe_month = html_module.escape(str(month_label))
+    submission_json = html_module.escape(json.dumps({"weeks": weeks}))
+
+    rows_html = ""
+    total_employees = sum(w.get('rampEmployees', 0) for w in weeks)
+    for w in weeks:
+        label = html_module.escape(str(w.get('label', '')))
+        working_days = int(w.get('workingDays', 0))
+        ramp_pct = float(w.get('rampPercent', 0))
+        ramp_emp = int(w.get('rampEmployees', 0))
+        rows_html += f'''
+            <tr>
+                <td>{label}</td>
+                <td class="text-center">{working_days}</td>
+                <td class="text-center">{ramp_pct:.1f}%</td>
+                <td class="text-center">{ramp_emp:,}</td>
+            </tr>
+        '''
+
+    logger.info(f"[UI Tools] Generated ramp confirmation UI for {row_label} | {month_label}")
+    return f'''
+    <div class="ramp-confirmation-card card border-warning">
+        <div class="card-header bg-warning text-dark">
+            <strong>Confirm Ramp Submission</strong>
+        </div>
+        <div class="card-body">
+            <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
+            <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered ramp-confirmation-table mb-2">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Week</th>
+                            <th class="text-center">Working Days</th>
+                            <th class="text-center">Ramp %</th>
+                            <th class="text-center">Ramp Employees</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                    <tfoot class="table-light fw-bold">
+                        <tr>
+                            <td colspan="3" class="text-end">Total Ramp Employees</td>
+                            <td class="text-center">{total_employees:,}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-success ramp-confirm-btn"
+                        data-ramp-submission="{submission_json}">
+                    Yes, Proceed
+                </button>
+                <button class="btn btn-secondary ramp-edit-btn">
+                    No, Edit Again
+                </button>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def generate_ramp_preview_ui(preview_response: dict) -> str:
+    """
+    Generate a diff preview card showing current vs projected values.
+
+    Expected preview_response structure:
+        {
+            "preview": {
+                "current":   {"forecast": …, "fte_required": …, "fte_available": …, "capacity": …, "gap": …},
+                "projected": { same fields },
+                "diff":      { same fields (projected - current) }
+            }
+        }
+
+    Two action buttons:
+      - "Confirm Apply"  → class="ramp-apply-btn"
+      - "Cancel"         → class="ramp-cancel-btn"
+
+    Args:
+        preview_response: Response dict from preview API call
+
+    Returns:
+        HTML string for ramp preview card
+    """
+    preview = preview_response.get('preview', preview_response)
+    current = preview.get('current', {})
+    projected = preview.get('projected', {})
+    diff = preview.get('diff', {})
+
+    preview_json = html_module.escape(json.dumps(preview_response))
+
+    fields = [
+        ('forecast',      'Forecast'),
+        ('fte_required',  'FTE Required'),
+        ('fte_available', 'FTE Available'),
+        ('capacity',      'Capacity'),
+        ('gap',           'Gap'),
+    ]
+
+    rows_html = ""
+    for field_key, field_label in fields:
+        cur_val = current.get(field_key, 0)
+        proj_val = projected.get(field_key, 0)
+        diff_val = diff.get(field_key, proj_val - cur_val if isinstance(proj_val, (int, float)) and isinstance(cur_val, (int, float)) else 0)
+
+        if isinstance(diff_val, (int, float)):
+            if diff_val > 0:
+                diff_class = "text-success"
+                diff_fmt = f"+{diff_val:,.1f}" if isinstance(diff_val, float) else f"+{int(diff_val):,}"
+            elif diff_val < 0:
+                diff_class = "text-danger"
+                diff_fmt = f"{diff_val:,.1f}" if isinstance(diff_val, float) else f"{int(diff_val):,}"
+            else:
+                diff_class = "text-muted"
+                diff_fmt = "0"
+        else:
+            diff_class = "text-muted"
+            diff_fmt = str(diff_val)
+
+        cur_fmt = f"{cur_val:,.1f}" if isinstance(cur_val, float) else (f"{int(cur_val):,}" if isinstance(cur_val, (int, float)) else str(cur_val))
+        proj_fmt = f"{proj_val:,.1f}" if isinstance(proj_val, float) else (f"{int(proj_val):,}" if isinstance(proj_val, (int, float)) else str(proj_val))
+
+        rows_html += f'''
+            <tr>
+                <td>{html_module.escape(field_label)}</td>
+                <td class="text-end">{cur_fmt}</td>
+                <td class="text-end">{proj_fmt}</td>
+                <td class="text-end {diff_class}"><strong>{diff_fmt}</strong></td>
+            </tr>
+        '''
+
+    logger.info("[UI Tools] Generated ramp preview UI")
+    return f'''
+    <div class="ramp-preview-card card border-primary">
+        <div class="card-header bg-primary text-white">
+            <strong>Ramp Impact Preview</strong>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3"><small>Review the projected changes before applying.</small></p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered ramp-preview-table mb-3">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Field</th>
+                            <th class="text-end">Current</th>
+                            <th class="text-end">Projected</th>
+                            <th class="text-end">Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary ramp-apply-btn"
+                        data-ramp-preview="{preview_json}">
+                    Confirm Apply
+                </button>
+                <button class="btn btn-outline-secondary ramp-cancel-btn">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def generate_ramp_result_ui(success: bool, message: str) -> str:
+    """
+    Generate a result card after a ramp apply attempt.
+
+    Args:
+        success: Whether the apply succeeded
+        message: Result message to display
+
+    Returns:
+        HTML string for ramp result card (green on success, red on failure)
+    """
+    safe_message = html_module.escape(str(message))
+
+    if success:
+        logger.info("[UI Tools] Generated ramp apply success UI")
+        return f'''
+        <div class="ramp-result-card card border-success">
+            <div class="card-body d-flex align-items-start gap-2">
+                <div style="font-size:24px;color:#28a745;">&#10003;</div>
+                <div>
+                    <strong class="text-success">Ramp Applied Successfully</strong>
+                    <p class="mb-0 mt-1">{safe_message}</p>
+                </div>
+            </div>
+        </div>
+        '''
+    else:
+        logger.info("[UI Tools] Generated ramp apply failure UI")
+        return f'''
+        <div class="ramp-result-card card border-danger">
+            <div class="card-body d-flex align-items-start gap-2">
+                <div style="font-size:24px;color:#dc3545;">&#10007;</div>
+                <div>
+                    <strong class="text-danger">Ramp Apply Failed</strong>
+                    <p class="mb-0 mt-1">{safe_message}</p>
+                </div>
+            </div>
+        </div>
+        '''
+
+
+def generate_applied_ramp_ui(
+    applied_ramp_data: dict,
+    row_label: str,
+    month_label: str,
+) -> str:
+    """
+    Generate a card showing the currently applied ramp for a row/month.
+
+    Args:
+        applied_ramp_data: Response dict from get_applied_ramp API call
+        row_label: Human-readable row identifier
+        month_label: Human-readable month label
+
+    Returns:
+        HTML string for applied ramp display card
+    """
+    safe_row = html_module.escape(str(row_label))
+    safe_month = html_module.escape(str(month_label))
+
+    weeks = applied_ramp_data.get('weeks', [])
+    total_ramp_employees = applied_ramp_data.get('totalRampEmployees', 0)
+
+    if not weeks:
+        logger.info("[UI Tools] Generated applied ramp UI (none applied)")
+        return f'''
+        <div class="applied-ramp-card card border-secondary">
+            <div class="card-header bg-secondary text-white">
+                <strong>Applied Ramp</strong>
+            </div>
+            <div class="card-body">
+                <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
+                <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
+                <div class="alert alert-info mb-0">
+                    No ramp has been applied for this row and month.
+                </div>
+            </div>
+        </div>
+        '''
+
+    rows_html = ""
+    for w in weeks:
+        label = html_module.escape(str(w.get('label', '')))
+        working_days = int(w.get('workingDays', 0))
+        ramp_pct = float(w.get('rampPercent', 0))
+        rows_html += f'''
+            <tr>
+                <td>{label}</td>
+                <td class="text-center">{working_days}</td>
+                <td class="text-center">{ramp_pct:.1f}%</td>
+            </tr>
+        '''
+
+    logger.info(f"[UI Tools] Generated applied ramp UI for {row_label} | {month_label}")
+    return f'''
+    <div class="applied-ramp-card card border-secondary">
+        <div class="card-header bg-secondary text-white">
+            <strong>Applied Ramp</strong>
+        </div>
+        <div class="card-body">
+            <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
+            <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
+            <p class="mb-2"><strong>Total Ramp Employees:</strong> {total_ramp_employees:,}</p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Week</th>
+                            <th class="text-center">Working Days</th>
+                            <th class="text-center">Ramp %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''

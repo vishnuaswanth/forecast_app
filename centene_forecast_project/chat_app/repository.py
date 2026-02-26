@@ -294,6 +294,149 @@ class ChatAPIClient:
             logger.error(f"[Chat API] Failed to get available reports: {str(e)}", exc_info=True)
             raise
 
+    def post(
+        self,
+        endpoint: str,
+        json_data: Optional[Dict] = None,
+        **kwargs
+    ) -> httpx.Response:
+        """
+        Make POST request to API endpoint.
+
+        Args:
+            endpoint: API endpoint path (e.g., '/api/v1/forecasts/1/months/2026-01/ramp/preview')
+            json_data: JSON request body
+            **kwargs: Additional arguments passed to httpx.post
+
+        Returns:
+            HTTPX Response object
+
+        Raises:
+            httpx.HTTPStatusError: On HTTP error response
+            httpx.TimeoutException: On request timeout
+            httpx.RequestError: On connection or other request errors
+        """
+        url = f"{self.base_url}{endpoint}"
+
+        for attempt in range(self.max_retries):
+            try:
+                logger.debug(f"[Chat API] POST {url} - Attempt {attempt + 1}/{self.max_retries}")
+
+                response = self.client.post(
+                    endpoint,
+                    json=json_data,
+                    **kwargs
+                )
+
+                response.raise_for_status()
+
+                logger.debug(f"[Chat API] POST {url} - Status: {response.status_code}")
+                return response
+
+            except httpx.TimeoutException:
+                logger.error(f"[Chat API] Request timeout after {self.timeout}s: POST {url}")
+                if attempt == self.max_retries - 1:
+                    raise
+                logger.warning(f"[Chat API] Retrying... ({attempt + 1}/{self.max_retries})")
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"[Chat API] HTTP error {e.response.status_code}: POST {url}")
+                logger.error(f"[Chat API] Response: {e.response.text}")
+                raise
+
+            except httpx.RequestError as e:
+                logger.error(f"[Chat API] Request error: {type(e).__name__} - {str(e)}")
+                if attempt == self.max_retries - 1:
+                    raise
+                logger.warning(f"[Chat API] Retrying... ({attempt + 1}/{self.max_retries})")
+
+        raise Exception("Max retries exceeded")
+
+    def preview_ramp_calculation(
+        self,
+        forecast_id: int,
+        month_key: str,
+        ramp_payload: Dict
+    ) -> Dict:
+        """
+        Preview the impact of a ramp calculation without applying it.
+
+        POST /api/v1/forecasts/{forecastId}/months/{monthKey}/ramp/preview
+
+        Args:
+            forecast_id: Forecast record ID
+            month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+            ramp_payload: Dict containing 'weeks' list and 'totalRampEmployees'
+
+        Returns:
+            Dictionary with preview data (current, projected, diff values)
+        """
+        endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/preview"
+        try:
+            response = self.post(endpoint, json_data=ramp_payload)
+            data = response.json()
+            logger.info(f"[Chat API] Ramp preview retrieved for forecast {forecast_id}, month {month_key}")
+            return data
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to preview ramp calculation: {str(e)}", exc_info=True)
+            raise
+
+    def apply_ramp_calculation(
+        self,
+        forecast_id: int,
+        month_key: str,
+        ramp_payload: Dict
+    ) -> Dict:
+        """
+        Apply a ramp calculation to persist it.
+
+        POST /api/v1/forecasts/{forecastId}/months/{monthKey}/ramp/apply
+
+        Args:
+            forecast_id: Forecast record ID
+            month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+            ramp_payload: Dict containing 'weeks' list and 'totalRampEmployees'
+
+        Returns:
+            Dictionary with apply result
+        """
+        endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/apply"
+        try:
+            response = self.post(endpoint, json_data=ramp_payload)
+            data = response.json()
+            logger.info(f"[Chat API] Ramp applied for forecast {forecast_id}, month {month_key}")
+            return data
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to apply ramp calculation: {str(e)}", exc_info=True)
+            raise
+
+    def get_applied_ramp(
+        self,
+        forecast_id: int,
+        month_key: str
+    ) -> Dict:
+        """
+        Retrieve the currently applied ramp for a forecast row and month.
+
+        GET /api/v1/forecasts/{forecastId}/months/{monthKey}/ramp
+
+        Args:
+            forecast_id: Forecast record ID
+            month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+
+        Returns:
+            Dictionary with applied ramp data
+        """
+        endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp"
+        try:
+            response = self.get(endpoint)
+            data = response.json()
+            logger.info(f"[Chat API] Applied ramp retrieved for forecast {forecast_id}, month {month_key}")
+            return data
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to get applied ramp: {str(e)}", exc_info=True)
+            raise
+
     def close(self):
         """Close the HTTP client and cleanup resources."""
         self.client.close()
