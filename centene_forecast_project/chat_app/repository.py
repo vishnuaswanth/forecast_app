@@ -162,6 +162,7 @@ class ChatAPIClient:
 
         try:
             response = self.get('/api/llm/forecast', params=params)
+            logger.debug(f"[Chat API] Forecast request URL: {response.url}")
             data = response.json()
 
             # Validate response structure

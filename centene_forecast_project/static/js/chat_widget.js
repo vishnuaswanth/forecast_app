@@ -1155,7 +1155,10 @@
         hideRampError();
         const ramp_submission = serializeRampForm();
 
-        closeRampModal();
+        // Preserve user's entered values so "No, Edit Again" can reopen with them
+        ChatState.pendingRampWeeks = ramp_submission.weeks;
+
+        hideRampModal();
 
         sendWebSocketMessage({
             type: 'submit_ramp_data',
@@ -1163,13 +1166,17 @@
         });
     }
 
-    function closeRampModal() {
+    function hideRampModal() {
         elements.rampModalOverlay.style.display = 'none';
         elements.rampModalBody.innerHTML = '';
+        hideRampError();
+    }
+
+    function closeRampModal() {
+        hideRampModal();
         ChatState.pendingRampWeeks = null;
         ChatState.pendingRampMonthKey = null;
         ChatState.pendingRampForecastId = null;
-        hideRampError();
     }
 
     function showRampError(message) {
@@ -1215,6 +1222,12 @@
             addMessageWithHTML('assistant', data.ui_component);
         } else {
             addMessage('assistant', data.message || (data.success ? 'Ramp applied.' : 'Ramp apply failed.'));
+        }
+
+        if (data.success) {
+            ChatState.pendingRampWeeks = null;
+            ChatState.pendingRampMonthKey = null;
+            ChatState.pendingRampForecastId = null;
         }
         scrollToBottom();
     }

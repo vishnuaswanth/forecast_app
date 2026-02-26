@@ -467,11 +467,11 @@ class ConversationContext(BaseModel):
         elif self.current_forecast_year and not self.forecast_report_year:
             self.forecast_report_year = self.current_forecast_year
 
-        # Sync selected row
-        if self.selected_forecast_row and not self.selected_row:
-            self.selected_row = self.selected_forecast_row
-        elif self.selected_row and not self.selected_forecast_row:
+        # Sync selected row — selected_row (from frontend) always overwrites selected_forecast_row
+        if self.selected_row:
             self.selected_forecast_row = self.selected_row
+        elif self.selected_forecast_row:
+            self.selected_row = self.selected_forecast_row
 
 
 class PreprocessedMessage(BaseModel):
