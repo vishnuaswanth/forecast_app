@@ -142,7 +142,7 @@ async def mock_llm_service():
         from chat_app.services.llm_service import LLMService
 
         # Patch the context manager
-        with patch('chat_app.services.llm_service.ConversationContextManager') as mock_cm:
+        with patch('chat_app.services.llm_service.get_context_manager') as mock_cm:
             mock_cm_instance = AsyncMock()
             mock_cm_instance.get_context.return_value = ConversationContext(conversation_id="test-123")
             mock_cm.return_value = mock_cm_instance

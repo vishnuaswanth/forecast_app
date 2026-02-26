@@ -22,7 +22,7 @@ from chat_app.services.tools.agent_tools import make_agent_tools
 from chat_app.services.tools.ui_tools import generate_error_ui, generate_fte_details_ui, generate_cph_preview_ui
 from chat_app.services.tools.validation import ConversationContext
 from chat_app.services.tools.calculation_tools import calculate_cph_impact, determine_locality, validate_cph_value
-from chat_app.utils.context_manager import ConversationContextManager
+from chat_app.utils.context_manager import get_context_manager
 from chat_app.utils.llm_logger import get_llm_logger, get_correlation_id, create_correlation_id
 from chat_app.exceptions import classify_openai_error
 from chat_app.utils.error_handler import log_error
@@ -72,7 +72,7 @@ class LLMService:
             http_async_client=self.http_async_client,
         )
 
-        self.context_manager = ConversationContextManager()
+        self.context_manager = get_context_manager()
 
         logger.info(f"[LLM Service] Initialized with model: {self.model_name}")
         llm_logger._log(

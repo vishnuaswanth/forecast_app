@@ -330,12 +330,30 @@ class ChatService:
         ctx = await context_manager.get_context(conversation_id)
 
         params_dict = ctx.pending_forecast_fetch
+
+        # Fallback: if pending params are missing, rebuild from current context
         if not params_dict:
-            msg = "No pending forecast fetch found. Please request data again."
-            return {
-                "success": False,
-                "message": msg,
-                "ui_component": generate_error_ui(msg, error_type="validation", admin_contact=False),
+            if not ctx.forecast_report_month or not ctx.forecast_report_year:
+                msg = "No report period in context. Please request forecast data first."
+                return {
+                    "success": False,
+                    "message": msg,
+                    "ui_component": generate_error_ui(msg, error_type="validation", admin_contact=False),
+                }
+            logger.info(
+                "[Chat Service] pending_forecast_fetch missing — rebuilding params from context"
+            )
+            params_dict = {
+                'month': ctx.forecast_report_month,
+                'year': ctx.forecast_report_year,
+                'platforms': ctx.active_platforms or [],
+                'markets': ctx.active_markets or [],
+                'localities': ctx.active_localities or [],
+                'main_lobs': ctx.active_main_lobs or [],
+                'states': ctx.active_states or [],
+                'case_types': ctx.active_case_types or [],
+                'forecast_months': ctx.active_forecast_months or [],
+                'show_totals_only': ctx.user_preferences.get('show_totals_only', False),
             }
 
         month = params_dict.get('month')
