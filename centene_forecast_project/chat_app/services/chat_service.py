@@ -301,6 +301,128 @@ class ChatService:
                     },
                 }
 
+    async def execute_confirmed_forecast_fetch(
+        self,
+        conversation_id: str,
+        user,
+    ) -> Dict[str, Any]:
+        """
+        Execute the confirmed forecast data fetch using params stored in context.
+
+        Args:
+            conversation_id: Current conversation ID
+            user: Django user object
+
+        Returns:
+            Dictionary with success status, message, and ui_component
+        """
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.forecast_tools import fetch_forecast_data
+        from chat_app.services.tools.validation import ForecastQueryParams
+        from chat_app.services.tools.ui_tools import (
+            generate_forecast_table_html,
+            generate_totals_table_html,
+            generate_error_ui,
+        )
+        import calendar
+
+        context_manager = get_context_manager()
+        ctx = await context_manager.get_context(conversation_id)
+
+        params_dict = ctx.pending_forecast_fetch
+        if not params_dict:
+            msg = "No pending forecast fetch found. Please request data again."
+            return {
+                "success": False,
+                "message": msg,
+                "ui_component": generate_error_ui(msg, error_type="validation", admin_contact=False),
+            }
+
+        month = params_dict.get('month')
+        year = params_dict.get('year')
+
+        try:
+            params = ForecastQueryParams(
+                month=month,
+                year=year,
+                platforms=params_dict.get('platforms') or [],
+                markets=params_dict.get('markets') or [],
+                localities=params_dict.get('localities') or [],
+                main_lobs=params_dict.get('main_lobs') or [],
+                states=params_dict.get('states') or [],
+                case_types=params_dict.get('case_types') or [],
+                forecast_months=params_dict.get('forecast_months') or [],
+                show_totals_only=params_dict.get('show_totals_only', False),
+            )
+            data = await fetch_forecast_data(params, enable_validation=False)
+        except Exception as e:
+            logger.error(f"[Chat Service] Forecast fetch error: {e}")
+            msg = f"Failed to fetch forecast data: {str(e)}"
+            return {
+                "success": False,
+                "message": msg,
+                "ui_component": generate_error_ui(
+                    "Data service temporarily unavailable.",
+                    error_type="api", admin_contact=True,
+                ),
+            }
+
+        # Update context with fetched data
+        months_from_api = data.get('months', {})
+        report_config = data.get('configuration')
+        await context_manager.update_entities(
+            conversation_id,
+            active_report_type='forecast',
+            last_forecast_data=data,
+            forecast_report_month=month,
+            forecast_report_year=year,
+            current_forecast_month=month,
+            current_forecast_year=year,
+            active_main_lobs=params.main_lobs or None,
+            active_platforms=params.platforms or [],
+            active_markets=params.markets or [],
+            active_localities=params.localities or [],
+            active_states=params.states or [],
+            active_case_types=params.case_types or [],
+            forecast_months=months_from_api,
+            report_configuration=report_config,
+            last_successful_query=params.model_dump(),
+            pending_forecast_fetch=None,  # clear pending
+        )
+
+        # Generate UI
+        records = data.get('records', [])
+        months = data.get('months', {})
+
+        if params.show_totals_only:
+            ui = generate_totals_table_html(data.get('totals', {}), months)
+            message = f"Forecast totals for {calendar.month_name[month]} {year}"
+        else:
+            if records:
+                ui = generate_forecast_table_html(
+                    records, months,
+                    show_full=(len(records) <= 5),
+                    max_preview=5,
+                )
+                message = (
+                    f"Found {len(records)} forecast records for "
+                    f"{calendar.month_name[month]} {year}."
+                    if len(records) <= 5
+                    else f"Showing 5 of {len(records)} records. Click 'View All' to see more."
+                )
+            else:
+                ui = generate_error_ui(
+                    f"No records found for {calendar.month_name[month]} {year} with the applied filters.",
+                    error_type="validation", admin_contact=False,
+                )
+                message = "No records found for the given filters."
+
+        return {
+            "success": True,
+            "message": message,
+            "ui_component": ui,
+        }
+
     async def execute_cph_update(
         self,
         update_data: dict,

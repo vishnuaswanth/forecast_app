@@ -211,9 +211,9 @@ class ConversationContext(BaseModel):
     )
 
     # ===== FORECAST MONTH COLUMNS (6-month rolling forecast) =====
-    forecast_months: Optional[Dict[int, str]] = Field(
+    forecast_months: Optional[Dict[str, str]] = Field(
         default=None,
-        description="Available forecast month columns from report. Populated after data fetch. Format: {0: 'Apr-25', 1: 'May-25', ...}"
+        description="Available forecast month columns from report. Populated after data fetch. Format: {'Month1': 'Apr-25', 'Month2': 'May-25', ...}"
     )
     active_forecast_months: Optional[List[str]] = Field(
         default=None,
@@ -280,6 +280,12 @@ class ConversationContext(BaseModel):
     report_configuration: Optional[dict] = Field(
         default=None,
         description="Configuration for current report (working_days, work_hours, shrinkage by month and locality)"
+    )
+
+    # ===== PENDING FORECAST FETCH (awaiting user confirmation) =====
+    pending_forecast_fetch: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Forecast fetch params proposed by the agent, awaiting user confirmation"
     )
 
     # ===== RAMP CALCULATION STATE =====

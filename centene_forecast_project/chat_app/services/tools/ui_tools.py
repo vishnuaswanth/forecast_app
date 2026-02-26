@@ -12,6 +12,75 @@ from typing import List, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def generate_forecast_confirmation_card(month: int, year: int, filters: dict) -> str:
+    """
+    Generate a confirmation card for a proposed forecast data fetch.
+
+    Args:
+        month: Report month (1-12)
+        year: Report year
+        filters: Dict with optional filter keys (platforms, markets, localities,
+                 main_lobs, states, case_types, show_totals_only)
+
+    Returns:
+        HTML string for the confirmation card with confirm/cancel buttons
+    """
+    import calendar
+
+    month_name = calendar.month_name[month]
+
+    parts = []
+    if filters.get('main_lobs'):
+        parts.append(f"LOBs: {', '.join(filters['main_lobs'])}")
+    else:
+        if filters.get('platforms'):
+            parts.append(f"Platforms: {', '.join(filters['platforms'])}")
+        if filters.get('markets'):
+            parts.append(f"Markets: {', '.join(filters['markets'])}")
+        if filters.get('localities'):
+            parts.append(f"Localities: {', '.join(filters['localities'])}")
+    if filters.get('states'):
+        parts.append(f"States: {', '.join(filters['states'])}")
+    if filters.get('case_types'):
+        parts.append(f"Case Types: {', '.join(filters['case_types'])}")
+
+    filter_summary = html_module.escape(', '.join(parts)) if parts else 'None — all data'
+    display_mode = 'Totals only' if filters.get('show_totals_only') else 'Full records'
+
+    logger.info(f"[UI Tools] Generated forecast confirmation card for {month_name} {year}")
+
+    return f"""
+<div class="forecast-confirm-card">
+    <div class="forecast-confirm-header">
+        <span class="forecast-confirm-icon">&#128202;</span>
+        <span class="forecast-confirm-title">Fetch Forecast Data</span>
+    </div>
+    <div class="forecast-confirm-body">
+        <div class="forecast-confirm-row">
+            <span class="forecast-confirm-label">Period</span>
+            <span class="forecast-confirm-value"><strong>{html_module.escape(month_name)} {year}</strong></span>
+        </div>
+        <div class="forecast-confirm-row">
+            <span class="forecast-confirm-label">Filters</span>
+            <span class="forecast-confirm-value">{filter_summary}</span>
+        </div>
+        <div class="forecast-confirm-row">
+            <span class="forecast-confirm-label">Display</span>
+            <span class="forecast-confirm-value">{display_mode}</span>
+        </div>
+    </div>
+    <div class="forecast-confirm-actions">
+        <button class="btn btn-primary btn-sm forecast-fetch-confirm-btn">
+            &#10003; Yes, Fetch Data
+        </button>
+        <button class="btn btn-outline-secondary btn-sm forecast-fetch-cancel-btn">
+            Cancel
+        </button>
+    </div>
+</div>
+"""
+
+
 def generate_clear_context_ui() -> str:
     """
     Generate confirmation UI for context cleared.

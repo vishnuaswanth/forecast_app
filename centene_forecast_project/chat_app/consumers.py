@@ -144,6 +144,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_confirm_ramp_submission(data)
             elif message_type == 'apply_ramp_calculation':
                 await self.handle_apply_ramp_calculation(data)
+            elif message_type == 'confirm_forecast_fetch':
+                await self.handle_confirm_forecast_fetch(data)
             else:
                 await self.send_error(f"Unknown message type: {message_type}")
 
@@ -417,6 +419,44 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'success': False,
                 'message': str(e),
                 'ui_component': '',
+            })
+
+    async def handle_confirm_forecast_fetch(self, data: Dict[str, Any]) -> None:
+        """
+        Handle user confirming a proposed forecast data fetch.
+        Executes the actual API call using params stored in context.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.execute_confirmed_forecast_fetch(
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+
+            await self.send_json({'type': 'typing', 'is_typing': False})
+
+            await self.send_json({
+                'type': 'assistant_response',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', ''),
+                'metadata': {},
+            })
+
+        except Exception as e:
+            logger.error(f"Error executing confirmed forecast fetch: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'assistant_response',
+                'success': False,
+                'message': str(e),
+                'ui_component': '',
+                'metadata': {},
             })
 
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:

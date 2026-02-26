@@ -1096,6 +1096,69 @@
 /* ========================================================================
    Update Success Card
    ======================================================================== */
+/* ========================================================================
+   Forecast Fetch Confirmation Card
+   ======================================================================== */
+.forecast-confirm-card {
+    background: #f0f4ff;
+    border: 1px solid #c7d5f8;
+    border-radius: 10px;
+    padding: 16px;
+    margin: 8px 0;
+    max-width: 380px;
+}
+
+.forecast-confirm-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #3a4a7a;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #c7d5f8;
+}
+
+.forecast-confirm-icon {
+    font-size: 16px;
+}
+
+.forecast-confirm-title {
+    font-size: 14px;
+}
+
+.forecast-confirm-body {
+    margin-bottom: 14px;
+}
+
+.forecast-confirm-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+.forecast-confirm-label {
+    color: #6c757d;
+    min-width: 60px;
+    flex-shrink: 0;
+}
+
+.forecast-confirm-value {
+    color: #212529;
+}
+
+.forecast-confirm-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.forecast-confirm-actions .btn {
+    font-size: 12px;
+    padding: 5px 14px;
+}
+
 .update-success-card {
     display: flex;
     align-items: center;

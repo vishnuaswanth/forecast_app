@@ -214,10 +214,20 @@
     }
 
     function handleAssistantResponse(data) {
-        // Inject UI component with confirmation
-        addMessageWithHTML('assistant', data.ui_component);
+        const hasUI = data.ui_component && data.ui_component.trim() !== '';
+        const hasMessage = data.message && data.message.trim() !== '';
 
-        // Store pending confirmation data
+        // Show plain text first (LLM summary / clarification)
+        if (hasMessage) {
+            addMessage('assistant', data.message);
+        }
+
+        // Then show the rich HTML component (table, card, etc.)
+        if (hasUI) {
+            addMessageWithHTML('assistant', data.ui_component);
+        }
+
+        // Store pending confirmation data (legacy)
         ChatState.pendingConfirmations.set(data.category, {
             category: data.category,
             parameters: data.metadata || {},
@@ -229,6 +239,7 @@
         attachViewFullDataListeners();
         attachCphConfirmListeners();
         attachRampOpenListeners();
+        attachForecastFetchConfirmListeners();
     }
 
     function handleToolResult(data) {
@@ -931,6 +942,47 @@
         }
 
         addMessage('assistant', 'CPH change cancelled.');
+    }
+
+    // ========================================================================
+    // Forecast Fetch Confirmation
+    // ========================================================================
+    function attachForecastFetchConfirmListeners() {
+        const confirmBtns = elements.messagesArea.querySelectorAll('.forecast-fetch-confirm-btn');
+        confirmBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', handleForecastFetchConfirm);
+            }
+        });
+
+        const cancelBtns = elements.messagesArea.querySelectorAll('.forecast-fetch-cancel-btn');
+        cancelBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', handleForecastFetchCancel);
+            }
+        });
+    }
+
+    function handleForecastFetchConfirm(event) {
+        const btn = event.currentTarget;
+        const card = btn.closest('.forecast-confirm-card');
+        if (card) {
+            card.querySelectorAll('button').forEach(b => b.disabled = true);
+        }
+
+        sendWebSocketMessage({ type: 'confirm_forecast_fetch' });
+        addMessage('assistant', 'Fetching forecast data...');
+    }
+
+    function handleForecastFetchCancel(event) {
+        const btn = event.currentTarget;
+        const card = btn.closest('.forecast-confirm-card');
+        if (card) {
+            card.querySelectorAll('button').forEach(b => b.disabled = true);
+        }
+        addMessage('assistant', 'Fetch cancelled.');
     }
 
     // ========================================================================

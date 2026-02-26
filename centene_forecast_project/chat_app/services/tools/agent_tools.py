@@ -36,6 +36,7 @@ from chat_app.services.tools.ui_tools import (
     generate_error_ui,
     generate_ramp_trigger_ui,
     generate_applied_ramp_ui,
+    generate_forecast_confirmation_card,
 )
 from chat_app.services.tools.calculation_tools import (
     calculate_cph_impact,
@@ -239,6 +240,46 @@ def make_agent_tools(
                 message = "No records found for the given filters."
 
         return {"message": message, "ui_component": ui, "data": data}
+
+    # ── propose_data_fetch ───────────────────────────────────────────────────
+
+    async def _propose_data_fetch(
+        month: int,
+        year: int,
+        platforms: List[str] = None,
+        markets: List[str] = None,
+        localities: List[str] = None,
+        main_lobs: List[str] = None,
+        states: List[str] = None,
+        case_types: List[str] = None,
+        forecast_months: List[str] = None,
+        show_totals_only: bool = False,
+    ) -> dict:
+        """Propose a forecast data fetch: stores params and shows a confirmation card."""
+        import calendar
+
+        params = {
+            'month': month,
+            'year': year,
+            'platforms': platforms or [],
+            'markets': markets or [],
+            'localities': localities or [],
+            'main_lobs': main_lobs or [],
+            'states': states or [],
+            'case_types': case_types or [],
+            'forecast_months': forecast_months or [],
+            'show_totals_only': show_totals_only,
+        }
+
+        await context_manager.update_entities(conversation_id, pending_forecast_fetch=params)
+
+        filters = {k: v for k, v in params.items() if k not in ('month', 'year')}
+        ui = generate_forecast_confirmation_card(month, year, filters)
+        message = (
+            f"Ready to fetch forecast data for {calendar.month_name[month]} {year}. "
+            "Please confirm."
+        )
+        return {"message": message, "ui_component": ui, "data": params}
 
     # ── get_available_reports ────────────────────────────────────────────────
 
@@ -577,12 +618,25 @@ def make_agent_tools(
 
     # ── Assemble tool list ───────────────────────────────────────────────────
 
+    propose_data_fetch_tool = StructuredTool.from_function(
+        coroutine=_propose_data_fetch,
+        name="propose_data_fetch",
+        description=(
+            "Propose fetching forecast data for a given month and year. "
+            "Shows a confirmation card so the user can confirm before data is retrieved. "
+            "Use this for ALL forecast data requests — NEVER ask the user for optional filters, "
+            "just call this tool with whatever filters were mentioned (or none)."
+        ),
+        args_schema=ForecastInput,
+    )
+
     get_forecast_tool = StructuredTool.from_function(
         coroutine=_get_forecast_data,
         name="get_forecast_data",
         description=(
             "Fetch forecast data for a given month and year with optional filters. "
-            "Returns an HTML table of records or totals."
+            "Returns an HTML table of records or totals. "
+            "Use this only for follow-up filter changes on already-confirmed data."
         ),
         args_schema=ForecastInput,
     )
@@ -663,6 +717,7 @@ def make_agent_tools(
     )
 
     return [
+        propose_data_fetch_tool,
         get_forecast_tool,
         get_reports_tool,
         get_fte_tool,
