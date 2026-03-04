@@ -301,6 +301,10 @@ class ConversationContext(BaseModel):
         default=None,
         description="Preview response from backend (awaiting apply confirmation)"
     )
+    pending_ramp_list_data: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Normalised list of named ramps (ramp_name, weeks) for bulk-edit. Format: [{ramp_name, weeks, totalRampEmployees}]"
+    )
 
     # ===== METADATA =====
     last_updated: datetime = Field(default_factory=datetime.now)
@@ -450,6 +454,7 @@ class ConversationContext(BaseModel):
         self.selected_ramp_month_key = None
         self.pending_ramp_data = None
         self.pending_ramp_preview = None
+        self.pending_ramp_list_data = None
 
     def sync_legacy_fields(self):
         """

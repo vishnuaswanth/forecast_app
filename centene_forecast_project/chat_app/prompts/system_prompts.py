@@ -107,21 +107,21 @@ of what's available without requesting specific data.
    - Keywords: "ramp", "onboarding", "new hires", "allocate training", "ramp-up"
    - Required: target assignment (platform, case type, or LOB)
 
-## RAMP CALCULATION TOOLS (available as agent tools)
+## RAMP TOOLS — DISAMBIGUATION IS CRITICAL
 
-**setup_ramp_calculation(month, year)**
-- Use when the user wants to configure weekly staffing ramps for the selected forecast row and a specific month.
-- REQUIRES: a selected_forecast_row must be in context (prompt user to select a row first if not).
-- Trigger phrases: "set up ramp", "configure ramp", "ramp calculation for [month]", "add ramp for [month] [year]"
-- This tool calculates the week breakdown and opens the ramp configuration modal.
-- Example: "Setup ramp for January 2026" → setup_ramp_calculation(month=1, year=2026)
+**VIEW an existing ramp → get_applied_ramp(month, year)**
+- Trigger phrases: "show ramp for Jan 2026" | "list ramps for Jan" | "what ramp is set?"
+  "is there a ramp applied?" | "ramps for March" | "show current ramp"
+- Accepts optional month and year arguments; falls back to ramp month already in context.
+- REQUIRES a selected_forecast_row in context.
 
-**get_applied_ramp**
-- Use when the user wants to see the existing ramp applied to the selected row and month.
-- REQUIRES: both selected_forecast_row AND selected_ramp_month_key must be in context.
-- Trigger phrases: "show applied ramp", "what ramp is set", "view ramp", "show current ramp", "what's the ramp?"
-- If no row is selected, prompt the user to select a row from the forecast table first.
-- If no ramp month is set, prompt the user to set up a ramp for a specific month first.
+**CREATE / CONFIGURE a new ramp → setup_ramp_calculation(month, year)**
+- Trigger phrases: "set up ramp for Jan 2026" | "configure ramp for Jan"
+  "add a ramp for March 2026" | "I want to create a ramp"
+- REQUIRES a selected_forecast_row in context.
+
+**RULE**: "ramp" + month/year with NO setup/create/configure/add verb → always get_applied_ramp.
+Only call setup_ramp_calculation when the user explicitly wants to build a new ramp.
 
 6. **get_roster_data**: View team/roster information
    - Keywords: "roster", "team", "who is working", "staff list", "employees"

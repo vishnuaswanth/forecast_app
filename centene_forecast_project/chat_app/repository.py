@@ -438,6 +438,64 @@ class ChatAPIClient:
             logger.error(f"[Chat API] Failed to get applied ramp: {str(e)}", exc_info=True)
             raise
 
+    def bulk_preview_ramp(
+        self,
+        forecast_id: int,
+        month_key: str,
+        payload: Dict
+    ) -> Dict:
+        """
+        Preview the combined impact of multiple named ramps without applying.
+
+        POST /api/v1/forecasts/{forecastId}/months/{monthKey}/ramp/bulk-preview
+
+        Args:
+            forecast_id: Forecast record ID
+            month_key: Month key in 'YYYY-MM' format
+            payload: Dict containing 'ramps' list of {ramp_name, weeks, totalRampEmployees}
+
+        Returns:
+            Dictionary with per_ramp_previews and aggregated_diff
+        """
+        endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-preview"
+        try:
+            response = self.post(endpoint, json_data=payload)
+            data = response.json()
+            logger.info(f"[Chat API] Bulk ramp preview retrieved for forecast {forecast_id}, month {month_key}")
+            return data
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to bulk preview ramp: {str(e)}", exc_info=True)
+            raise
+
+    def bulk_apply_ramp(
+        self,
+        forecast_id: int,
+        month_key: str,
+        payload: Dict
+    ) -> Dict:
+        """
+        Apply multiple named ramps to persist them.
+
+        POST /api/v1/forecasts/{forecastId}/months/{monthKey}/ramp/bulk-apply
+
+        Args:
+            forecast_id: Forecast record ID
+            month_key: Month key in 'YYYY-MM' format
+            payload: Dict containing 'ramps' list and optional 'user_notes'
+
+        Returns:
+            Dictionary with ramps_applied, ramps_failed, and history_log_id
+        """
+        endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-apply"
+        try:
+            response = self.post(endpoint, json_data=payload)
+            data = response.json()
+            logger.info(f"[Chat API] Bulk ramp applied for forecast {forecast_id}, month {month_key}")
+            return data
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to bulk apply ramp: {str(e)}", exc_info=True)
+            raise
+
     def close(self):
         """Close the HTTP client and cleanup resources."""
         self.client.close()

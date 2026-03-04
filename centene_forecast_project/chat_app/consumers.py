@@ -146,6 +146,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_apply_ramp_calculation(data)
             elif message_type == 'confirm_forecast_fetch':
                 await self.handle_confirm_forecast_fetch(data)
+            elif message_type == 'submit_bulk_ramp_data':
+                await self.handle_submit_bulk_ramp_data(data)
+            elif message_type == 'confirm_bulk_ramp_submission':
+                await self.handle_confirm_bulk_ramp_submission(data)
+            elif message_type == 'apply_bulk_ramp':
+                await self.handle_apply_bulk_ramp(data)
             else:
                 await self.send_error(f"Unknown message type: {message_type}")
 
@@ -460,6 +466,121 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'message': str(e),
                 'ui_component': '',
                 'metadata': {},
+            })
+
+    async def handle_submit_bulk_ramp_data(self, data: Dict[str, Any]) -> None:
+        """
+        Handle bulk ramp data submitted from the bulk-edit modal.
+        Validates the submission and returns a bulk confirmation card.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        submission = {
+            'forecast_id': data.get('forecast_id'),
+            'month_key': data.get('month_key', ''),
+            'ramps': data.get('ramps', []),
+        }
+
+        if not submission['ramps']:
+            await self.send_json({
+                'type': 'bulk_ramp_confirmation',
+                'success': False,
+                'message': 'No ramp data provided',
+                'ui_component': '',
+            })
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.process_bulk_ramp_submission(
+                submission=submission,
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'bulk_ramp_confirmation',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', ''),
+            })
+        except Exception as e:
+            logger.error(f"Error processing bulk ramp submission: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'bulk_ramp_confirmation',
+                'success': False,
+                'message': str(e),
+                'ui_component': '',
+            })
+
+    async def handle_confirm_bulk_ramp_submission(self, data: Dict[str, Any]) -> None:
+        """
+        Handle user confirming the bulk ramp submission (Yes, Preview Changes).
+        Calls the backend bulk-preview API and returns a diff card.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.execute_bulk_ramp_preview(
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'bulk_ramp_preview',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', ''),
+            })
+        except Exception as e:
+            logger.error(f"Error executing bulk ramp preview: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'bulk_ramp_preview',
+                'success': False,
+                'message': str(e),
+                'ui_component': '',
+            })
+
+    async def handle_apply_bulk_ramp(self, data: Dict[str, Any]) -> None:
+        """
+        Handle user confirming the bulk ramp apply (Confirm Apply).
+        Calls the backend bulk-apply API and clears ramp state.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.execute_bulk_ramp_apply(
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'bulk_ramp_apply_result',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'ui_component': result.get('ui_component', ''),
+            })
+        except Exception as e:
+            logger.error(f"Error applying bulk ramp: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'bulk_ramp_apply_result',
+                'success': False,
+                'message': str(e),
+                'ui_component': '',
             })
 
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:

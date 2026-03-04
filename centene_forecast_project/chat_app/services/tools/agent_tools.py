@@ -36,6 +36,7 @@ from chat_app.services.tools.ui_tools import (
     generate_error_ui,
     generate_ramp_trigger_ui,
     generate_applied_ramp_ui,
+    generate_ramp_list_ui,
     generate_forecast_confirmation_card,
 )
 from chat_app.services.tools.calculation_tools import (
@@ -111,6 +112,11 @@ class NoInput(BaseModel):
 class SetupRampInput(BaseModel):
     month: int = Field(description="Forecast month to configure ramp for (1-12)")
     year: int = Field(description="Forecast year (e.g. 2026)")
+
+
+class GetAppliedRampInput(BaseModel):
+    month: Optional[int] = Field(default=None, description="Forecast month (1-12). Overrides context if provided.")
+    year: Optional[int] = Field(default=None, description="Forecast year (e.g. 2026). Overrides context if provided.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -558,11 +564,12 @@ def make_agent_tools(
 
     # ── get_applied_ramp ─────────────────────────────────────────────────────
 
-    async def _get_applied_ramp() -> dict:
-        """Show the currently applied ramp for the selected forecast row and month."""
+    async def _get_applied_ramp(month: int = None, year: int = None) -> dict:
+        """Retrieve and display the applied ramps for the selected forecast row and month."""
+        import calendar as cal
+
         fresh_ctx = await context_manager.get_context(conversation_id)
         row_data = fresh_ctx.selected_forecast_row
-        month_key = fresh_ctx.selected_ramp_month_key
 
         if not row_data:
             return {
@@ -574,11 +581,19 @@ def make_agent_tools(
                 "data": {},
             }
 
+        # Resolve month_key from args (if provided) or from context
+        if month is not None and year is not None:
+            month_key = f"{year:04d}-{month:02d}"
+            # Store in context for future use
+            await context_manager.update_entities(conversation_id, selected_ramp_month_key=month_key)
+        else:
+            month_key = fresh_ctx.selected_ramp_month_key
+
         if not month_key:
             return {
-                "message": "No ramp month selected. Please set up a ramp for a specific month first.",
+                "message": "No ramp month specified. Please provide a month and year.",
                 "ui_component": generate_error_ui(
-                    "No ramp month is set. Ask me to 'set up ramp for [month] [year]' first.",
+                    "Please specify a month (e.g. 'show ramp for January 2026').",
                     error_type="validation", admin_contact=False
                 ),
                 "data": {},
@@ -591,9 +606,8 @@ def make_agent_tools(
         row_label = f"{main_lob} | {state} | {case_type}"
 
         try:
-            import calendar as cal
-            year, month = int(month_key[:4]), int(month_key[5:7])
-            month_label = f"{cal.month_name[month]} {year}"
+            yr, mo = int(month_key[:4]), int(month_key[5:7])
+            month_label = f"{cal.month_name[mo]} {yr}"
         except (ValueError, IndexError):
             month_label = month_key
 
@@ -609,9 +623,20 @@ def make_agent_tools(
                 "data": {},
             }
 
-        ui = generate_applied_ramp_ui(data, row_label, month_label)
+        # Normalise response shape: new API returns 'ramps', old returned 'ramp_data'
+        if data.get('ramps') is not None:
+            ramps = data['ramps']
+        elif data.get('ramp_data'):
+            ramps = [{"ramp_name": "Default", "weeks": data['ramp_data']}]
+        else:
+            ramps = []
+
+        # Store normalised ramp list in context for bulk-edit flow
+        await context_manager.update_entities(conversation_id, pending_ramp_list_data=ramps)
+
+        ui = generate_ramp_list_ui(ramps, row_label, month_label, forecast_id, month_key)
         return {
-            "message": f"Applied ramp for {row_label} — {month_label}",
+            "message": f"Applied ramps for {row_label} — {month_label}",
             "ui_component": ui,
             "data": data,
         }
@@ -697,10 +722,10 @@ def make_agent_tools(
         coroutine=_setup_ramp_calculation,
         name="setup_ramp_calculation",
         description=(
-            "Set up a weekly ramp configuration for the selected forecast row and a specific month. "
-            "Calculates weeks for the month and opens the ramp input modal. "
-            "REQUIRES a selected_forecast_row in context. "
-            "Use when user says 'set up ramp', 'configure ramp', 'ramp calculation for [month]'."
+            "Set up a NEW weekly ramp configuration for the selected forecast row and a specific month. "
+            "Use ONLY when the user explicitly wants to CREATE or CONFIGURE a ramp — phrases like: "
+            "'set up ramp', 'configure ramp', 'add ramp', 'create ramp for [month]'. "
+            "Do NOT call this when the user merely wants to view or list an existing ramp."
         ),
         args_schema=SetupRampInput,
     )
@@ -709,11 +734,14 @@ def make_agent_tools(
         coroutine=_get_applied_ramp,
         name="get_applied_ramp",
         description=(
-            "Show the currently applied ramp for the selected forecast row and ramp month. "
-            "REQUIRES both selected_forecast_row and selected_ramp_month_key in context. "
-            "Use when user says 'show applied ramp', 'what ramp is set', 'view ramp'."
+            "Retrieve and display the applied ramps for the currently selected forecast row and a specific month. "
+            "Use this to VIEW, LIST, or CHECK existing ramps — never to create or configure new ones. "
+            "Accepts optional month and year; falls back to the ramp month already in context. "
+            "Trigger phrases: 'show ramp', 'list ramps', 'what ramp is applied', 'view ramp for [month]', "
+            "'show ramp for [month] [year]', 'ramps for [month]', 'is there a ramp for [month]?' "
+            "Do NOT use for setting up or configuring a new ramp — use setup_ramp_calculation for that."
         ),
-        args_schema=NoInput,
+        args_schema=GetAppliedRampInput,
     )
 
     return [

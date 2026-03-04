@@ -24,6 +24,11 @@
         pendingRampWeeks: null,      // Raw week data from backend trigger card
         pendingRampMonthKey: null,
         pendingRampForecastId: null,
+        // ── Bulk ramp state ───────────────────────────────────────────────
+        currentRampListData: null,   // Original API ramp list (never mutated)
+        lastBulkRampSubmission: null, // Last submitted bulk payload (for "Edit Again")
+        bulkRampForecastId: null,
+        bulkRampMonthKey: null,
     };
 
     // ========================================================================
@@ -58,6 +63,14 @@
             rampModalCancelBtn: document.getElementById('ramp-modal-cancel-btn'),
             rampModalSubmitBtn: document.getElementById('ramp-modal-submit-btn'),
             rampModalError: document.getElementById('ramp-modal-error'),
+            // Bulk ramp modal
+            bulkRampModal: document.getElementById('ramp-bulk-edit-modal'),
+            bulkRampTitle: document.getElementById('ramp-bulk-edit-title'),
+            bulkRampBody: document.getElementById('ramp-bulk-edit-body'),
+            bulkRampCloseBtn: document.getElementById('ramp-bulk-edit-close-btn'),
+            bulkRampCancelBtn: document.getElementById('ramp-bulk-edit-cancel-btn'),
+            bulkRampSubmitBtn: document.getElementById('ramp-bulk-edit-submit-btn'),
+            bulkRampError: document.getElementById('ramp-bulk-edit-error'),
         };
     }
 
@@ -135,6 +148,15 @@
                     break;
                 case 'ramp_apply_result':
                     handleRampApplyResult(data);
+                    break;
+                case 'bulk_ramp_confirmation':
+                    handleBulkRampConfirmation(data);
+                    break;
+                case 'bulk_ramp_preview':
+                    handleBulkRampPreview(data);
+                    break;
+                case 'bulk_ramp_apply_result':
+                    handleBulkRampApplyResult(data);
                     break;
                 default:
                     console.warn('[Chat] Unknown message type:', data.type);
@@ -239,6 +261,7 @@
         attachViewFullDataListeners();
         attachCphConfirmListeners();
         attachRampOpenListeners();
+        attachRampListShowDataListeners();
         attachForecastFetchConfirmListeners();
     }
 
@@ -1312,6 +1335,274 @@
         });
     }
 
+    // ── Bulk ramp WS message handlers ────────────────────────────────────────
+
+    function handleBulkRampConfirmation(data) {
+        if (data.ui_component) {
+            addMessageWithHTML('assistant', data.ui_component);
+        } else if (data.message) {
+            addMessage('assistant', data.message);
+        }
+        attachBulkRampConfirmListeners();
+        scrollToBottom();
+    }
+
+    function handleBulkRampPreview(data) {
+        if (data.ui_component) {
+            addMessageWithHTML('assistant', data.ui_component);
+        } else if (data.message) {
+            addMessage('assistant', data.message);
+        }
+        attachBulkRampApplyListeners();
+        scrollToBottom();
+    }
+
+    function handleBulkRampApplyResult(data) {
+        if (data.ui_component) {
+            addMessageWithHTML('assistant', data.ui_component);
+        } else {
+            addMessage('assistant', data.message || (data.success ? 'Bulk ramp applied.' : 'Bulk ramp apply failed.'));
+        }
+        if (data.success) {
+            ChatState.currentRampListData = null;
+            ChatState.lastBulkRampSubmission = null;
+            ChatState.bulkRampForecastId = null;
+            ChatState.bulkRampMonthKey = null;
+        }
+        scrollToBottom();
+    }
+
+    // ── Bulk ramp button listener attachers ──────────────────────────────────
+
+    function attachRampListShowDataListeners() {
+        const showBtns = elements.messagesArea.querySelectorAll('.ramp-list-show-data-btn');
+        showBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached') && !btn.disabled) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.ramp-list-card');
+                    if (!card) return;
+                    const forecastId = parseInt(card.getAttribute('data-forecast-id'), 10);
+                    const monthKey = card.getAttribute('data-month-key') || '';
+                    let ramps = [];
+                    try {
+                        ramps = JSON.parse(card.getAttribute('data-ramp-list') || '[]');
+                    } catch (e) {
+                        console.error('[Chat] Failed to parse ramp-list data', e);
+                    }
+                    ChatState.currentRampListData = ramps;
+                    ChatState.bulkRampForecastId = forecastId;
+                    ChatState.bulkRampMonthKey = monthKey;
+                    openBulkRampModal(ramps, forecastId, monthKey);
+                });
+            }
+        });
+    }
+
+    function attachBulkRampConfirmListeners() {
+        const previewBtns = elements.messagesArea.querySelectorAll('.bulk-ramp-preview-btn');
+        previewBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.bulk-ramp-confirmation-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+                    sendWebSocketMessage({ type: 'confirm_bulk_ramp_submission' });
+                });
+            }
+        });
+
+        const editBtns = elements.messagesArea.querySelectorAll('.bulk-ramp-edit-btn');
+        editBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.bulk-ramp-confirmation-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+                    // Reopen with last submitted values
+                    const ramps = ChatState.lastBulkRampSubmission || ChatState.currentRampListData || [];
+                    openBulkRampModal(ramps, ChatState.bulkRampForecastId, ChatState.bulkRampMonthKey);
+                });
+            }
+        });
+    }
+
+    function attachBulkRampApplyListeners() {
+        const applyBtns = elements.messagesArea.querySelectorAll('.bulk-ramp-apply-btn');
+        applyBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.bulk-ramp-preview-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+                    sendWebSocketMessage({ type: 'apply_bulk_ramp' });
+                });
+            }
+        });
+
+        const cancelBtns = elements.messagesArea.querySelectorAll('.bulk-ramp-cancel-btn');
+        cancelBtns.forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() {
+                    const card = this.closest('.bulk-ramp-preview-card');
+                    if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+                    ChatState.currentRampListData = null;
+                    ChatState.lastBulkRampSubmission = null;
+                    addMessage('assistant', 'Bulk ramp apply cancelled.');
+                });
+            }
+        });
+    }
+
+    // ── Bulk ramp modal functions ─────────────────────────────────────────────
+
+    function openBulkRampModal(ramps, forecastId, monthKey) {
+        if (!elements.bulkRampModal) return;
+
+        elements.bulkRampTitle.textContent = 'Edit Ramps — ' + (monthKey || '');
+        buildBulkRampTable(ramps);
+        elements.bulkRampModal.style.display = 'flex';
+        hideBulkRampError();
+    }
+
+    function closeBulkRampModal() {
+        if (!elements.bulkRampModal) return;
+        elements.bulkRampModal.style.display = 'none';
+        elements.bulkRampBody.innerHTML = '';
+        hideBulkRampError();
+    }
+
+    function buildBulkRampTable(ramps) {
+        if (!ramps || ramps.length === 0) {
+            elements.bulkRampBody.innerHTML = '<p class="p-3 text-muted">No ramp data available.</p>';
+            return;
+        }
+
+        // Collect all weeks from first ramp (weeks are the same structure across ramps)
+        const allWeeks = ramps[0].weeks || [];
+
+        // Build two-row header
+        let headerRow1 = '<th style="position:sticky;left:0;z-index:4;background:#f8f9fa;min-width:120px;">Ramp</th>';
+        let headerRow2 = '<th style="position:sticky;left:0;z-index:4;background:#f8f9fa;"></th>';
+
+        allWeeks.forEach((w, idx) => {
+            const label = escapeHtml(w.week_label || w.label || ('Week ' + (idx + 1)));
+            const days = w.working_days !== undefined ? w.working_days : (w.workingDays || 0);
+            headerRow1 += `<th colspan="2" class="text-center" style="z-index:3;">${label} (${days}d)</th>`;
+            headerRow2 += '<th style="z-index:3;">Ramp&nbsp;%</th><th style="z-index:3;">Employees</th>';
+        });
+
+        // Build ramp rows — use existing values from ramps (support both API snake_case and camelCase keys)
+        let bodyRows = '';
+        ramps.forEach(ramp => {
+            const rampName = escapeHtml(ramp.ramp_name || 'Default');
+            let cells = `<td style="position:sticky;left:0;z-index:2;background:white;" class="fw-bold">${rampName}</td>`;
+
+            const weeks = ramp.weeks || [];
+            allWeeks.forEach((templateWeek, idx) => {
+                const w = weeks[idx] || {};
+                // Support both API shape (ramp_percent, employee_count) and form shape (rampPercent, rampEmployees)
+                const rampPct = w.ramp_percent !== undefined ? w.ramp_percent : (w.rampPercent !== undefined ? w.rampPercent : 0);
+                const empCount = w.employee_count !== undefined ? w.employee_count : (w.rampEmployees !== undefined ? w.rampEmployees : 0);
+                cells += `<td><input type="number" class="form-control form-control-sm bulk-ramp-pct" style="min-width:70px;" step="0.1" min="0" max="100" value="${rampPct}" data-ramp="${rampName}" data-week="${idx}"></td>`;
+                cells += `<td><input type="number" class="form-control form-control-sm bulk-ramp-emp" style="min-width:70px;" min="0" value="${empCount}" data-ramp="${rampName}" data-week="${idx}"></td>`;
+            });
+
+            bodyRows += `<tr data-ramp-name="${rampName}">${cells}</tr>`;
+        });
+
+        elements.bulkRampBody.innerHTML = `
+            <div style="overflow-x:auto;overflow-y:auto;max-height:60vh;">
+                <table class="table table-sm table-bordered ramp-bulk-edit-table mb-0">
+                    <thead style="position:sticky;top:0;z-index:3;">
+                        <tr>${headerRow1}</tr>
+                        <tr>${headerRow2}</tr>
+                    </thead>
+                    <tbody>${bodyRows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    function submitBulkRampForm() {
+        const rows = elements.bulkRampBody.querySelectorAll('tr[data-ramp-name]');
+        const allWeekData = [];
+        const firstRamp = ChatState.currentRampListData && ChatState.currentRampListData[0];
+        const templateWeeks = firstRamp ? (firstRamp.weeks || []) : [];
+
+        const errors = [];
+        const rampPayloads = [];
+
+        rows.forEach(row => {
+            const rampName = row.getAttribute('data-ramp-name');
+            const pctInputs = row.querySelectorAll('.bulk-ramp-pct');
+            const empInputs = row.querySelectorAll('.bulk-ramp-emp');
+
+            const weeks = [];
+            let hasNonZero = false;
+            pctInputs.forEach((pctInput, i) => {
+                const tw = templateWeeks[i] || {};
+                const rampPct = parseFloat(pctInput.value) || 0;
+                const rampEmp = parseInt(empInputs[i] ? empInputs[i].value : 0, 10) || 0;
+                const workingDays = tw.working_days !== undefined ? tw.working_days : (tw.workingDays || 0);
+
+                if (rampPct < 0 || rampPct > 100) {
+                    errors.push(`Ramp "${rampName}" Week ${i+1}: Ramp % must be 0–100`);
+                }
+                if (rampEmp < 0) {
+                    errors.push(`Ramp "${rampName}" Week ${i+1}: Employees must be >= 0`);
+                }
+                if (rampEmp > 0) hasNonZero = true;
+
+                weeks.push({
+                    label: tw.week_label || tw.label || ('Week ' + (i+1)),
+                    startDate: tw.start_date || tw.startDate || '',
+                    endDate: tw.end_date || tw.endDate || '',
+                    workingDays: workingDays,
+                    rampPercent: rampPct,
+                    rampEmployees: rampEmp,
+                });
+            });
+
+            if (!hasNonZero) {
+                errors.push(`Ramp "${rampName}": at least one week must have Employees > 0`);
+            }
+
+            const totalRampEmployees = weeks.reduce((s, w) => s + w.rampEmployees, 0);
+            rampPayloads.push({ ramp_name: rampName, weeks: weeks, totalRampEmployees: totalRampEmployees });
+        });
+
+        if (errors.length > 0) {
+            showBulkRampError(errors.join('; '));
+            return;
+        }
+
+        hideBulkRampError();
+        ChatState.lastBulkRampSubmission = rampPayloads;
+        closeBulkRampModal();
+
+        sendWebSocketMessage({
+            type: 'submit_bulk_ramp_data',
+            forecast_id: ChatState.bulkRampForecastId,
+            month_key: ChatState.bulkRampMonthKey,
+            ramps: rampPayloads,
+        });
+    }
+
+    function showBulkRampError(message) {
+        if (elements.bulkRampError) {
+            elements.bulkRampError.textContent = message;
+            elements.bulkRampError.style.display = 'block';
+        }
+    }
+
+    function hideBulkRampError() {
+        if (elements.bulkRampError) {
+            elements.bulkRampError.textContent = '';
+            elements.bulkRampError.style.display = 'none';
+        }
+    }
+
     function openModal(title, data) {
         elements.modalTitle.textContent = title;
 
@@ -1448,6 +1739,24 @@
                 closeRampModal();
             }
         });
+
+        // Bulk ramp modal
+        if (elements.bulkRampCloseBtn) {
+            elements.bulkRampCloseBtn.addEventListener('click', closeBulkRampModal);
+        }
+        if (elements.bulkRampCancelBtn) {
+            elements.bulkRampCancelBtn.addEventListener('click', closeBulkRampModal);
+        }
+        if (elements.bulkRampSubmitBtn) {
+            elements.bulkRampSubmitBtn.addEventListener('click', submitBulkRampForm);
+        }
+        if (elements.bulkRampModal) {
+            elements.bulkRampModal.addEventListener('click', (e) => {
+                if (e.target === elements.bulkRampModal) {
+                    closeBulkRampModal();
+                }
+            });
+        }
     }
 
     // ========================================================================

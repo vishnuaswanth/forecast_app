@@ -1329,8 +1329,12 @@ def generate_applied_ramp_ui(
     safe_row = html_module.escape(str(row_label))
     safe_month = html_module.escape(str(month_label))
 
-    weeks = applied_ramp_data.get('weeks', [])
-    total_ramp_employees = applied_ramp_data.get('totalRampEmployees', 0)
+    # Support both new grouped shape (ramps) and old flat shape (ramp_data)
+    ramps_raw = applied_ramp_data.get('ramps', [])
+    if not ramps_raw and applied_ramp_data.get('ramp_data'):
+        ramps_raw = [{"ramp_name": "Default", "weeks": applied_ramp_data['ramp_data']}]
+    weeks = ramps_raw[0]['weeks'] if ramps_raw else []
+    total_ramp_employees = sum(w.get('employee_count', 0) for w in weeks)
 
     if not weeks:
         logger.info("[UI Tools] Generated applied ramp UI (none applied)")
@@ -1351,9 +1355,9 @@ def generate_applied_ramp_ui(
 
     rows_html = ""
     for w in weeks:
-        label = html_module.escape(str(w.get('label', '')))
-        working_days = int(w.get('workingDays', 0))
-        ramp_pct = float(w.get('rampPercent', 0))
+        label = html_module.escape(str(w.get('week_label', '')))
+        working_days = int(w.get('working_days', 0))
+        ramp_pct = float(w.get('ramp_percent', 0))
         rows_html += f'''
             <tr>
                 <td>{label}</td>
@@ -1386,6 +1390,372 @@ def generate_applied_ramp_ui(
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+    '''
+
+
+def generate_ramp_list_ui(
+    ramps: list,
+    row_label: str,
+    month_label: str,
+    forecast_id: int,
+    month_key: str,
+) -> str:
+    """
+    Generate a summary card listing named ramps for a row/month with a 'Show Data' button.
+
+    Args:
+        ramps: List of ramp dicts [{ramp_name, weeks}] from get_applied_ramp API
+        row_label: Human-readable row identifier
+        month_label: Human-readable month label
+        forecast_id: Forecast record ID
+        month_key: Month key in 'YYYY-MM' format
+
+    Returns:
+        HTML string for the ramp list summary card
+    """
+    safe_row = html_module.escape(str(row_label))
+    safe_month = html_module.escape(str(month_label))
+    ramp_list_json = html_module.escape(json.dumps(ramps))
+
+    if not ramps:
+        logger.info("[UI Tools] Generated ramp list UI (no ramps)")
+        return f'''
+    <div class="ramp-list-card card border-secondary"
+         data-forecast-id="{forecast_id}"
+         data-month-key="{html_module.escape(month_key)}"
+         data-ramp-list="{ramp_list_json}">
+        <div class="card-header bg-secondary text-white d-flex align-items-center justify-content-between">
+            <strong>Ramp Summary</strong>
+            <button class="btn btn-sm btn-light ramp-list-show-data-btn" disabled>Show Data</button>
+        </div>
+        <div class="card-body">
+            <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
+            <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
+            <div class="alert alert-info mb-0">No ramps configured for this row and month.</div>
+        </div>
+    </div>
+    '''
+
+    rows_html = ""
+    grand_total = 0
+    for ramp in ramps:
+        ramp_name = html_module.escape(str(ramp.get('ramp_name', 'Default')))
+        weeks = ramp.get('weeks', [])
+        peak = max((w.get('employee_count', 0) for w in weeks), default=0)
+        grand_total += peak
+        rows_html += f'''
+            <tr>
+                <td>{ramp_name}</td>
+                <td class="text-center">{peak:,}</td>
+            </tr>
+        '''
+
+    logger.info(f"[UI Tools] Generated ramp list UI for {row_label} | {month_label} ({len(ramps)} ramps)")
+    return f'''
+    <div class="ramp-list-card card border-info"
+         data-forecast-id="{forecast_id}"
+         data-month-key="{html_module.escape(month_key)}"
+         data-ramp-list="{ramp_list_json}">
+        <div class="card-header bg-info text-white d-flex align-items-center justify-content-between">
+            <strong>Ramp Summary</strong>
+            <button class="btn btn-sm btn-light ramp-list-show-data-btn">Show Data</button>
+        </div>
+        <div class="card-body">
+            <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
+            <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-2">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ramp Name</th>
+                            <th class="text-center">Peak Employees</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                    <tfoot class="table-light fw-bold">
+                        <tr>
+                            <td>Grand Total</td>
+                            <td class="text-center">{grand_total:,} across {len(ramps)} ramp{'s' if len(ramps) != 1 else ''}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def generate_bulk_ramp_confirmation_ui(
+    ramps: list,
+    month_label: str,
+    row_label: str,
+) -> str:
+    """
+    Generate a confirmation card summarising bulk ramp data before preview.
+
+    Args:
+        ramps: List of ramp dicts [{ramp_name, weeks, totalRampEmployees}]
+        month_label: Human-readable month label
+        row_label: Human-readable row identifier
+
+    Returns:
+        HTML string for bulk ramp confirmation card
+    """
+    safe_row = html_module.escape(str(row_label))
+    safe_month = html_module.escape(str(month_label))
+
+    rows_html = ""
+    for ramp in ramps:
+        ramp_name = html_module.escape(str(ramp.get('ramp_name', 'Default')))
+        weeks = ramp.get('weeks', [])
+        week_count = len(weeks)
+        sum_emp = sum(w.get('rampEmployees', 0) for w in weeks)
+        peak_emp = max((w.get('rampEmployees', 0) for w in weeks), default=0)
+        rows_html += f'''
+            <tr>
+                <td>{ramp_name}</td>
+                <td class="text-center">{week_count}</td>
+                <td class="text-center">{sum_emp:,}</td>
+                <td class="text-center">{peak_emp:,}</td>
+            </tr>
+        '''
+
+    logger.info(f"[UI Tools] Generated bulk ramp confirmation UI ({len(ramps)} ramps)")
+    return f'''
+    <div class="bulk-ramp-confirmation-card card border-warning">
+        <div class="card-header bg-warning text-dark">
+            <strong>Confirm Bulk Ramp Submission</strong>
+        </div>
+        <div class="card-body">
+            <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
+            <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-3">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ramp Name</th>
+                            <th class="text-center">Weeks</th>
+                            <th class="text-center">Sum Employees</th>
+                            <th class="text-center">Peak Employees</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-success bulk-ramp-preview-btn">
+                    Yes, Preview Changes
+                </button>
+                <button class="btn btn-secondary bulk-ramp-edit-btn">
+                    Edit Again
+                </button>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def generate_bulk_ramp_preview_ui(
+    per_ramp_previews: list,
+    aggregated_diff: dict,
+    month_label: str,
+    row_label: str,
+) -> str:
+    """
+    Generate a preview card showing per-ramp and aggregated impact.
+
+    Args:
+        per_ramp_previews: List of {ramp_name, current, projected, diff} dicts
+        aggregated_diff: {fte_available, capacity, gap} aggregated across all ramps
+        month_label: Human-readable month label
+        row_label: Human-readable row identifier
+
+    Returns:
+        HTML string for bulk ramp preview card
+    """
+    safe_row = html_module.escape(str(row_label))
+    safe_month = html_module.escape(str(month_label))
+
+    def _fmt(val):
+        if isinstance(val, float):
+            return f"{val:,.1f}"
+        if isinstance(val, (int,)):
+            return f"{val:,}"
+        return str(val)
+
+    def _diff_class(val):
+        if isinstance(val, (int, float)):
+            if val > 0:
+                return "text-success"
+            if val < 0:
+                return "text-danger"
+        return "text-muted"
+
+    def _diff_fmt(val):
+        if isinstance(val, (int, float)):
+            prefix = "+" if val > 0 else ""
+            return f"{prefix}{_fmt(val)}"
+        return str(val)
+
+    per_ramp_html = ""
+    for preview in per_ramp_previews:
+        ramp_name = html_module.escape(str(preview.get('ramp_name', 'Default')))
+        cur = preview.get('current', {})
+        proj = preview.get('projected', {})
+        diff = preview.get('diff', {})
+
+        fields = [
+            ('fte_required', 'FTE Required'),
+            ('fte_available', 'FTE Available'),
+            ('capacity', 'Capacity'),
+            ('gap', 'Gap'),
+        ]
+        field_rows = ""
+        for fk, fl in fields:
+            dv = diff.get(fk, 0)
+            field_rows += f'''
+                <tr>
+                    <td>{html_module.escape(fl)}</td>
+                    <td class="text-end">{_fmt(cur.get(fk, 0))}</td>
+                    <td class="text-end">{_fmt(proj.get(fk, 0))}</td>
+                    <td class="text-end {_diff_class(dv)}"><strong>{_diff_fmt(dv)}</strong></td>
+                </tr>
+            '''
+
+        per_ramp_html += f'''
+        <div class="mb-3">
+            <h6 class="fw-bold">{ramp_name}</h6>
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Field</th>
+                        <th class="text-end">Current</th>
+                        <th class="text-end">Projected</th>
+                        <th class="text-end">Change</th>
+                    </tr>
+                </thead>
+                <tbody>{field_rows}</tbody>
+            </table>
+        </div>
+        '''
+
+    # Aggregated diff rows
+    agg_fields = [('fte_available', 'FTE Available'), ('capacity', 'Capacity'), ('gap', 'Gap')]
+    agg_rows = ""
+    for fk, fl in agg_fields:
+        dv = aggregated_diff.get(fk, 0)
+        agg_rows += f'''
+            <tr>
+                <td>{html_module.escape(fl)}</td>
+                <td class="text-end {_diff_class(dv)}"><strong>{_diff_fmt(dv)}</strong></td>
+            </tr>
+        '''
+
+    logger.info(f"[UI Tools] Generated bulk ramp preview UI ({len(per_ramp_previews)} ramps)")
+    return f'''
+    <div class="bulk-ramp-preview-card card border-primary">
+        <div class="card-header bg-primary text-white">
+            <strong>Bulk Ramp Impact Preview</strong>
+        </div>
+        <div class="card-body">
+            <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
+            <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
+            <p class="text-muted mb-3"><small>Review the projected changes per ramp before applying.</small></p>
+            {per_ramp_html}
+            <div class="mb-3">
+                <h6 class="fw-bold">Aggregated Change</h6>
+                <table class="table table-sm table-bordered mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Field</th>
+                            <th class="text-end">Total Change</th>
+                        </tr>
+                    </thead>
+                    <tbody>{agg_rows}</tbody>
+                </table>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary bulk-ramp-apply-btn">
+                    Confirm Apply
+                </button>
+                <button class="btn btn-outline-secondary bulk-ramp-cancel-btn">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    '''
+
+
+def generate_bulk_ramp_result_ui(
+    ramps_applied: list,
+    ramps_failed: list,
+    month_label: str,
+) -> str:
+    """
+    Generate a result card after a bulk ramp apply attempt.
+
+    Args:
+        ramps_applied: List of successfully applied ramp names
+        ramps_failed: List of failed ramp names
+        month_label: Human-readable month label
+
+    Returns:
+        HTML string for bulk ramp result card
+    """
+    safe_month = html_module.escape(str(month_label))
+
+    all_ok = len(ramps_failed) == 0
+    all_failed = len(ramps_applied) == 0
+
+    if all_ok:
+        border = "border-success"
+        header_cls = "bg-success text-white"
+        icon = "&#10003;"
+        title = "Bulk Ramp Applied Successfully"
+        body_class = "text-success"
+    elif all_failed:
+        border = "border-danger"
+        header_cls = "bg-danger text-white"
+        icon = "&#10007;"
+        title = "Bulk Ramp Apply Failed"
+        body_class = "text-danger"
+    else:
+        border = "border-warning"
+        header_cls = "bg-warning text-dark"
+        icon = "&#9888;"
+        title = "Bulk Ramp Partially Applied"
+        body_class = "text-warning"
+
+    applied_html = ""
+    if ramps_applied:
+        names = ", ".join(html_module.escape(str(n)) for n in ramps_applied)
+        applied_html = f'<p class="mb-1"><strong>Applied:</strong> {names}</p>'
+
+    failed_html = ""
+    if ramps_failed:
+        names = ", ".join(html_module.escape(str(n)) for n in ramps_failed)
+        failed_html = f'<p class="mb-1 text-danger"><strong>Failed:</strong> {names}</p>'
+
+    logger.info(
+        f"[UI Tools] Generated bulk ramp result UI "
+        f"({len(ramps_applied)} applied, {len(ramps_failed)} failed)"
+    )
+    return f'''
+    <div class="bulk-ramp-result-card card {border}">
+        <div class="card-header {header_cls}">
+            <strong>{icon} {title}</strong>
+        </div>
+        <div class="card-body">
+            <p class="mb-2"><strong>Month:</strong> {safe_month}</p>
+            {applied_html}
+            {failed_html}
         </div>
     </div>
     '''

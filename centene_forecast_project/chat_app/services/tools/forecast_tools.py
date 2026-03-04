@@ -600,6 +600,90 @@ async def call_get_applied_ramp(forecast_id: int, month_key: str) -> dict:
         raise classify_httpx_error(e, endpoint)
 
 
+async def call_bulk_preview_ramp(forecast_id: int, month_key: str, payload: dict) -> dict:
+    """
+    Preview the combined impact of multiple named ramps without applying.
+
+    Args:
+        forecast_id: Forecast record ID
+        month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+        payload: Dict containing 'ramps' list of {ramp_name, weeks, totalRampEmployees}
+
+    Returns:
+        Dictionary with per_ramp_previews and aggregated_diff from backend
+
+    Raises:
+        APIConnectionError, APITimeoutError, APIResponseError
+    """
+    import asyncio
+    endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-preview"
+    try:
+        client = get_chat_api_client()
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: client.bulk_preview_ramp(forecast_id, month_key, payload)
+        )
+        logger.info(f"[Forecast Tools] Bulk ramp preview fetched for forecast {forecast_id}, month {month_key}")
+        return data
+    except httpx.ConnectError as e:
+        raise APIConnectionError(message=f"Cannot connect to API: {str(e)}", details={"endpoint": endpoint})
+    except httpx.TimeoutException as e:
+        raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
+    except httpx.HTTPStatusError as e:
+        raise APIResponseError(
+            message=f"API error: {str(e)}",
+            status_code=e.response.status_code,
+            response_body=e.response.text[:500] if e.response.text else None,
+            details={"endpoint": endpoint}
+        )
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Failed to bulk preview ramp: {str(e)}", exc_info=True)
+        raise classify_httpx_error(e, endpoint)
+
+
+async def call_bulk_apply_ramp(forecast_id: int, month_key: str, payload: dict) -> dict:
+    """
+    Apply multiple named ramps to persist them.
+
+    Args:
+        forecast_id: Forecast record ID
+        month_key: Month key in 'YYYY-MM' format (e.g. '2026-01')
+        payload: Dict containing 'ramps' list and optional 'user_notes'
+
+    Returns:
+        Dictionary with ramps_applied, ramps_failed from backend
+
+    Raises:
+        APIConnectionError, APITimeoutError, APIResponseError
+    """
+    import asyncio
+    endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-apply"
+    try:
+        client = get_chat_api_client()
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: client.bulk_apply_ramp(forecast_id, month_key, payload)
+        )
+        logger.info(f"[Forecast Tools] Bulk ramp applied for forecast {forecast_id}, month {month_key}")
+        return data
+    except httpx.ConnectError as e:
+        raise APIConnectionError(message=f"Cannot connect to API: {str(e)}", details={"endpoint": endpoint})
+    except httpx.TimeoutException as e:
+        raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
+    except httpx.HTTPStatusError as e:
+        raise APIResponseError(
+            message=f"API error: {str(e)}",
+            status_code=e.response.status_code,
+            response_body=e.response.text[:500] if e.response.text else None,
+            details={"endpoint": endpoint}
+        )
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Failed to bulk apply ramp: {str(e)}", exc_info=True)
+        raise classify_httpx_error(e, endpoint)
+
+
 @tool("calculate_forecast_totals")
 async def calculate_totals_tool(forecast_data: dict) -> dict:
     """
