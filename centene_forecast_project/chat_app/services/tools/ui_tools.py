@@ -1564,6 +1564,7 @@ def generate_bulk_ramp_confirmation_ui(
 def generate_bulk_ramp_preview_ui(
     per_ramp_previews: list,
     aggregated_diff: dict,
+    aggregated: dict,
     month_label: str,
     row_label: str,
 ) -> str:
@@ -1572,7 +1573,8 @@ def generate_bulk_ramp_preview_ui(
 
     Args:
         per_ramp_previews: List of {ramp_name, current, projected, diff} dicts
-        aggregated_diff: {fte_available, capacity, gap} aggregated across all ramps
+        aggregated_diff: {fte_available, capacity} aggregated across all ramps
+        aggregated: Overall before/after values including forecast, fte_required, gaps
         month_label: Human-readable month label
         row_label: Human-readable row identifier
 
@@ -1645,17 +1647,38 @@ def generate_bulk_ramp_preview_ui(
         </div>
         '''
 
-    # Aggregated diff rows
-    agg_fields = [('fte_available', 'FTE Available'), ('capacity', 'Capacity'), ('gap', 'Gap')]
-    agg_rows = ""
-    for fk, fl in agg_fields:
-        dv = aggregated_diff.get(fk, 0)
-        agg_rows += f'''
-            <tr>
-                <td>{html_module.escape(fl)}</td>
-                <td class="text-end {_diff_class(dv)}"><strong>{_diff_fmt(dv)}</strong></td>
-            </tr>
-        '''
+    # Overall impact table (before / after / change for FTE Available, Capacity, Gap vs Forecast)
+    overall_rows = ""
+    overall_fields = [
+        ('forecast',          'Client Forecast',  'forecast',           None,           None),
+        ('fte_required',      'FTE Required',     'fte_required',       None,           None),
+        ('fte_available',     'FTE Available',    'fte_available_before', 'fte_available_after', 'fte_available_delta'),
+        ('capacity',          'Capacity',         'capacity_before',    'capacity_after', 'capacity_delta'),
+        ('gap',               'Gap vs Forecast',  'gap_before',         'gap_after',    'gap_delta'),
+    ]
+    for _fk, fl, before_key, after_key, delta_key in overall_fields:
+        before_val = aggregated.get(before_key, 0) if before_key else None
+        after_val = aggregated.get(after_key, 0) if after_key else None
+        delta_val = aggregated.get(delta_key, 0) if delta_key else None
+
+        if after_key is None:
+            # Static rows (forecast, fte_required) — show single value spanning after/change
+            overall_rows += f'''
+                <tr>
+                    <td>{html_module.escape(fl)}</td>
+                    <td class="text-end" colspan="3"><strong>{_fmt(before_val)}</strong></td>
+                </tr>
+            '''
+        else:
+            dv = delta_val if delta_val is not None else 0
+            overall_rows += f'''
+                <tr>
+                    <td>{html_module.escape(fl)}</td>
+                    <td class="text-end">{_fmt(before_val)}</td>
+                    <td class="text-end">{_fmt(after_val)}</td>
+                    <td class="text-end {_diff_class(dv)}"><strong>{_diff_fmt(dv)}</strong></td>
+                </tr>
+            '''
 
     logger.info(f"[UI Tools] Generated bulk ramp preview UI ({len(per_ramp_previews)} ramps)")
     return f'''
@@ -1667,19 +1690,21 @@ def generate_bulk_ramp_preview_ui(
             <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
             <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
             <p class="text-muted mb-3"><small>Review the projected changes per ramp before applying.</small></p>
-            {per_ramp_html}
             <div class="mb-3">
-                <h6 class="fw-bold">Aggregated Change</h6>
+                <h6 class="fw-bold">Overall Impact</h6>
                 <table class="table table-sm table-bordered mb-0">
                     <thead class="table-light">
                         <tr>
                             <th>Field</th>
-                            <th class="text-end">Total Change</th>
+                            <th class="text-end">Before</th>
+                            <th class="text-end">After</th>
+                            <th class="text-end">Change</th>
                         </tr>
                     </thead>
-                    <tbody>{agg_rows}</tbody>
+                    <tbody>{overall_rows}</tbody>
                 </table>
             </div>
+            {per_ramp_html}
             <div class="d-flex gap-2">
                 <button class="btn btn-primary bulk-ramp-apply-btn">
                     Confirm Apply

@@ -870,6 +870,7 @@ class ChatService:
         ui = generate_bulk_ramp_preview_ui(
             response.get('per_ramp_previews', []),
             response.get('aggregated_diff', {}),
+            response.get('aggregated', {}),
             month_label,
             row_label,
         )
