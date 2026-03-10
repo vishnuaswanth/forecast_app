@@ -1569,12 +1569,19 @@ def generate_ramp_new_preview_ui(
     fte_required: int,
     month_label: str,
     row_label: str,
+    fte_before: int = 0,
+    fte_after: int = 0,
+    cap_before: float = 0.0,
+    cap_after: float = 0.0,
+    gap_before: float = 0.0,
+    gap_after: float = 0.0,
+    gap_delta: float = 0.0,
 ) -> str:
     """
-    Generate a compact delta-only preview card for a single new ramp setup.
+    Generate a preview card for a single new ramp setup.
 
-    Shows what the new ramp adds (FTE Available delta, Capacity delta)
-    alongside static context values (Client Forecast, FTE Required).
+    Shows Current, New, and Change columns for FTE Available, Capacity, and Gap,
+    plus static context values (Client Forecast, FTE Required).
 
     Two action buttons:
       - "Confirm Apply" → class="ramp-apply-btn"
@@ -1582,12 +1589,19 @@ def generate_ramp_new_preview_ui(
 
     Args:
         ramp_name: Name of the ramp being applied
-        fte_delta: Change in FTE Available (positive = added headcount)
-        cap_delta: Change in Capacity (positive = added capacity)
-        forecast: Client Forecast value (static, no change)
-        fte_required: FTE Required value (static, no change)
+        fte_delta: Change in FTE Available
+        cap_delta: Change in Capacity
+        forecast: Client Forecast value (static)
+        fte_required: FTE Required value (static)
         month_label: Human-readable month label (e.g. "January 2026")
-        row_label: Human-readable row identifier (e.g. "Amisys | CA | Claims")
+        row_label: Human-readable row identifier
+        fte_before: Total FTE Available before ramp
+        fte_after: Total FTE Available after ramp
+        cap_before: Total Capacity before ramp
+        cap_after: Total Capacity after ramp
+        gap_before: Gap (Capacity - Forecast) before ramp
+        gap_after: Gap (Capacity - Forecast) after ramp
+        gap_delta: Change in Gap
 
     Returns:
         HTML string for ramp new preview card
@@ -1619,9 +1633,6 @@ def generate_ramp_new_preview_ui(
             return f"{val:,}"
         return str(val)
 
-    fte_delta_class = _delta_class(fte_delta)
-    cap_delta_class = _delta_class(cap_delta)
-
     logger.info(f"[UI Tools] Generated ramp new preview UI for {ramp_name} | {month_label}")
     return f'''
     <div class="ramp-preview-card card border-primary">
@@ -1635,28 +1646,37 @@ def generate_ramp_new_preview_ui(
                 <thead class="table-light">
                     <tr>
                         <th>Field</th>
+                        <th class="text-end">Current</th>
+                        <th class="text-end">New</th>
                         <th class="text-end">Change</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td>FTE Available</td>
-                        <td class="text-end {fte_delta_class}"><strong>{_delta_fmt(fte_delta)}</strong></td>
-                    </tr>
-                    <tr>
-                        <td>Capacity</td>
-                        <td class="text-end {cap_delta_class}"><strong>{_delta_fmt(cap_delta)}</strong></td>
-                    </tr>
-                    <tr class="table-light">
-                        <td colspan="2"><hr class="my-1"></td>
-                    </tr>
-                    <tr>
                         <td>Client Forecast</td>
-                        <td class="text-end">{_fmt(forecast)}</td>
+                        <td class="text-end" colspan="3"><strong>{_fmt(forecast)}</strong></td>
                     </tr>
                     <tr>
                         <td>FTE Required</td>
-                        <td class="text-end">{_fmt(fte_required)}</td>
+                        <td class="text-end" colspan="3"><strong>{_fmt(fte_required)}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>FTE Available</td>
+                        <td class="text-end">{_fmt(fte_before)}</td>
+                        <td class="text-end">{_fmt(fte_after)}</td>
+                        <td class="text-end {_delta_class(fte_delta)}"><strong>{_delta_fmt(fte_delta)}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Capacity</td>
+                        <td class="text-end">{_fmt(cap_before)}</td>
+                        <td class="text-end">{_fmt(cap_after)}</td>
+                        <td class="text-end {_delta_class(cap_delta)}"><strong>{_delta_fmt(cap_delta)}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Gap</td>
+                        <td class="text-end {_delta_class(gap_before)}">{_fmt(gap_before)}</td>
+                        <td class="text-end {_delta_class(gap_after)}">{_fmt(gap_after)}</td>
+                        <td class="text-end {_delta_class(gap_delta)}"><strong>{_delta_fmt(gap_delta)}</strong></td>
                     </tr>
                 </tbody>
             </table>

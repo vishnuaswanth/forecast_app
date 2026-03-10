@@ -706,6 +706,13 @@ class ChatService:
             fte_required=agg.get('fte_required', 0),
             month_label=month_label,
             row_label=row_label,
+            fte_before=agg.get('fte_available_before', 0),
+            fte_after=agg.get('fte_available_after', 0),
+            cap_before=agg.get('capacity_before', 0.0),
+            cap_after=agg.get('capacity_after', 0.0),
+            gap_before=agg.get('gap_before', 0.0),
+            gap_after=agg.get('gap_after', 0.0),
+            gap_delta=agg.get('gap_delta', 0.0),
         )
         return {
             "success": True,
