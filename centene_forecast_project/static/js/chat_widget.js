@@ -1121,15 +1121,6 @@
             }
         });
 
-        if (valid) {
-            const allZero = Array.from(elements.rampModalBody.querySelectorAll('.ramp-week-card'))
-                .every(card => parseInt(card.querySelector('.ramp-input-ramp-emp').value, 10) === 0);
-            if (allZero) {
-                showRampError('At least one week must have Ramp Employees > 0');
-                errors.push('At least one week must have Ramp Employees > 0');
-                valid = false;
-            }
-        }
 
         return { valid, errors };
     }
@@ -1539,7 +1530,6 @@
             const empInputs = row.querySelectorAll('.bulk-ramp-emp');
 
             const weeks = [];
-            let hasNonZero = false;
             pctInputs.forEach((pctInput, i) => {
                 const tw = templateWeeks[i] || {};
                 const rampPct = parseFloat(pctInput.value) || 0;
@@ -1552,8 +1542,6 @@
                 if (rampEmp < 0) {
                     errors.push(`Ramp "${rampName}" Week ${i+1}: Employees must be >= 0`);
                 }
-                if (rampEmp > 0) hasNonZero = true;
-
                 weeks.push({
                     label: tw.week_label || tw.label || ('Week ' + (i+1)),
                     startDate: tw.start_date || tw.startDate || '',
@@ -1563,10 +1551,6 @@
                     rampEmployees: rampEmp,
                 });
             });
-
-            if (!hasNonZero) {
-                errors.push(`Ramp "${rampName}": at least one week must have Employees > 0`);
-            }
 
             const totalRampEmployees = weeks.reduce((s, w) => s + w.rampEmployees, 0);
             rampPayloads.push({ ramp_name: rampName, weeks: weeks, totalRampEmployees: totalRampEmployees });

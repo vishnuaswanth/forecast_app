@@ -544,9 +544,6 @@ class ChatService:
             elif isinstance(ramp_emp, float) and not ramp_emp.is_integer():
                 errors.append(f"{label}: rampEmployees must be a whole number, no decimals (got {ramp_emp})")
 
-        if not errors and not any(w.get('rampEmployees', 0) > 0 for w in weeks):
-            errors.append("At least one week must have Ramp Employees > 0")
-
         if errors:
             msg = "Validation failed: " + "; ".join(errors)
             logger.warning(f"[Chat Service] Ramp submission validation errors: {errors}")
@@ -752,7 +749,6 @@ class ChatService:
             if not weeks:
                 errors.append(f"Ramp '{ramp_name}': no weeks provided")
                 continue
-            has_nonzero = False
             for i, w in enumerate(weeks):
                 ramp_pct = w.get('rampPercent', 0)
                 ramp_emp = w.get('rampEmployees', 0)
@@ -764,10 +760,6 @@ class ChatService:
                     errors.append(f"Ramp '{ramp_name}' {label}: rampPercent must be 0–100")
                 if not isinstance(ramp_emp, (int, float)) or ramp_emp < 0:
                     errors.append(f"Ramp '{ramp_name}' {label}: rampEmployees must be >= 0")
-                if ramp_emp > 0:
-                    has_nonzero = True
-            if not has_nonzero:
-                errors.append(f"Ramp '{ramp_name}': at least one week must have rampEmployees > 0")
 
         if errors:
             msg = "Validation failed: " + "; ".join(errors)
