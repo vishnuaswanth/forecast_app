@@ -1040,7 +1040,13 @@
             ChatState.pendingRampForecastId = forecastId;
 
             elements.rampModalTitle.textContent = `Configure Ramp — ${monthKey}`;
-            buildWeekCards(weeks);
+            elements.rampModalBody.innerHTML =
+                `<div class="ramp-name-control mb-3 p-2 border-bottom">
+                    <label class="form-label fw-bold mb-1">Ramp Name</label>
+                    <input type="text" id="ramp-name-input" class="form-control form-control-sm"
+                           value="Default" placeholder="e.g. Default">
+                </div>` + buildWeekCardsHtml(weeks);
+
             hideRampError();
             elements.rampModalOverlay.style.display = 'flex';
         } catch (err) {
@@ -1048,8 +1054,13 @@
         }
     }
 
-    function buildWeekCards(weeks) {
-        elements.rampModalBody.innerHTML = weeks.map((week, idx) => {
+    function getRampNameFromModal() {
+        const input = document.getElementById('ramp-name-input');
+        return (input && input.value.trim()) ? input.value.trim() : 'Default';
+    }
+
+    function buildWeekCardsHtml(weeks) {
+        return weeks.map((week, idx) => {
             const label = escapeHtml(week.label || `Week ${idx + 1}`);
             const workingDays = parseInt(week.workingDays, 10) || 0;
             return `
@@ -1077,6 +1088,10 @@
                 </div>
             </div>`;
         }).join('');
+    }
+
+    function buildWeekCards(weeks) {
+        elements.rampModalBody.innerHTML = buildWeekCardsHtml(weeks);
     }
 
     function validateRampForm() {
@@ -1168,6 +1183,7 @@
 
         hideRampError();
         const ramp_submission = serializeRampForm();
+        ramp_submission.ramp_name = getRampNameFromModal();
 
         // Preserve user's entered values so "No, Edit Again" can reopen with them
         ChatState.pendingRampWeeks = ramp_submission.weeks;
@@ -1207,6 +1223,35 @@
         const div = document.createElement('div');
         div.appendChild(document.createTextNode(text));
         return div.innerHTML;
+    }
+
+    function populateBreakdownModal(data) {
+        const rows = (data.per_ramp || []).map(r => `
+            <tr>
+                <td>${escapeHtml(r.ramp_name)}</td>
+                <td class="text-end ${r.fte_change >= 0 ? 'text-success' : 'text-danger'}">
+                    ${r.fte_change >= 0 ? '+' : ''}${r.fte_change.toLocaleString()}
+                </td>
+                <td class="text-end ${r.cap_change >= 0 ? 'text-success' : 'text-danger'}">
+                    ${r.cap_change >= 0 ? '+' : ''}${r.cap_change.toLocaleString(undefined, {maximumFractionDigits: 1})}
+                </td>
+            </tr>`).join('');
+
+        document.getElementById('ramp-breakdown-body').innerHTML = `
+            <div class="mb-3 p-2 bg-light rounded">
+                <span class="me-4"><strong>Client Forecast:</strong> ${(data.forecast || 0).toLocaleString()}</span>
+                <span><strong>FTE Required:</strong> ${(data.fte_required || 0).toLocaleString()}</span>
+            </div>
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Ramp</th>
+                        <th class="text-end">FTE Available Change</th>
+                        <th class="text-end">Capacity Change</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
     }
 
     // ── Ramp WS message handlers ─────────────────────────────────────────────
@@ -1419,6 +1464,18 @@
     }
 
     function attachBulkRampApplyListeners() {
+        // View Breakdown button
+        elements.messagesArea.querySelectorAll('.ramp-view-breakdown-btn').forEach(btn => {
+            if (btn.hasAttribute('data-listener-attached')) return;
+            btn.setAttribute('data-listener-attached', 'true');
+            btn.addEventListener('click', function () {
+                const raw = this.getAttribute('data-breakdown').replace(/&amp;quot;/g, '"').replace(/&quot;/g, '"');
+                const data = JSON.parse(raw);
+                populateBreakdownModal(data);
+                document.getElementById('ramp-breakdown-modal').style.display = 'flex';
+            });
+        });
+
         const applyBtns = elements.messagesArea.querySelectorAll('.bulk-ramp-apply-btn');
         applyBtns.forEach(btn => {
             if (!btn.hasAttribute('data-listener-attached')) {
@@ -1738,6 +1795,22 @@
             elements.bulkRampModal.addEventListener('click', (e) => {
                 if (e.target === elements.bulkRampModal) {
                     closeBulkRampModal();
+                }
+            });
+        }
+
+        // Breakdown modal close
+        const breakdownModal = document.getElementById('ramp-breakdown-modal');
+        const breakdownCloseBtn = document.getElementById('ramp-breakdown-close-btn');
+        if (breakdownCloseBtn) {
+            breakdownCloseBtn.addEventListener('click', function () {
+                breakdownModal.style.display = 'none';
+            });
+        }
+        if (breakdownModal) {
+            breakdownModal.addEventListener('click', (e) => {
+                if (e.target === breakdownModal) {
+                    breakdownModal.style.display = 'none';
                 }
             });
         }

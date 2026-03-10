@@ -1561,6 +1561,118 @@ def generate_bulk_ramp_confirmation_ui(
     '''
 
 
+def generate_ramp_new_preview_ui(
+    ramp_name: str,
+    fte_delta: int,
+    cap_delta: float,
+    forecast: float,
+    fte_required: int,
+    month_label: str,
+    row_label: str,
+) -> str:
+    """
+    Generate a compact delta-only preview card for a single new ramp setup.
+
+    Shows what the new ramp adds (FTE Available delta, Capacity delta)
+    alongside static context values (Client Forecast, FTE Required).
+
+    Two action buttons:
+      - "Confirm Apply" → class="ramp-apply-btn"
+      - "Cancel"        → class="ramp-cancel-btn"
+
+    Args:
+        ramp_name: Name of the ramp being applied
+        fte_delta: Change in FTE Available (positive = added headcount)
+        cap_delta: Change in Capacity (positive = added capacity)
+        forecast: Client Forecast value (static, no change)
+        fte_required: FTE Required value (static, no change)
+        month_label: Human-readable month label (e.g. "January 2026")
+        row_label: Human-readable row identifier (e.g. "Amisys | CA | Claims")
+
+    Returns:
+        HTML string for ramp new preview card
+    """
+    safe_ramp = html_module.escape(str(ramp_name))
+    safe_month = html_module.escape(str(month_label))
+    safe_row = html_module.escape(str(row_label))
+
+    def _delta_class(val):
+        if isinstance(val, (int, float)):
+            if val > 0:
+                return "text-success"
+            if val < 0:
+                return "text-danger"
+        return "text-muted"
+
+    def _delta_fmt(val):
+        if isinstance(val, (int, float)):
+            prefix = "+" if val > 0 else ""
+            if isinstance(val, float):
+                return f"{prefix}{val:,.1f}"
+            return f"{prefix}{int(val):,}"
+        return str(val)
+
+    def _fmt(val):
+        if isinstance(val, float):
+            return f"{val:,.1f}"
+        if isinstance(val, int):
+            return f"{val:,}"
+        return str(val)
+
+    fte_delta_class = _delta_class(fte_delta)
+    cap_delta_class = _delta_class(cap_delta)
+
+    logger.info(f"[UI Tools] Generated ramp new preview UI for {ramp_name} | {month_label}")
+    return f'''
+    <div class="ramp-preview-card card border-primary">
+        <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between">
+            <strong>New Ramp Preview &mdash; {safe_ramp}</strong>
+            <span class="badge bg-white text-primary">{safe_month}</span>
+        </div>
+        <div class="card-body">
+            <p class="mb-3 text-muted"><small><strong>Row:</strong> {safe_row}</small></p>
+            <table class="table table-sm table-bordered mb-3">
+                <thead class="table-light">
+                    <tr>
+                        <th>Field</th>
+                        <th class="text-end">Change</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>FTE Available</td>
+                        <td class="text-end {fte_delta_class}"><strong>{_delta_fmt(fte_delta)}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Capacity</td>
+                        <td class="text-end {cap_delta_class}"><strong>{_delta_fmt(cap_delta)}</strong></td>
+                    </tr>
+                    <tr class="table-light">
+                        <td colspan="2"><hr class="my-1"></td>
+                    </tr>
+                    <tr>
+                        <td>Client Forecast</td>
+                        <td class="text-end">{_fmt(forecast)}</td>
+                    </tr>
+                    <tr>
+                        <td>FTE Required</td>
+                        <td class="text-end">{_fmt(fte_required)}</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary ramp-apply-btn">
+                    Confirm Apply
+                </button>
+                <button class="btn btn-outline-secondary ramp-cancel-btn">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    '''
+
+
 def generate_bulk_ramp_preview_ui(
     per_ramp_previews: list,
     aggregated_diff: dict,
@@ -1569,11 +1681,18 @@ def generate_bulk_ramp_preview_ui(
     row_label: str,
 ) -> str:
     """
-    Generate a preview card showing per-ramp and aggregated impact.
+    Generate a summary preview card for bulk ramp edits.
+
+    Shows a 4-metric summary table (Before/After/Change) plus a
+    "View Breakdown" button that opens a modal with per-ramp detail.
+
+    Two action buttons:
+      - "Confirm Apply"   → class="bulk-ramp-apply-btn"
+      - "Cancel"          → class="bulk-ramp-cancel-btn"
 
     Args:
         per_ramp_previews: List of {ramp_name, current, projected, diff} dicts
-        aggregated_diff: {fte_available, capacity} aggregated across all ramps
+        aggregated_diff: {fte_available, capacity} aggregated across all ramps (unused, kept for compat)
         aggregated: Overall before/after values including forecast, fte_required, gaps
         month_label: Human-readable month label
         row_label: Human-readable row identifier
@@ -1587,7 +1706,7 @@ def generate_bulk_ramp_preview_ui(
     def _fmt(val):
         if isinstance(val, float):
             return f"{val:,.1f}"
-        if isinstance(val, (int,)):
+        if isinstance(val, int):
             return f"{val:,}"
         return str(val)
 
@@ -1602,83 +1721,55 @@ def generate_bulk_ramp_preview_ui(
     def _diff_fmt(val):
         if isinstance(val, (int, float)):
             prefix = "+" if val > 0 else ""
-            return f"{prefix}{_fmt(val)}"
+            if isinstance(val, float):
+                return f"{prefix}{val:,.1f}"
+            return f"{prefix}{int(val):,}"
         return str(val)
 
-    per_ramp_html = ""
-    for preview in per_ramp_previews:
-        ramp_name = html_module.escape(str(preview.get('ramp_name', 'Default')))
-        cur = preview.get('current', {})
-        proj = preview.get('projected', {})
-        diff = preview.get('diff', {})
-
-        fields = [
-            ('fte_required', 'FTE Required'),
-            ('fte_available', 'FTE Available'),
-            ('capacity', 'Capacity'),
-            ('gap', 'Gap'),
-        ]
-        field_rows = ""
-        for fk, fl in fields:
-            dv = diff.get(fk, 0)
-            field_rows += f'''
-                <tr>
-                    <td>{html_module.escape(fl)}</td>
-                    <td class="text-end">{_fmt(cur.get(fk, 0))}</td>
-                    <td class="text-end">{_fmt(proj.get(fk, 0))}</td>
-                    <td class="text-end {_diff_class(dv)}"><strong>{_diff_fmt(dv)}</strong></td>
-                </tr>
-            '''
-
-        per_ramp_html += f'''
-        <div class="mb-3">
-            <h6 class="fw-bold">{ramp_name}</h6>
-            <table class="table table-sm table-bordered mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Field</th>
-                        <th class="text-end">Current</th>
-                        <th class="text-end">Projected</th>
-                        <th class="text-end">Change</th>
-                    </tr>
-                </thead>
-                <tbody>{field_rows}</tbody>
-            </table>
-        </div>
-        '''
-
-    # Overall impact table (before / after / change for FTE Available, Capacity, Gap vs Forecast)
-    overall_rows = ""
+    # Summary table rows
     overall_fields = [
-        ('forecast',          'Client Forecast',  'forecast',           None,           None),
-        ('fte_required',      'FTE Required',     'fte_required',       None,           None),
-        ('fte_available',     'FTE Available',    'fte_available_before', 'fte_available_after', 'fte_available_delta'),
-        ('capacity',          'Capacity',         'capacity_before',    'capacity_after', 'capacity_delta'),
-        ('gap',               'Gap vs Forecast',  'gap_before',         'gap_after',    'gap_delta'),
+        ('Client Forecast', 'forecast',           None,                   None,             None),
+        ('FTE Required',    'fte_required',        None,                   None,             None),
+        ('FTE Available',   'fte_available',       'fte_available_before', 'fte_available_after', 'fte_available_delta'),
+        ('Capacity',        'capacity',            'capacity_before',      'capacity_after', 'capacity_delta'),
     ]
-    for _fk, fl, before_key, after_key, delta_key in overall_fields:
-        before_val = aggregated.get(before_key, 0) if before_key else None
-        after_val = aggregated.get(after_key, 0) if after_key else None
-        delta_val = aggregated.get(delta_key, 0) if delta_key else None
-
+    overall_rows = ""
+    for fl, static_key, before_key, after_key, delta_key in overall_fields:
         if after_key is None:
-            # Static rows (forecast, fte_required) — show single value spanning after/change
+            val = aggregated.get(static_key, 0)
             overall_rows += f'''
                 <tr>
                     <td>{html_module.escape(fl)}</td>
-                    <td class="text-end" colspan="3"><strong>{_fmt(before_val)}</strong></td>
+                    <td class="text-end" colspan="3"><strong>{_fmt(val)}</strong></td>
                 </tr>
             '''
         else:
-            dv = delta_val if delta_val is not None else 0
+            bv = aggregated.get(before_key, 0)
+            av = aggregated.get(after_key, 0)
+            dv = aggregated.get(delta_key, 0)
             overall_rows += f'''
                 <tr>
                     <td>{html_module.escape(fl)}</td>
-                    <td class="text-end">{_fmt(before_val)}</td>
-                    <td class="text-end">{_fmt(after_val)}</td>
+                    <td class="text-end">{_fmt(bv)}</td>
+                    <td class="text-end">{_fmt(av)}</td>
                     <td class="text-end {_diff_class(dv)}"><strong>{_diff_fmt(dv)}</strong></td>
                 </tr>
             '''
+
+    # Build data-breakdown JSON for the "View Breakdown" button
+    breakdown_data = {
+        "forecast": aggregated.get('forecast', 0),
+        "fte_required": aggregated.get('fte_required', 0),
+        "per_ramp": [
+            {
+                "ramp_name": p.get('ramp_name', 'Default'),
+                "fte_change": p.get('diff', {}).get('fte_available', 0),
+                "cap_change": p.get('diff', {}).get('capacity', 0),
+            }
+            for p in per_ramp_previews
+        ],
+    }
+    breakdown_json = html_module.escape(json.dumps(breakdown_data))
 
     logger.info(f"[UI Tools] Generated bulk ramp preview UI ({len(per_ramp_previews)} ramps)")
     return f'''
@@ -1689,22 +1780,24 @@ def generate_bulk_ramp_preview_ui(
         <div class="card-body">
             <p class="mb-1"><strong>Row:</strong> {safe_row}</p>
             <p class="mb-3"><strong>Month:</strong> {safe_month}</p>
-            <p class="text-muted mb-3"><small>Review the projected changes per ramp before applying.</small></p>
+            <p class="text-muted mb-3"><small>Review the projected changes before applying.</small></p>
+            <table class="table table-sm table-bordered mb-3">
+                <thead class="table-light">
+                    <tr>
+                        <th>Field</th>
+                        <th class="text-end">Before</th>
+                        <th class="text-end">After</th>
+                        <th class="text-end">Change</th>
+                    </tr>
+                </thead>
+                <tbody>{overall_rows}</tbody>
+            </table>
             <div class="mb-3">
-                <h6 class="fw-bold">Overall Impact</h6>
-                <table class="table table-sm table-bordered mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Field</th>
-                            <th class="text-end">Before</th>
-                            <th class="text-end">After</th>
-                            <th class="text-end">Change</th>
-                        </tr>
-                    </thead>
-                    <tbody>{overall_rows}</tbody>
-                </table>
+                <button class="btn btn-sm btn-outline-info ramp-view-breakdown-btn"
+                        data-breakdown="{breakdown_json}">
+                    View Breakdown
+                </button>
             </div>
-            {per_ramp_html}
             <div class="d-flex gap-2">
                 <button class="btn btn-primary bulk-ramp-apply-btn">
                     Confirm Apply
