@@ -1,0 +1,310 @@
+erDiagram
+
+    forecastmodel {
+        int id PK
+        string Centene_Capacity_Plan_Main_LOB
+        string Centene_Capacity_Plan_State
+        string Centene_Capacity_Plan_Case_Type
+        string Centene_Capacity_Plan_Call_Type_ID
+        int Centene_Capacity_Plan_Target_CPH
+        int Client_Forecast_Month1
+        int Client_Forecast_Month2
+        int Client_Forecast_Month3
+        int Client_Forecast_Month4
+        int Client_Forecast_Month5
+        int Client_Forecast_Month6
+        int FTE_Required_Month1
+        int FTE_Required_Month2
+        int FTE_Required_Month3
+        int FTE_Required_Month4
+        int FTE_Required_Month5
+        int FTE_Required_Month6
+        int FTE_Avail_Month1
+        int FTE_Avail_Month2
+        int FTE_Avail_Month3
+        int FTE_Avail_Month4
+        int FTE_Avail_Month5
+        int FTE_Avail_Month6
+        int Capacity_Month1
+        int Capacity_Month2
+        int Capacity_Month3
+        int Capacity_Month4
+        int Capacity_Month5
+        int Capacity_Month6
+        string Month
+        int Year
+        string UploadedFile
+        string CreatedBy
+        datetime CreatedDateTime
+        datetime UpdatedDateTime
+        string UpdatedBy
+    }
+
+    target_cph_configuration {
+        int id PK
+        string MainLOB
+        string CaseType
+        float TargetCPH
+        string CreatedBy
+        datetime CreatedDateTime
+        string UpdatedBy
+        datetime UpdatedDateTime
+    }
+
+    monthconfigurationmodel {
+        int id PK
+        string Month
+        int Year
+        string WorkType
+        int WorkingDays
+        float Occupancy
+        float Shrinkage
+        float WorkHours
+        string CreatedBy
+        datetime CreatedDateTime
+        string UpdatedBy
+        datetime UpdatedDateTime
+    }
+
+    rostertemplate {
+        int id PK
+        string FirstName
+        string LastName
+        string CN
+        string OPID
+        string Location
+        string ZIPCode
+        string City
+        string BeelineTitle
+        string Status
+        string PrimaryPlatform
+        string PrimaryMarket
+        string Worktype
+        string LOB
+        string SupervisorFullName
+        string SupervisorCNNo
+        string UserStatus
+        string PartofProduction
+        string ProductionPercentage
+        string NewWorkType
+        string State
+        string CenteneMailId
+        string NTTMailID
+        string Month
+        int Year
+        string UploadedFile
+        string CreatedBy
+        datetime CreatedDateTime
+        string UpdatedBy
+        datetime UpdatedDateTime
+    }
+
+    rostermodel {
+        int id PK
+        string Platform
+        string WorkType
+        string State
+        string Product
+        string Location
+        string ResourceStatus
+        string Status
+        string FirstName
+        string LastName
+        string PortalId
+        string CN
+        string WorkdayId
+        string HireDate_AmisysStartDate
+        string OPID
+        string Position
+        string TL
+        string Supervisor
+        string PrimarySkills
+        string SecondarySkills
+        string City
+        string RampStartDate
+        string RampEndDate
+        string CPH
+        string ProductionStartDate
+        string Month
+        int Year
+        string UploadedFile
+        string CreatedBy
+        datetime CreatedDateTime
+        string UpdatedBy
+        datetime UpdatedDateTime
+    }
+
+    skillingmodel {
+        int id PK
+        string Position
+        string FirstName
+        string LastName
+        string PortalId
+        string Status
+        string Resource_Status
+        string LOB_1
+        string Sub_LOB
+        string Site
+        string Skills
+        string State
+        string Skill_Name
+        float Skill_Split
+        string Month
+        int Year
+        string UploadedFile
+    }
+
+    allocationexecutionmodel {
+        int id PK
+        string execution_id
+        string Month
+        int Year
+        string Status
+        datetime StartTime
+        datetime EndTime
+        float DurationSeconds
+        string ForecastFilename
+        string RosterFilename
+        string RosterMonthUsed
+        int RosterYearUsed
+        bool RosterWasFallback
+        string UploadedBy
+        int RecordsProcessed
+        int RecordsFailed
+        float AllocationSuccessRate
+        string ErrorMessage
+        string ErrorType
+        string StackTrace
+        string ConfigSnapshot
+        bool BenchAllocationCompleted
+        datetime BenchAllocationCompletedAt
+        datetime CreatedDateTime
+    }
+
+    allocationreportsmodel {
+        int id PK
+        string execution_id FK
+        string Month
+        int Year
+        string ReportType
+        text ReportData
+        string CreatedBy
+        datetime CreatedDateTime
+        string UpdatedBy
+        datetime UpdatedDateTime
+    }
+
+    fte_allocation_mapping {
+        int id PK
+        string allocation_execution_id FK
+        string report_month
+        int report_year
+        string main_lob
+        string state
+        string case_type
+        string call_type_id
+        string forecast_month
+        int forecast_year
+        string forecast_month_label
+        int forecast_month_index
+        string cn FK
+        string first_name
+        string last_name
+        string opid
+        string primary_platform
+        string primary_market
+        string location
+        string original_state
+        string worktype
+        string new_work_type
+        string skills
+        string allocation_type
+        datetime created_datetime
+    }
+
+    history_log {
+        int id PK
+        string history_log_id
+        string Month
+        int Year
+        string ChangeType
+        datetime Timestamp
+        string User
+        string Description
+        int RecordsModified
+        text SummaryData
+        string CreatedBy
+        datetime CreatedDateTime
+    }
+
+    history_change {
+        int id PK
+        string history_log_id FK
+        string MainLOB
+        string State
+        string CaseType
+        string CaseID
+        string FieldName
+        string OldValue
+        string NewValue
+        float Delta
+        string MonthLabel
+        datetime CreatedDateTime
+    }
+
+    ramp_model {
+        int id PK
+        int forecast_id FK
+        string month_key
+        string ramp_name
+        string week_label
+        string start_date
+        string end_date
+        int working_days
+        float ramp_percent
+        int employee_count
+        datetime applied_at
+        string applied_by
+    }
+
+    allocation_validity {
+        int id PK
+        string month
+        int year
+        string allocation_execution_id FK
+        bool is_valid
+        datetime created_datetime
+        datetime invalidated_datetime
+        string invalidated_reason
+    }
+
+    forecastmonthsmodel {
+        int id PK
+        string Month1
+        string Month2
+        string Month3
+        string Month4
+        string Month5
+        string Month6
+        string UploadedFile
+        string CreatedBy
+        datetime CreatedDateTime
+    }
+
+    %% Relationships
+
+    forecastmodel ||--o{ ramp_model : "forecast_id → id (one forecast row can have many ramp weeks)"
+
+    allocationexecutionmodel ||--o{ allocationreportsmodel : "execution_id → execution_id (one run generates 3 report types)"
+
+    allocationexecutionmodel ||--o{ fte_allocation_mapping : "execution_id → allocation_execution_id (one run maps many FTEs)"
+
+    allocationexecutionmodel ||--o| allocation_validity : "execution_id → allocation_execution_id (tracks if this run is still valid)"
+
+    history_log ||--o{ history_change : "history_log_id → history_log_id (one log entry has many field changes)"
+
+    rostertemplate ||--o{ fte_allocation_mapping : "CN → cn (employee identity links roster to allocation)"
+
+    target_cph_configuration }o--|| forecastmodel : "MainLOB+CaseType → Main_LOB+Case_Type (logical: CPH config drives forecast calculations)"
+
+    monthconfigurationmodel }o--|| forecastmodel : "Month+Year+WorkType → Month+Year+WorkType (logical: config drives FTE and Capacity values)"

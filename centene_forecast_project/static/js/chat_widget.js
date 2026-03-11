@@ -1040,23 +1040,13 @@
             ChatState.pendingRampForecastId = forecastId;
 
             elements.rampModalTitle.textContent = `Configure Ramp — ${monthKey}`;
-            elements.rampModalBody.innerHTML =
-                `<div class="ramp-name-control mb-3 p-2 border-bottom">
-                    <label class="form-label fw-bold mb-1">Ramp Name</label>
-                    <input type="text" id="ramp-name-input" class="form-control form-control-sm"
-                           value="Default" placeholder="e.g. Default">
-                </div>` + buildWeekCardsHtml(weeks);
+            elements.rampModalBody.innerHTML = buildWeekCardsHtml(weeks);
 
             hideRampError();
             elements.rampModalOverlay.style.display = 'flex';
         } catch (err) {
             console.error('[Chat] Error opening ramp modal:', err);
         }
-    }
-
-    function getRampNameFromModal() {
-        const input = document.getElementById('ramp-name-input');
-        return (input && input.value.trim()) ? input.value.trim() : 'Default';
     }
 
     function buildWeekCardsHtml(weeks) {
@@ -1183,7 +1173,6 @@
 
         hideRampError();
         const ramp_submission = serializeRampForm();
-        ramp_submission.ramp_name = getRampNameFromModal();
 
         // Preserve user's entered values so "No, Edit Again" can reopen with them
         ChatState.pendingRampWeeks = ramp_submission.weeks;

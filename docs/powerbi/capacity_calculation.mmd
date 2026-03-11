@@ -1,0 +1,69 @@
+flowchart TD
+
+    subgraph INPUTS["Input Tables"]
+        A1["forecastmodel<br/>──────────────<br/>Client_Forecast_MonthN<br/>(the volume to be handled)"]
+        A2["target_cph_configuration<br/>──────────────<br/>TargetCPH<br/>(cases an agent handles per hour)<br/>Matched by MainLOB + CaseType"]
+        A3["monthconfigurationmodel<br/>──────────────<br/>WorkingDays  WorkHours  Shrinkage<br/>Matched by Month + Year + WorkType<br/>(Domestic or Global)"]
+        A4["rostertemplate / rostermodel<br/>──────────────<br/>List of employees (CN#)<br/>Filtered by skills and LOB match"]
+    end
+
+    subgraph LOOKUP["Step 1 – Look up config values"]
+        B1["Determine WorkType<br/>from Main LOB string<br/>'DOMESTIC' → Domestic<br/>'GLOBAL' → Global"]
+        B2["Fetch MonthConfig<br/>WorkingDays, WorkHours, Shrinkage<br/>for that WorkType + Month + Year"]
+        B3["Fetch TargetCPH<br/>for that MainLOB + CaseType"]
+    end
+
+    subgraph CALC_FTE_REQ["Step 2 – Calculate FTE Required (per month)"]
+        C1["FTE_Required = CEIL(<br/>  Client_Forecast<br/>  ÷ (WorkingDays × WorkHours × (1 − Shrinkage) × TargetCPH)<br/>)"]
+        C2["Stored in:<br/>forecastmodel.FTE_Required_MonthN"]
+    end
+
+    subgraph ALLOC["Step 3 – Allocation (run by analyst)"]
+        D1["Match employees from roster<br/>to forecast rows by skills and LOB"]
+        D2["Count matched employees → FTE_Available<br/>Stored in forecastmodel.FTE_Avail_MonthN"]
+    end
+
+    subgraph CALC_CAP["Step 4 – Calculate Capacity (per month)"]
+        E1["Capacity = FLOOR(<br/>  FTE_Available<br/>  × WorkingDays × WorkHours × (1 − Shrinkage) × TargetCPH<br/>)"]
+        E2["Stored in:<br/>forecastmodel.Capacity_MonthN"]
+    end
+
+    subgraph GAP["Step 5 – Gap"]
+        F1["Gap = Capacity − Client_Forecast<br/><br/>Positive = Surplus (we can handle more than forecast)<br/>Negative = Shortage (not enough agents)"]
+        F2["Gap is derived — not stored as a column.<br/>Calculated at query time by PowerBI."]
+    end
+
+    subgraph RAMP["Optional – Ramp Adjustment"]
+        G1["ramp_model<br/>──────────────<br/>For new hires not yet at full speed.<br/>Each row = one week of one ramp.<br/>ramp_percent: how productive they are (e.g., 50%)"]
+        G2["Ramp Capacity per week =<br/>employee_count × (ramp_percent ÷ 100)<br/>× TargetCPH × WorkHours × (1 − Shrinkage) × working_days"]
+        G3["Total ramp capacity is added to<br/>forecastmodel.Capacity_MonthN<br/>when ramp is applied"]
+    end
+
+    A1 --> C1
+    A2 --> B3
+    A3 --> B1 --> B2
+    B2 --> C1
+    B3 --> C1
+    C1 --> C2
+
+    A4 --> D1
+    D1 --> D2
+    D2 --> E1
+    B2 --> E1
+    B3 --> E1
+    E1 --> E2
+
+    C2 --> F1
+    E2 --> F1
+    A1 --> F1
+    F1 --> F2
+
+    G1 --> G2 --> G3
+
+    style INPUTS fill:#f0f4ff,stroke:#6b8cff
+    style LOOKUP fill:#fff8e1,stroke:#f5a623
+    style CALC_FTE_REQ fill:#e8f5e9,stroke:#43a047
+    style ALLOC fill:#fce4ec,stroke:#e91e63
+    style CALC_CAP fill:#e8f5e9,stroke:#43a047
+    style GAP fill:#e0f7fa,stroke:#00838f
+    style RAMP fill:#f3e5f5,stroke:#8e24aa

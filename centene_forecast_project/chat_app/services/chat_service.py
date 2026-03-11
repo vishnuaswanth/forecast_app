@@ -15,6 +15,8 @@ Error Handling:
 """
 import logging
 import time
+import uuid
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from django.conf import settings
@@ -557,7 +559,10 @@ class ChatService:
             'totalRampEmployees',
             sum(w.get('rampEmployees', 0) for w in weeks)
         ))
-        ramp_name = str(ramp_submission.get('ramp_name', 'Default')).strip() or 'Default'
+        # Pre-generate a unique name so preview and apply use the same name,
+        # and every new setup call creates a distinct ramp record (additive).
+        date_str = datetime.now(timezone.utc).strftime('%Y%m%d')
+        ramp_name = f"Ramp-{date_str}-{uuid.uuid4().hex[:8]}"
         payload = {"weeks": weeks, "totalRampEmployees": total_ramp_employees, "ramp_name": ramp_name}
 
         await context_manager.update_entities(conversation_id, pending_ramp_data=payload)
@@ -599,7 +604,7 @@ class ChatService:
             Dictionary with ui_component (preview card) and message
         """
         from chat_app.utils.context_manager import get_context_manager
-        from chat_app.services.tools.forecast_tools import call_get_applied_ramp, call_bulk_preview_ramp
+        from chat_app.services.tools.forecast_tools import call_bulk_preview_ramp
         from chat_app.services.tools.ui_tools import generate_ramp_new_preview_ui, generate_error_ui
         import calendar as cal
 
@@ -619,50 +624,25 @@ class ChatService:
             }
 
         forecast_id = int(row_data.get('forecast_id', row_data.get('id', 0)))
-        ramp_name = pending_data.get('ramp_name', 'Default')
+        ramp_name = pending_data.get('ramp_name', '')
         submitted_weeks = pending_data.get('weeks', [])
         total_ramp_employees = pending_data.get(
             'totalRampEmployees',
             sum(w.get('rampEmployees', 0) for w in submitted_weeks)
         )
 
-        # Fetch all existing ramps for this month; exclude the submitted ramp_name
-        # (it will be replaced), keep all others unchanged.
-        existing_ramps_payload = []
-        try:
-            ramp_resp = await call_get_applied_ramp(forecast_id, month_key)
-            if ramp_resp.get('ramp_applied'):
-                for r in ramp_resp.get('ramps', []):
-                    if r['ramp_name'] == ramp_name:
-                        continue  # being replaced by submitted version
-                    existing_ramps_payload.append({
-                        "ramp_name": r['ramp_name'],
-                        "weeks": [
-                            {
-                                "label": w.get('week_label', ''),
-                                "startDate": w.get('start_date', ''),
-                                "endDate": w.get('end_date', ''),
-                                "workingDays": w.get('working_days', 0),
-                                "rampPercent": w.get('ramp_percent', 0),
-                                "rampEmployees": w.get('employee_count', 0),
-                            }
-                            for w in r.get('weeks', [])
-                        ],
-                        "totalRampEmployees": sum(w.get('employee_count', 0) for w in r.get('weeks', [])),
-                    })
-        except Exception:
-            pass  # Non-fatal; preview proceeds with submitted ramp only
-
-        # Append the new/updated ramp
-        existing_ramps_payload.append({
+        # Send only this new ramp. The FastAPI uses current DB totals as the
+        # "before" baseline, so existing ramps need not be re-sent.
+        # ramp_name is pre-generated and matches what apply will use.
+        preview_payload = {"ramps": [{
             "ramp_name": ramp_name,
             "weeks": submitted_weeks,
             "totalRampEmployees": total_ramp_employees,
-        })
+        }]}
 
         try:
             preview_response = await call_bulk_preview_ramp(
-                forecast_id, month_key, {"ramps": existing_ramps_payload}
+                forecast_id, month_key, preview_payload
             )
         except Exception as e:
             logger.error(f"[Chat Service] Ramp preview API error: {e}")
@@ -690,16 +670,15 @@ class ChatService:
         case_type = row_data.get('case_type', 'N/A')
         row_label = f"{main_lob} | {state} | {case_type}"
 
-        submitted_preview = next(
-            (p for p in preview_response.get('per_ramp_previews', []) if p.get('ramp_name') == ramp_name),
-            None,
-        )
+        # Only one ramp in the preview payload, so per_ramp_previews[0] is our ramp.
+        per_ramp_previews = preview_response.get('per_ramp_previews', [])
+        submitted_preview = per_ramp_previews[0] if per_ramp_previews else None
         fte_delta = submitted_preview['diff'].get('fte_available', 0) if submitted_preview else 0
         cap_delta = submitted_preview['diff'].get('capacity', 0) if submitted_preview else 0
         agg = preview_response.get('aggregated', {})
 
         ui = generate_ramp_new_preview_ui(
-            ramp_name=ramp_name,
+            ramp_name="New Ramp",
             fte_delta=fte_delta,
             cap_delta=cap_delta,
             forecast=agg.get('forecast', 0),
