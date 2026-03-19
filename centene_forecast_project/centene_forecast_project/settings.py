@@ -39,6 +39,15 @@ DEBUG = env.bool('DEBUG', default=False)
 
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
 
+# Reverse proxy: IIS terminates HTTPS and forwards plain HTTP to Daphne.
+# Django must trust X-Forwarded-Proto set by IIS to know the original request was HTTPS.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+USE_X_FORWARDED_PORT = True
+
+# CSRF: allow requests from the production HTTPS origin
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+
 # Production security settings (no-op when DEBUG=True and not HTTPS)
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True

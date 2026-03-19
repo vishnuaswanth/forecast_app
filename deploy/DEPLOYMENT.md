@@ -297,6 +297,12 @@ Create or edit `C:\inetpub\wwwroot\web.config` on the IIS site that hosts multip
 <configuration>
   <system.webServer>
     <rewrite>
+      <!-- Allow URL Rewrite to set the X-Forwarded-Proto server variable -->
+      <allowedServerVariables>
+        <add name="HTTP_X_FORWARDED_PROTO" />
+        <add name="HTTP_X_FORWARDED_HOST" />
+      </allowedServerVariables>
+
       <rules>
         <!-- WebSocket upgrade — must come before HTTP rule -->
         <rule name="Centene Forecasting - WebSocket" stopProcessing="true">
@@ -304,12 +310,20 @@ Create or edit `C:\inetpub\wwwroot\web.config` on the IIS site that hosts multip
           <conditions>
             <add input="{HTTP_UPGRADE}" pattern="^WebSocket$" />
           </conditions>
+          <serverVariables>
+            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
+            <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
+          </serverVariables>
           <action type="Rewrite" url="ws://localhost:8000/centene_forecasting/{R:1}" />
         </rule>
 
-        <!-- HTTP traffic (pages + static files via WhiteNoise) → Daphne -->
+        <!-- HTTP/HTTPS traffic (pages + static files via WhiteNoise) → Daphne -->
         <rule name="Centene Forecasting - HTTP" stopProcessing="true">
           <match url="^centene_forecasting/(.*)" />
+          <serverVariables>
+            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
+            <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
+          </serverVariables>
           <action type="Rewrite" url="http://localhost:8000/centene_forecasting/{R:1}" />
         </rule>
 
@@ -323,6 +337,8 @@ Create or edit `C:\inetpub\wwwroot\web.config` on the IIS site that hosts multip
   </system.webServer>
 </configuration>
 ```
+
+> **Note:** The `allowedServerVariables` block is required — IIS URL Rewrite will throw an error if you try to set a server variable that isn't declared there first. The `HTTP_X_FORWARDED_PROTO` variable tells Django (via `SECURE_PROXY_SSL_HEADER`) that the original request came over HTTPS.
 
 ### 6.4 Restart IIS
 
