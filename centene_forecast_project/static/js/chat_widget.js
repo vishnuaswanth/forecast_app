@@ -32,6 +32,38 @@
     };
 
     // ========================================================================
+    // Thinking Bubble State
+    // ========================================================================
+    let thinkingBubble = null;
+
+    function showThinkingBubble() {
+        if (thinkingBubble) return; // already visible
+        const div = document.createElement('div');
+        div.className = 'chat-message chat-message-assistant chat-thinking-bubble';
+        div.innerHTML = `
+            <div class="message-content">
+                <svg class="thinking-icon" viewBox="0 0 24 24" fill="none" stroke="#4a6cf7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                </svg>
+                <div class="thinking-dots-inline">
+                    <span class="thinking-dot"></span>
+                    <span class="thinking-dot"></span>
+                    <span class="thinking-dot"></span>
+                </div>
+            </div>`;
+        elements.messagesArea.appendChild(div);
+        thinkingBubble = div;
+        scrollToBottom();
+    }
+
+    function hideThinkingBubble() {
+        if (thinkingBubble) {
+            thinkingBubble.remove();
+            thinkingBubble = null;
+        }
+    }
+
+    // ========================================================================
     // DOM Elements
     // ========================================================================
     let elements = {};
@@ -229,13 +261,14 @@
 
     function handleTypingIndicator(data) {
         if (data.is_typing) {
-            elements.typingIndicator.style.display = 'flex';
+            showThinkingBubble();
         } else {
-            elements.typingIndicator.style.display = 'none';
+            hideThinkingBubble();
         }
     }
 
     function handleAssistantResponse(data) {
+        hideThinkingBubble();
         const hasUI = data.ui_component && data.ui_component.trim() !== '';
         const hasMessage = data.message && data.message.trim() !== '';
 
@@ -266,6 +299,7 @@
     }
 
     function handleToolResult(data) {
+        hideThinkingBubble();
         if (data.success) {
             // Inject result UI (table, etc.)
             addMessageWithHTML('assistant', data.ui_component);
@@ -279,10 +313,12 @@
     }
 
     function handleRejectionResponse(data) {
+        hideThinkingBubble();
         addMessage('assistant', data.message);
     }
 
     function handleErrorMessage(data) {
+        hideThinkingBubble();
         addMessage('system', `Error: ${data.message}`);
     }
 
@@ -384,6 +420,9 @@
 
         // Send to WebSocket
         sendWebSocketMessage(payload);
+
+        // Show thinking animation while waiting for response
+        showThinkingBubble();
 
         // Clear input
         elements.input.value = '';
@@ -890,13 +929,14 @@
     // CPH Preview and Update Handlers
     // ========================================================================
     function handleCphPreview(data) {
-        // Display preview card with confirm/reject buttons
+        hideThinkingBubble();
         addMessageWithHTML('assistant', data.ui_component);
         attachCphConfirmListeners();
         scrollToBottom();
     }
 
     function handleCphUpdateResult(data) {
+        hideThinkingBubble();
         if (data.success) {
             addMessageWithHTML('assistant', data.ui_component || data.message);
         } else {
@@ -906,6 +946,7 @@
     }
 
     function handleFteDetails(data) {
+        hideThinkingBubble();
         addMessageWithHTML('assistant', data.ui_component);
         scrollToBottom();
     }
@@ -947,8 +988,7 @@
                 actionsDiv.querySelectorAll('button').forEach(b => b.disabled = true);
             }
 
-            // Show processing message
-            addMessage('assistant', 'Processing CPH update...');
+            showThinkingBubble();
         } catch (error) {
             console.error('[Chat] Error confirming CPH update:', error);
             addMessage('system', 'Error: Could not process CPH update.');
@@ -1007,7 +1047,7 @@
         }
 
         sendWebSocketMessage({ type: 'confirm_forecast_fetch', fetch_params: fetchParams });
-        addMessage('assistant', 'Fetching forecast data...');
+        showThinkingBubble();
     }
 
     function handleForecastFetchCancel(event) {
@@ -1246,6 +1286,7 @@
     // ── Ramp WS message handlers ─────────────────────────────────────────────
 
     function handleRampConfirmation(data) {
+        hideThinkingBubble();
         if (data.ui_component) {
             addMessageWithHTML('assistant', data.ui_component);
         } else if (data.message) {
@@ -1256,6 +1297,7 @@
     }
 
     function handleRampPreview(data) {
+        hideThinkingBubble();
         if (data.ui_component) {
             addMessageWithHTML('assistant', data.ui_component);
         } else if (data.message) {
@@ -1266,6 +1308,7 @@
     }
 
     function handleRampApplyResult(data) {
+        hideThinkingBubble();
         if (data.ui_component) {
             addMessageWithHTML('assistant', data.ui_component);
         } else {
