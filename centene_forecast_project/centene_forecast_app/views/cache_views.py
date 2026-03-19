@@ -9,7 +9,8 @@ import logging
 from datetime import datetime
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, permission_required
+from centene_forecast_app.app_utils.auth import get_permission_name
 
 from centene_forecast_app.app_utils.cache_utils import (
     get_cache_stats,
@@ -49,6 +50,8 @@ def _serialize_cache_error(message: str, status_code: int) -> dict:
 # ============================================================================
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def cache_stats_view(request):
     """
@@ -86,6 +89,8 @@ def cache_stats_view(request):
 
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def inspect_cache_view(request):
     """
@@ -147,6 +152,8 @@ def inspect_cache_view(request):
 # ============================================================================
 
 
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
 @require_http_methods(["POST"])
 def clear_forecast_cache_view(request):
     """
@@ -194,6 +201,8 @@ def clear_forecast_cache_view(request):
 
 
 
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
 @require_http_methods(["POST"])
 def clear_roster_cache_view(request):
     """
@@ -242,6 +251,8 @@ def clear_roster_cache_view(request):
 
 
 
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
 @require_http_methods(["POST"])
 def clear_summary_cache_view(request):
     """
@@ -290,6 +301,8 @@ def clear_summary_cache_view(request):
 
 
 
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
 @require_http_methods(["POST"])
 def clear_cascade_caches_view(request):
     """
@@ -319,6 +332,8 @@ def clear_cascade_caches_view(request):
 
 
 
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
 @require_http_methods(["POST"])
 def clear_all_caches_view(request):
     """
@@ -363,6 +378,8 @@ def clear_all_caches_view(request):
 # ============================================================================
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def cache_config_view(request):
     """

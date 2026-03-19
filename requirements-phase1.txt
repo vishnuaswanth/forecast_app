@@ -5,7 +5,6 @@ django-cors-headers
 ldap3
 whitenoise
 pandas
-django-q2
 openpyxl
 mssql-django
 django-extensions

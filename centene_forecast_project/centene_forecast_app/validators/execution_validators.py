@@ -427,59 +427,6 @@ def validate_kpi_filters(request_params) -> Dict:
         raise
 
 
-# ============================================================================
-# Convenience Validation Functions
-# ============================================================================
-
-def is_valid_uuid(uuid_string: str) -> bool:
-    """
-    Check if a string is a valid UUID format without raising exception.
-
-    Args:
-        uuid_string: String to check
-
-    Returns:
-        True if valid UUID format, False otherwise
-
-    Example:
-        >>> is_valid_uuid("550e8400-e29b-41d4-a716-446655440000")
-        True
-        >>> is_valid_uuid("not-a-uuid")
-        False
-    """
-    try:
-        validate_execution_id(uuid_string)
-        return True
-    except ValidationError:
-        return False
-
-
-def sanitize_string(value: str, max_length: int = 255) -> str:
-    """
-    Sanitize string input by stripping whitespace and enforcing max length.
-
-    Args:
-        value: String to sanitize
-        max_length: Maximum allowed length
-
-    Returns:
-        Sanitized string
-
-    Example:
-        >>> sanitize_string("  hello world  ")
-        'hello world'
-    """
-    if not value:
-        return ""
-
-    sanitized = value.strip()
-
-    if len(sanitized) > max_length:
-        logger.warning(f"String truncated from {len(sanitized)} to {max_length} chars")
-        sanitized = sanitized[:max_length]
-
-    return sanitized
-
 
 # Example usage in views:
 # from execution_validators import validate_execution_filters, ValidationError

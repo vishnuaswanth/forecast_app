@@ -13,8 +13,10 @@ import json
 import logging
 from django.shortcuts import render
 from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required, permission_required
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from centene_forecast_app.app_utils.auth import get_permission_name
 
 from centene_forecast_app.services.configuration_service import (
     get_month_configurations,
@@ -62,6 +64,8 @@ logger = logging.getLogger('django')
 # PAGE VIEW
 # ============================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def configuration_view_page(request):
     """
@@ -101,8 +105,9 @@ def configuration_view_page(request):
 # MONTH CONFIGURATION API ENDPOINTS
 # ============================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def month_config_list_api(request):
     """
     API: Get month configurations with optional filtering.
@@ -180,8 +185,9 @@ def month_config_list_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def month_config_create_api(request):
     """
     API: Create a new month configuration.
@@ -258,8 +264,9 @@ def month_config_create_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def month_config_bulk_create_api(request):
     """
     API: Bulk create month configurations.
@@ -339,8 +346,9 @@ def month_config_bulk_create_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["PUT"])
-@csrf_exempt
 def month_config_update_api(request, config_id):
     """
     API: Update an existing month configuration.
@@ -417,8 +425,9 @@ def month_config_update_api(request, config_id):
         )
 
 
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
 @require_http_methods(["DELETE"])
-@csrf_exempt
 def month_config_delete_api(request, config_id):
     """
     API: Delete a month configuration.
@@ -481,8 +490,9 @@ def month_config_delete_api(request, config_id):
         )
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def month_config_validate_api(request):
     """
     API: Validate month configurations for orphaned records.
@@ -539,8 +549,9 @@ def month_config_validate_api(request):
 # TARGET CPH CONFIGURATION API ENDPOINTS
 # ============================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def target_cph_list_api(request):
     """
     API: Get Target CPH configurations with optional filtering.
@@ -599,8 +610,9 @@ def target_cph_list_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def target_cph_create_api(request):
     """
     API: Create a new Target CPH configuration.
@@ -672,8 +684,9 @@ def target_cph_create_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def target_cph_bulk_create_api(request):
     """
     API: Bulk create Target CPH configurations.
@@ -750,8 +763,9 @@ def target_cph_bulk_create_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["PUT"])
-@csrf_exempt
 def target_cph_update_api(request, config_id):
     """
     API: Update an existing Target CPH configuration.
@@ -824,8 +838,9 @@ def target_cph_update_api(request, config_id):
         )
 
 
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
 @require_http_methods(["DELETE"])
-@csrf_exempt
 def target_cph_delete_api(request, config_id):
     """
     API: Delete a Target CPH configuration.
@@ -878,8 +893,9 @@ def target_cph_delete_api(request, config_id):
         )
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def target_cph_distinct_lobs_api(request):
     """
     API: Get distinct Main LOB values for dropdown.
@@ -927,8 +943,9 @@ def target_cph_distinct_lobs_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def target_cph_distinct_case_types_api(request):
     """
     API: Get distinct Case Type values for dropdown.

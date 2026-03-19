@@ -118,6 +118,7 @@ def manager_view_page(request):
         )
 
 @login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 @csrf_exempt  # Safe for read-only GET requests
 def manager_view_data_api(request):
@@ -223,6 +224,7 @@ def manager_view_data_api(request):
         )
 
 @login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 @csrf_exempt  # Safe for read-only GET requests
 def manager_view_kpi_api(request):
@@ -333,33 +335,3 @@ def manager_view_kpi_api(request):
         )
 
 
-# Optional: Health check endpoint for monitoring
-@require_http_methods(["GET"])
-def manager_view_health(request):
-    """
-    Health check endpoint for monitoring.
-    
-    URL: /reports/api/manager-view/health/
-    
-    Returns:
-        JSON response with system health status
-    """
-    try:
-        # Test API client connection
-        client = get_api_client()
-        filters = client.get_manager_view_filters()
-        
-        return JsonResponse({
-            'status': 'healthy',
-            'service': 'manager_view',
-            'available_report_months': len(filters['report_months']),
-            'available_categories': len(filters['categories'])
-        }, status=200)
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return JsonResponse({
-            'status': 'unhealthy',
-            'service': 'manager_view',
-            'error': str(e)
-        }, status=503)

@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Deploy Centene Forecasting on Windows via NSSM (Non-Sucking Service Manager).
-    Registers two Windows services: CenteneForecasting (daphne ASGI) and CenteneQ (Django-Q worker).
+    Registers the CenteneForecasting Windows service (daphne ASGI).
 
 .NOTES
     Prerequisites:
@@ -88,25 +88,6 @@ function Register-DaphneService {
     Write-Host "[OK] $ServiceName registered." -ForegroundColor Green
 }
 
-function Register-QClusterService {
-    $ServiceName = "CenteneQ"
-    Stop-AndRemove-Service $ServiceName
-
-    Write-Host "Registering $ServiceName service..." -ForegroundColor Cyan
-    & $NssmPath install $ServiceName $VenvPython
-    & $NssmPath set $ServiceName AppParameters "manage.py qcluster"
-    & $NssmPath set $ServiceName AppDirectory $DjangoDir
-    & $NssmPath set $ServiceName DisplayName "Centene Forecasting Django-Q Worker"
-    & $NssmPath set $ServiceName Description "Django-Q background task worker for Centene Forecasting."
-    & $NssmPath set $ServiceName Start SERVICE_AUTO_START
-    & $NssmPath set $ServiceName AppStdout "$LogDir\qcluster_stdout.log"
-    & $NssmPath set $ServiceName AppStderr "$LogDir\qcluster_stderr.log"
-    & $NssmPath set $ServiceName AppRotateFiles 1
-    & $NssmPath set $ServiceName AppRotateSeconds 86400
-    & $NssmPath set $ServiceName AppRotateBytes 5242880
-    Set-ServiceEnvironment $ServiceName $EnvVars
-    Write-Host "[OK] $ServiceName registered." -ForegroundColor Green
-}
 
 # =============================================================================
 # MAIN
@@ -138,17 +119,15 @@ Write-Host "[OK] Environment variables set." -ForegroundColor Green
 
 # Register services
 Register-DaphneService
-Register-QClusterService
 
 # Start services
 Write-Host "Starting services..." -ForegroundColor Cyan
 Start-Service -Name "CenteneForecasting" -ErrorAction SilentlyContinue
-Start-Service -Name "CenteneQ" -ErrorAction SilentlyContinue
 
 # Status summary
 Write-Host ""
 Write-Host "=== Service Status ===" -ForegroundColor White
-Get-Service -Name "CenteneForecasting", "CenteneQ" | Format-Table Name, Status, DisplayName -AutoSize
+Get-Service -Name "CenteneForecasting" | Format-Table Name, Status, DisplayName -AutoSize
 
 Write-Host ""
 Write-Host "Setup complete." -ForegroundColor Green

@@ -78,21 +78,6 @@ def read_output_json():
     json_data = read_json_from_json_file(file_path=forecast_json_path)
     return json_data
 
-def read_forecast_data(main_lob,worktype):
-    data = read_output_json()
-    filtered = {}
-    for month, recs in data.get('data', {}).items():
-        # apply only the two filters
-        out = []
-        for rec in recs:
-            if main_lob and rec.get('main lob') != main_lob:
-                continue
-            if worktype and rec.get('worktype') != worktype:
-                continue
-            out.append(rec)
-        filtered[month] = out
-    return filtered
-
 def get_tabs_data(output_data, main_lob:str="Main LOB", worktype:str =""):
     tabs_data = []
     month_mapping = output_data.get("tab", {})
@@ -138,32 +123,6 @@ def get_tabs_data(output_data, main_lob:str="Main LOB", worktype:str =""):
 
     return tabs_data
 
-def get_tabs_data_legacy():
-    output_data = read_output_json()
-    tabs_data = []
-    for month in output_data["months"]:
-        tab = {}
-        tab["key"]= month
-        tab["label"] = month
-        tab["data_src"] = f"data"
-        tab["table_url"]= reverse("forecast_app:forecast_table_data")
-        data = output_data['data'][month]
-        cols =[]
-        for col_name in data[0]:
-            col = {}
-            col["data"] = col_name
-            col["title"] = col_name.upper()
-
-            # if col_name.lower() in ['client forecast', 'fte required', 'fte avail', 'capacity']:
-            #     col["editable"] = 'true'
-            # col["className"] = "noVis"
-            
-            cols.append(col)
-        tab["columns"]=cols
-        print(cols)
-        tabs_data.append(tab)
-    return tabs_data
-
 def get_roster_colmns(roster_type, cols):
     objects={}  
     # client = APIClient(base_url="http://127.0.0.1:8080")
@@ -172,27 +131,6 @@ def get_roster_colmns(roster_type, cols):
     objects["table_id"] = "roster"
     objects["table_url"] = reverse("forecast_app:roster_table_data", args=[roster_type])
     objects["table_props"] = {'destroy':True,'ordering':True,'deferRender':True,'scrollX':True,'processing': True,'serverSide': False,}
-    objects["columns"] = cols
-    return objects
-
-def get_actuals_colmns(month, boc, insurance_type, locality, process):
-    cols=[]
-    objects={}
-    file_name ="actuals.json"
-    data = json_actulas(month, boc.lower(), insurance_type.lower(), locality.lower(), process[:3])
-
-    objects["table_id"] = "actuals"
-    objects["table_url"] = reverse("forecast_app:actuals_table_data")
-    objects["table_props"] = {'destroy':True, 'searching':False,'lengthChange':False, 'processing': True,'serverSide': False,}
-    objects["summations"]=['4','5']
-    for col_name in data[0]:
-        col={}
-        col["data"] = col_name
-        if col_name.lower() in ['cph','cdp','ramp']:
-            col["editable"] = 'true'
-        col["title"] = col_name.upper()
-       
-        cols.append(col)
     objects["columns"] = cols
     return objects
 

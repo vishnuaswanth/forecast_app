@@ -8,8 +8,10 @@ Handles page rendering, data fetching, KPI calculations, and file downloads.
 import logging
 from django.shortcuts import render
 from django.http import JsonResponse, StreamingHttpResponse, HttpResponse
+from django.contrib.auth.decorators import login_required, permission_required
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from centene_forecast_app.app_utils.auth import get_permission_name
 
 # Import validators
 from centene_forecast_app.validators.execution_validators import (
@@ -47,6 +49,8 @@ logger = logging.getLogger('django')
 # Page View
 # ============================================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def execution_monitoring_page(request):
     """
@@ -127,8 +131,9 @@ def execution_monitoring_page(request):
 # API Endpoints
 # ============================================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt  # Safe for read-only GET requests
 def execution_list_api(request):
     """
     API endpoint: Get list of executions with filters and pagination.
@@ -212,8 +217,9 @@ def execution_list_api(request):
         return JsonResponse(error_response, status=500)
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def execution_details_api(request, execution_id):
     """
     API endpoint: Get detailed information about a specific execution.
@@ -306,8 +312,9 @@ def execution_details_api(request, execution_id):
         return JsonResponse(error_response, status=500)
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def execution_kpis_api(request):
     """
     API endpoint: Get KPI metrics for executions with optional filters.
@@ -385,8 +392,9 @@ def execution_kpis_api(request):
         return JsonResponse(error_response, status=500)
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def download_execution_report_api(request, execution_id, report_type):
     """
     API endpoint: Download Excel report for a specific execution.
@@ -512,6 +520,8 @@ def download_execution_report_api(request, execution_id, report_type):
 # Health Check (Optional)
 # ============================================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def execution_monitoring_health(request):
     """

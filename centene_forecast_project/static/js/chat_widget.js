@@ -79,7 +79,7 @@
     // ========================================================================
     function connectWebSocket() {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/chat/`;
+        const wsUrl = `${protocol}//${window.location.host}/centene_forecasting/ws/chat/`;
 
         console.log('[Chat] Connecting to WebSocket:', wsUrl);
 

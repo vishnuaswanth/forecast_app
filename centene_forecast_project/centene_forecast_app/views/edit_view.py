@@ -13,8 +13,10 @@ import json
 import logging
 from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
+from django.contrib.auth.decorators import login_required, permission_required
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from centene_forecast_app.app_utils.auth import get_permission_name
 
 from centene_forecast_app.services.edit_service import (
     get_allocation_reports,
@@ -45,6 +47,8 @@ logger = logging.getLogger('django')
 # PAGE VIEW
 # ============================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def edit_view_page(request):
     """
@@ -84,8 +88,9 @@ def edit_view_page(request):
 # API ENDPOINTS
 # ============================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def allocation_reports_api(request):
     """
     API: Get allocation reports for dropdown.
@@ -125,8 +130,9 @@ def allocation_reports_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def bench_allocation_preview_api(request):
     """
     API: Calculate bench allocation preview.
@@ -211,8 +217,9 @@ def bench_allocation_preview_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def bench_allocation_update_api(request):
     """
     API: Accept and save bench allocation changes.
@@ -304,8 +311,9 @@ def bench_allocation_update_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def history_log_api(request):
     """
     API: Get history log entries with pagination.
@@ -394,6 +402,8 @@ def history_log_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
 def download_history_excel_api(request, history_log_id):
     """
@@ -441,8 +451,9 @@ def download_history_excel_api(request, history_log_id):
         )
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def available_change_types_api(request):
     """
     API: Get available change types with colors for history log.
@@ -489,8 +500,9 @@ def available_change_types_api(request):
 # TARGET CPH API ENDPOINTS
 # ============================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def target_cph_data_api(request):
     """
     API: Get CPH records for editing in Target CPH tab.
@@ -573,8 +585,9 @@ def target_cph_data_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def target_cph_preview_api(request):
     """
     API: Calculate CPH change preview (forecast impact).
@@ -677,8 +690,9 @@ def target_cph_preview_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def target_cph_update_api(request):
     """
     API: Accept and save CPH changes.
@@ -783,8 +797,9 @@ def target_cph_update_api(request):
 # FORECAST REALLOCATION API ENDPOINTS
 # ============================================================
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def forecast_reallocation_filters_api(request):
     """
     API: Get filter options (LOBs, States, Case Types) for reallocation.
@@ -865,8 +880,9 @@ def forecast_reallocation_filters_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 @require_http_methods(["GET"])
-@csrf_exempt
 def forecast_reallocation_data_api(request):
     """
     API: Get editable forecast records for reallocation.
@@ -986,8 +1002,9 @@ def forecast_reallocation_data_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def forecast_reallocation_preview_api(request):
     """
     API: Calculate preview with user-edited values.
@@ -1089,8 +1106,9 @@ def forecast_reallocation_preview_api(request):
         )
 
 
+@login_required
+@permission_required(get_permission_name("edit"), raise_exception=True)
 @require_http_methods(["POST"])
-@csrf_exempt
 def forecast_reallocation_update_api(request):
     """
     API: Submit and save reallocation changes.

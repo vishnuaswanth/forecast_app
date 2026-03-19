@@ -110,70 +110,6 @@ class ForecastSerializer:
             )
 
     @staticmethod
-    def serialize_dropdown_data(
-        years: List[Dict[str, str]] = None,
-        months: List[Dict[str, str]] = None,
-        platforms: List[Dict[str, str]] = None,
-        markets: List[Dict[str, str]] = None,
-        localities: List[Dict[str, str]] = None,
-        worktypes: List[Dict[str, str]] = None
-    ) -> Dict[str, Any]:
-        """
-        Serialize multiple dropdown options in one response.
-
-        Args:
-            years: List of year options
-            months: List of month options
-            platforms: List of platform options
-            markets: List of market options
-            localities: List of locality options
-            worktypes: List of worktype options
-
-        Returns:
-            JSON-ready dictionary with all provided dropdown data
-
-        Example:
-            {
-                'success': True,
-                'years': [...],
-                'months': [...],
-                'platforms': [...],
-                'timestamp': '2025-10-22T15:30:00'
-            }
-        """
-        try:
-            response = {
-                'success': True,
-                'timestamp': ForecastSerializer._get_timestamp()
-            }
-
-            if years is not None:
-                response['years'] = years
-            if months is not None:
-                response['months'] = months
-            if platforms is not None:
-                response['platforms'] = platforms
-            if markets is not None:
-                response['markets'] = markets
-            if localities is not None:
-                response['localities'] = localities
-            if worktypes is not None:
-                response['worktypes'] = worktypes
-
-            logger.debug(
-                f"Serialized dropdown data - "
-                f"fields: {', '.join([k for k in response.keys() if k not in ['success', 'timestamp']])}"
-            )
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error serializing dropdown data: {str(e)}")
-            return ForecastSerializer.serialize_error_response(
-                "Failed to serialize dropdown data"
-            )
-
-    @staticmethod
     def serialize_error_response(
         error_message: str,
         status_code: int = 400
@@ -232,20 +168,6 @@ def serialize_cascade_response(
 ) -> Dict[str, Any]:
     """Serialize cascading dropdown response"""
     return ForecastSerializer.serialize_cascade_response(options, option_type)
-
-
-def serialize_dropdown_data(
-    years: List[Dict[str, str]] = None,
-    months: List[Dict[str, str]] = None,
-    platforms: List[Dict[str, str]] = None,
-    markets: List[Dict[str, str]] = None,
-    localities: List[Dict[str, str]] = None,
-    worktypes: List[Dict[str, str]] = None
-) -> Dict[str, Any]:
-    """Serialize multiple dropdown options"""
-    return ForecastSerializer.serialize_dropdown_data(
-        years, months, platforms, markets, localities, worktypes
-    )
 
 
 def serialize_error_response(

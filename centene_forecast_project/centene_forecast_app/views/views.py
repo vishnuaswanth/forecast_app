@@ -78,6 +78,7 @@ def login_view(request):
     return render(request, "login.html")
 
 @login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 def timezone_selection(request):
     if request.method == 'POST':
         selected_timezone = request.POST.get('timezone')
@@ -97,29 +98,6 @@ def timezone_selection(request):
     }
 
     return render(request,"timezone.html", context)
-
-@login_required
-@permission_required(get_permission_name("view"), raise_exception=True)
-def home_view(request):
-
-    portal_id =  request.session.get('portal_id')
-
-    column_names, row_data = get_table_schema(read_json_file("december_2024.json"))
-
-    user = User.objects.get(username=portal_id)
-    full_name = user.first_name +" "+user.last_name
-
-
-    context = {
-        'title':'Home',
-        'user_name' : full_name,
-        'headers': column_names,
-        'data': row_data[:10],
-        
-    }
-    return render(request,"home.html", context)
-
-
 
 @login_required
 @permission_required(get_permission_name("add"), raise_exception=True)
@@ -742,6 +720,7 @@ def download_data(request):
 
 
 @login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 def claims_capacity_report(request):
     # Exact URL you provided + rs:Embed=true
     print("started")
@@ -770,6 +749,7 @@ def claims_capacity_report(request):
 #     return render(request, "pages/pbi_report.html", context)
 
 @login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
 def redirect_to_allowed_view(request):
     """
     Checks a list of permissions and redirects the user to the first view
@@ -788,6 +768,7 @@ def redirect_to_allowed_view(request):
     # Fallback if no permissions match
     return redirect("forecast_app:employee_roster")
 
+@login_required
 @permission_required(get_permission_name('add'), raise_exception=True)
 def check_progress(request):
     file_upload_id = request.GET.get('file_upload_id')

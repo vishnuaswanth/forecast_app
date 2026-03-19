@@ -67,7 +67,6 @@ INSTALLED_APPS = [
     'chat_app',  # Chat interface with WebSocket
     # external apps
     'channels',  # WebSocket support
-    'django_q',
     'django_extensions',
 ]
 
@@ -203,7 +202,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
-STATIC_URL = '/Centene-app/static/'
+STATIC_URL = '/centene_forecasting/static/'
 
 STATICFILES_DIRS = [
     BASE_DIR / "static",  # Ensure BASE_DIR is defined at the top of settings.py
@@ -220,16 +219,6 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# Background Task (Django-Q)
-
-Q_CLUSTER = {
-    "name": "DjangoQ",
-    "workers": 4,
-    "timeout": 60,
-    "queue_limit": 50,
-    "bulk": 10,
-    "orm": "default",
-}
 
 API_BASE_URL = "http://127.0.0.1:8888"
 

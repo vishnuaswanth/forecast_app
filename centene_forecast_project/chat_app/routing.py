@@ -7,8 +7,8 @@ from . import consumers
 
 websocket_urlpatterns = [
     # Main chat WebSocket endpoint
-    path('ws/chat/', consumers.ChatConsumer.as_asgi()),
+    path('centene_forecasting/ws/chat/', consumers.ChatConsumer.as_asgi()),
 
     # Test WebSocket endpoint for debugging
-    re_path(r'ws/test/$', consumers.TestConsumer.as_asgi()),
+    re_path(r'^centene_forecasting/ws/test/$', consumers.TestConsumer.as_asgi()),
 ]

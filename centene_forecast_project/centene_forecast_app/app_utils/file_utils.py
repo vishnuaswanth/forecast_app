@@ -60,36 +60,4 @@ def excel_file_download():
     else:
         raise Http404("file not found")
 
-def append_json_entry(new_entry, json_file_path=None):
-    """
-    Append a new entry to a JSON file. If the file doesn't exist or cannot be read,
-    start with a new list containing the entry.
-
-    Args:
-        new_entry (dict): The dictionary entry to append.
-        json_file_path (str, optional): Path to the JSON file. If not provided,
-            defaults to settings.BASE_DIR/Exel_file.json.
-
-    Returns:
-        bool: True if the write was successful, False otherwise.
-    """
-    if json_file_path is None:
-        json_file_path = os.path.join(settings.BASE_DIR, "Exel_file.json")
-    
-    # Ensure the directory exists; it's recommended to keep this line to avoid errors.
-    os.makedirs(os.path.dirname(json_file_path), exist_ok=True)
-    
-    try:
-        with open(json_file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            if not isinstance(data, list):
-                data = []
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = []
-    
-    
-        return True
-    except Exception:
-        return False
-
 

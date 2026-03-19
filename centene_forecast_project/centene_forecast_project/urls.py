@@ -16,8 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic import RedirectView
 
 urlpatterns = [
-    path('forecast_app/admin/', admin.site.urls),
-    path('forecast_app/', include(('centene_forecast_app.urls', 'forecast_app'), namespace='forecast_app'))
+    path('centene_forecasting/admin/', admin.site.urls),
+    path('centene_forecasting/', include(('centene_forecast_app.urls', 'forecast_app'), namespace='forecast_app')),
+    # Redirect bare root to the app
+    path('', RedirectView.as_view(url='/centene_forecasting/', permanent=False)),
 ]
