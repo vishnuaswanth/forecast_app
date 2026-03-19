@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from utils import *
 
@@ -15,15 +16,18 @@ def user_profile_name(request):
 
 def user_timezone_name(request):
     if 'timezone' in request.session:
-        time_zone = request.session.get('timezone')
-        utcoffset, is_daylight_saving, tz_abbreviation, tz_fullname = get_timezone_info(time_zone)
-        return {
-            "timezone": time_zone,
-            "utcoffset": utcoffset,
-            "is_daylight_saving": is_daylight_saving,
-            "tz_abbreviation": tz_abbreviation,
-            "tz_fullname": tz_fullname,
-        }
+        try:
+            time_zone = request.session.get('timezone')
+            utcoffset, is_daylight_saving, tz_abbreviation, tz_fullname = get_timezone_info(time_zone)
+            return {
+                "timezone": time_zone,
+                "utcoffset": utcoffset,
+                "is_daylight_saving": is_daylight_saving,
+                "tz_abbreviation": tz_abbreviation,
+                "tz_fullname": tz_fullname,
+            }
+        except Exception:
+            pass
     return {
         "timezone": "",
         "utcoffset": "",
@@ -36,4 +40,5 @@ def combined_context(request):
     context = {}
     context.update(user_profile_name(request))
     context.update(user_timezone_name(request))
+    context['pbirs_claims_capacity_url'] = getattr(settings, 'PBIRS_CLAIMS_CAPACITY_URL', '')
     return context

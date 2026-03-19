@@ -32,12 +32,23 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-h0t!93%i^&wu1a08%)-t^=-1qqowl)l45&b-x2r#lj&v-y-&n4'
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
+
+# Production security settings (no-op when DEBUG=True and not HTTPS)
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+SECURE_SSL_REDIRECT = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
 
 
 # Application definition
@@ -222,23 +233,10 @@ Q_CLUSTER = {
 
 API_BASE_URL = "http://127.0.0.1:8888"
 
-PBIRS_CLAIMS_CAPACITY_URL = (
-    "http://10.111.36.98/reports/powerbi/COMMERCIAL/Centene/"
-    "Claims%20Capacity%20Planning%20Dashboard?rs:Embed=true"
+PBIRS_CLAIMS_CAPACITY_URL = env(
+    'PBIRS_CLAIMS_CAPACITY_URL',
+    default='',
 )
-
-# =============================================================================
-# CHANNEL LAYERS CONFIGURATION (WebSocket Support)
-# =============================================================================
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-        "CONFIG": {
-            "capacity": 100,
-            "expiry": 60,
-        }
-    },
-}
 
 # =============================================================================
 # CHAT CONFIGURATION

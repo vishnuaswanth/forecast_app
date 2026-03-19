@@ -755,28 +755,19 @@ def claims_capacity_report(request):
 
     return render(request, "pbi_frame.html", {"src": src})
 
-@login_required
-@permission_required(get_permission_name("view"), raise_exception=True)
-def pbi_report(request, catalog_path:str):
-    """
-    Renders a Power BI report based on the provided catalog path.
-    """
-    logger.info("Entered pbi_report for user: %s", request.user.username)
-    if not catalog_path:
-        logger.warning("No catalog_path provided in request")
-        return JsonResponse({'error': 'No catalog path provided'}, status=400)
-    
-    return 
-    # Decode URL-encoded path
-    decoded_path = urllib.parse.unquote(catalog_path)
-    report_url = f"https://app.powerbi.com/reportEmbed?reportId={decoded_path}&autoAuth=true&ctid=72f988bf-86f1-41af-91ab-2d7cd011db47"
-    
-    context = {
-        'title': 'Power BI Report',
-        'report_url': report_url
-    }
-    logger.info("Rendering pbi_report page for user: %s with report_url: %s", request.user.username, report_url)
-    return render(request, "pages/pbi_report.html", context)
+# pbi_report is not in use — URL already commented out in urls.py
+# @login_required
+# @permission_required(get_permission_name("view"), raise_exception=True)
+# def pbi_report(request, catalog_path: str):
+#     logger.info("Entered pbi_report for user: %s", request.user.username)
+#     if not catalog_path:
+#         logger.warning("No catalog_path provided in request")
+#         return JsonResponse({'error': 'No catalog path provided'}, status=400)
+#     return
+#     decoded_path = urllib.parse.unquote(catalog_path)
+#     report_url = f"https://app.powerbi.com/reportEmbed?reportId={decoded_path}&autoAuth=true&ctid=72f988bf-86f1-41af-91ab-2d7cd011db47"
+#     context = {'title': 'Power BI Report', 'report_url': report_url}
+#     return render(request, "pages/pbi_report.html", context)
 
 @login_required
 def redirect_to_allowed_view(request):

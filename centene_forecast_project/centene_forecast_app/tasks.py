@@ -1,10 +1,11 @@
 import io
+import logging
 import pandas as pd
 import re
 import time
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from core.models import UploadedFile
+
+logger = logging.getLogger(__name__)
 
 def process_uploaded_file(file_upload_id):
     try:
@@ -31,7 +32,7 @@ def process_uploaded_file(file_upload_id):
                 return
             df = pd.read_excel(xls, sheet_name=sheet_name)
         total = len(df)
-        print(f'total - {total}')
+        logger.info('total - %d', total)
         if total == 0:
             file_upload.status = 'error'
             file_upload.save()
@@ -39,7 +40,7 @@ def process_uploaded_file(file_upload_id):
         for i in range(0, total, 100):
             time.sleep(1)  # Simulate processing delay
             chunk = df.iloc[i:i+100]
-            print(f'insterted data from {i} to {i+100}')
+            logger.info('inserted data from %d to %d', i, i + 100)
             # Bulk insert chunk data into UploadData
             # UploadData.objects.bulk_create([
             #     UploadData(
@@ -55,9 +56,9 @@ def process_uploaded_file(file_upload_id):
         file_upload.status = 'completed'
         file_upload.save()
     except Exception as e:
-       file_upload.status = 'error'
-       print(f'error - {e}')
-       file_upload.save()
+        file_upload.status = 'error'
+        logger.error('error processing upload: %s', e, exc_info=True)
+        file_upload.save()
     
     
     

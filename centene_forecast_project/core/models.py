@@ -1,6 +1,8 @@
+import logging
 from django.db import models
-from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser, BaseUserManager
+
+logger = logging.getLogger(__name__)
 
 class UserManager(BaseUserManager):
     def create_user(self, portal_id, password=None, **extra_fields):
@@ -14,8 +16,8 @@ class UserManager(BaseUserManager):
             user.save(using=self._db)
             return user
         except Exception as e:
-            print(f"the following error occured:{e}")
-    
+            logger.error('error creating user: %s', e, exc_info=True)
+
     def create_superuser(self, portal_id, password=None, **extra_fields):
         """Create and return a superuser."""
         extra_fields.setdefault("is_staff", True)
@@ -47,10 +49,7 @@ class User(AbstractUser):
                 self.username = self.portal_id
             super().save(*args, **kwargs)
         except Exception as e:
-            print(f"the following error occured:{e}")
-        
-    
-User = get_user_model()
+            logger.error('error saving user: %s', e, exc_info=True)
 
 
 class UploadedFile(models.Model):
