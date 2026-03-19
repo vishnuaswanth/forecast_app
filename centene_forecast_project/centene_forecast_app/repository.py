@@ -217,20 +217,7 @@ class APIClient:
 
 
     def get(self, endpoint: str, params: dict = None, headers: dict = None):
-        url = f"{self.base_url}{endpoint}"
-        req_headers = self.headers.copy()
-        if headers:
-            req_headers.update(headers)
-        try:
-            response = requests.get(url, params=params, headers=req_headers, timeout=self.timeout)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            logger.error(f"API call error: {e}")
-            return None
-        except ValueError as e:
-            logger.error(f"JSON decode error: {e}")
-            return None
+        return self._make_request('GET', endpoint, params=params)
 
     @cache_with_ttl(ttl=ManagerViewConfig.FILTERS_TTL, key_prefix='manager_view:filters')
     def get_manager_view_filters(self) -> Dict[str, List[Dict[str, str]]]:
@@ -857,15 +844,10 @@ class APIClient:
             # For multiple status values, use the same param key multiple times
             params['status'] = status
 
-        try:
-            logger.debug(f"[Execution List] Fetching with params: {params}")
-            response = self._make_request('GET', endpoint, params=params)
-            logger.info(f"[Execution List] Fetched {len(response.get('data', []))} executions")
-            return response
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"[Execution List Error] Failed to fetch executions: {e}")
-            raise
+        logger.debug(f"[Execution List] Fetching with params: {params}")
+        response = self._make_request('GET', endpoint, params=params)
+        logger.info(f"[Execution List] Fetched {len(response.get('data', []))} executions")
+        return response
 
     def get_execution_details(self, execution_id: str) -> Dict:
         """
@@ -900,33 +882,31 @@ class APIClient:
 
         endpoint = f'/api/allocation/executions/{execution_id}'
 
-        try:
-            logger.debug(f"[Execution Details] Fetching for ID: {execution_id}")
+        logger.debug(f"[Execution Details] Fetching for ID: {execution_id}")
 
-            # First fetch to check status
-            response = self._make_request('GET', endpoint)
-            status = response.get('data', {}).get('status', 'SUCCESS')
+        response = self._make_request('GET', endpoint)
 
-            # Determine TTL based on status
-            if status == 'IN_PROGRESS':
-                ttl = ExecutionMonitoringConfig.DETAIL_CACHE_TTL_IN_PROGRESS
-            else:
-                ttl = ExecutionMonitoringConfig.DETAIL_CACHE_TTL_COMPLETED
+        # Return error dict immediately without caching
+        if not response.get('success', True):
+            logger.warning(f"[Execution Details] API error for {execution_id}: {response.get('error')}")
+            return response
 
-            logger.debug(f"[Execution Details] Status: {status}, Cache TTL: {ttl}s")
+        status = response.get('data', {}).get('status', 'SUCCESS')
 
-            # Apply dynamic caching
-            @cache_with_ttl(ttl=ttl, key_prefix=f'execution_detail:{execution_id}')
-            def _get_cached_details():
-                return response
+        # Determine TTL based on status
+        if status == 'IN_PROGRESS':
+            ttl = ExecutionMonitoringConfig.DETAIL_CACHE_TTL_IN_PROGRESS
+        else:
+            ttl = ExecutionMonitoringConfig.DETAIL_CACHE_TTL_COMPLETED
 
-            cached_response = _get_cached_details()
-            logger.info(f"[Execution Details] Fetched execution {execution_id}")
-            return cached_response
+        logger.debug(f"[Execution Details] Status: {status}, Cache TTL: {ttl}s")
 
-        except requests.exceptions.RequestException as e:
-            logger.error(f"[Execution Details Error] Failed to fetch execution {execution_id}: {e}")
-            raise
+        @cache_with_ttl(ttl=ttl, key_prefix=f'execution_detail:{execution_id}')
+        def _get_cached_details():
+            return response
+
+        logger.info(f"[Execution Details] Fetched execution {execution_id}")
+        return _get_cached_details()
 
     @cache_with_ttl(ttl=60, key_prefix='execution_kpi')
     def get_execution_kpis(
@@ -978,15 +958,10 @@ class APIClient:
         if status and isinstance(status, list):
             params['status'] = status
 
-        try:
-            logger.debug(f"[Execution KPIs] Fetching with params: {params}")
-            response = self._make_request('GET', endpoint, params=params)
-            logger.info(f"[Execution KPIs] Fetched successfully")
-            return response
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"[Execution KPIs Error] Failed to fetch KPIs: {e}")
-            raise
+        logger.debug(f"[Execution KPIs] Fetching with params: {params}")
+        response = self._make_request('GET', endpoint, params=params)
+        logger.info(f"[Execution KPIs] Fetched successfully")
+        return response
 
     def download_execution_report(
         self,
@@ -1479,15 +1454,35 @@ class APIClient:
             >>> len(excel_bytes) > 0
             True
         """
-        # TODO: Replace with actual API call when endpoint is ready
         endpoint = f"/api/history-log/{history_log_id}/download"
         from core.config import EditViewConfig
         timeout = EditViewConfig.DOWNLOAD_TIMEOUT_SECONDS
         url = f"{self.base_url}{endpoint}"
-        response = self.session.get(url, stream=True, timeout=timeout, headers=self.headers)
-        response.raise_for_status()
-        excel_bytes = response.content
-        return excel_bytes
+        try:
+            response = self.session.get(url, stream=True, timeout=timeout, headers=self.headers)
+            if 400 <= response.status_code < 500:
+                error_detail = None
+                try:
+                    error_detail = response.json().get('detail') or f"HTTP {response.status_code}"
+                except Exception:
+                    error_detail = f"HTTP {response.status_code}"
+                logger.warning(f"[Download History Excel] Client error {response.status_code}: {error_detail}")
+                return {'success': False, 'error': error_detail, 'status_code': response.status_code}
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.Timeout:
+            logger.error(f"[Download History Excel] Timeout for history_log_id={history_log_id}")
+            return {'success': False, 'error': 'Request timed out during download', 'status_code': 408}
+        except requests.exceptions.ConnectionError:
+            logger.error(f"[Download History Excel] Connection error for history_log_id={history_log_id}")
+            return {'success': False, 'error': 'Unable to reach the API server', 'status_code': 503}
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response else 500
+            logger.error(f"[Download History Excel] HTTP {status} for history_log_id={history_log_id}")
+            return {'success': False, 'error': str(e), 'status_code': status}
+        except Exception as e:
+            logger.error(f"[Download History Excel] Unexpected error for history_log_id={history_log_id}: {e}")
+            return {'success': False, 'error': str(e), 'status_code': 500}
 
     @cache_with_ttl(ttl=EditViewConfig.CHANGE_TYPES_TTL, key_prefix='edit_view:change_types')
     def get_available_change_types(self) -> Dict:

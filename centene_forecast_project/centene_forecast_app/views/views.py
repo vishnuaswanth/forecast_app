@@ -251,14 +251,17 @@ def forecast_data_table(request):
     logger.debug("Filters from session: month=%s, year=%s, main_lob=%s, worktype=%s", selected_month, selected_year, main_lob, worktype)
     client = get_api_client()
     data = client.get_all_forecast_records(selected_month, selected_year, tab_month, main_lob, worktype)
-    # read_forecast_data(main_lob, worktype)
+    if isinstance(data, dict) and not data.get('success', True):
+        logger.warning("Forecast data API error: %s", data.get('error'))
+        return JsonResponse({"draw": 1, "recordsTotal": 0, "data": [], "error": data.get('error', 'Failed to load forecast data')}, status=data.get('status_code', 500))
+    records = data if isinstance(data, list) else []
     response = {
-        "draw":1,
-        "recordsTotal":len(data),
-        "data": data
+        "draw": 1,
+        "recordsTotal": len(records),
+        "data": records
     }
-    logger.debug("Returning response with %d records", len(data))
-    logger.info(f"completed forecast data call")
+    logger.debug("Returning response with %d records", len(records))
+    logger.info("completed forecast data call")
     return JsonResponse(response, safe=False)
 
 @login_required
@@ -270,16 +273,16 @@ def roster_data_table(request, roster_type:str):
     selected_month, selected_year = keys.get('selected_month'), keys.get('selected_year')
     logger.debug("Filters from session: month=%s, year=%s", selected_month, selected_year)
     client = get_api_client()
-    try:
-        data = client.get_all_roster(roster_type, month=int(selected_month), year=int(selected_year))
-        logger.info("Fetched %d roster records for month=%s, year=%s", len(data), selected_month, selected_year)
-    except Exception as e:
-        logger.exception("Error fetching roster data for month=%s, year=%s: %s", selected_month, selected_year, str(e))
-        data = []
+    data = client.get_all_roster(roster_type, month=int(selected_month), year=int(selected_year))
+    if isinstance(data, dict) and not data.get('success', True):
+        logger.warning("Roster data API error: %s", data.get('error'))
+        return JsonResponse({"draw": 1, "recordsTotal": 0, "data": [], "error": data.get('error', 'Failed to load roster data')}, status=data.get('status_code', 500))
+    records = data if isinstance(data, list) else []
+    logger.info("Fetched %d roster records for month=%s, year=%s", len(records), selected_month, selected_year)
     response = {
         "draw": 1,
-        "recordsTotal": len(data),
-        "data": data
+        "recordsTotal": len(records),
+        "data": records
     }
     logger.debug("Returning response with %d records", len(data))
     return JsonResponse(response, safe=False)

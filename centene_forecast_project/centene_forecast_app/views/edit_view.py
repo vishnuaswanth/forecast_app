@@ -429,11 +429,16 @@ def download_history_excel_api(request, history_log_id):
         client = get_api_client()
 
         # Download Excel bytes
-        excel_bytes = client.download_history_excel(history_log_id)
+        result = client.download_history_excel(history_log_id)
+
+        if isinstance(result, dict) and not result.get('success', True):
+            status_code = result.get('status_code', 500)
+            logger.warning(f"[Edit View API] Excel download API error - ID: {history_log_id}: {result.get('error')}")
+            return JsonResponse(serialize_error_response(result.get('error', 'Download failed'), status_code), status=status_code)
 
         # Create HTTP response with Excel file
         response = HttpResponse(
-            excel_bytes,
+            result,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
         response['Content-Disposition'] = (

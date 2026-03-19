@@ -187,12 +187,13 @@ def execution_list_api(request):
             data = get_executions_list(filters)
         except Exception as e:
             logger.error(f"[Execution List API] Service error: {e}", exc_info=True)
-            error_response = serialize_error_response(
-                "Failed to fetch executions",
-                500,
-                'ServiceError'
-            )
+            error_response = serialize_error_response("Failed to fetch executions", 500, 'ServiceError')
             return JsonResponse(error_response, status=500)
+
+        if not data.get('success', True):
+            status_code = data.get('status_code', 500)
+            error_response = serialize_error_response(data.get('error', 'Failed to fetch executions'), status_code, 'APIError')
+            return JsonResponse(error_response, status=status_code)
 
         # Serialize response
         response = serialize_executions_list_response(data)
@@ -271,26 +272,14 @@ def execution_details_api(request, execution_id):
         try:
             data = get_execution_details(validated_id)
         except Exception as e:
-            error_message = str(e)
-
-            # Check if it's a 404 (execution not found)
-            if '404' in error_message or 'not found' in error_message.lower():
-                logger.warning(f"[Execution Details API] Execution not found: {validated_id}")
-                error_response = serialize_error_response(
-                    f"Execution with ID {validated_id} not found",
-                    404,
-                    'NotFoundError'
-                )
-                return JsonResponse(error_response, status=404)
-
-            # Other service errors
             logger.error(f"[Execution Details API] Service error: {e}", exc_info=True)
-            error_response = serialize_error_response(
-                "Failed to fetch execution details",
-                500,
-                'ServiceError'
-            )
+            error_response = serialize_error_response("Failed to fetch execution details", 500, 'ServiceError')
             return JsonResponse(error_response, status=500)
+
+        if not data.get('success', True):
+            status_code = data.get('status_code', 500)
+            error_response = serialize_error_response(data.get('error', 'Failed to fetch execution details'), status_code, 'APIError')
+            return JsonResponse(error_response, status=status_code)
 
         # Serialize response
         response = serialize_execution_details_response(data)
@@ -365,12 +354,13 @@ def execution_kpis_api(request):
             data = get_execution_kpis(filters)
         except Exception as e:
             logger.error(f"[Execution KPIs API] Service error: {e}", exc_info=True)
-            error_response = serialize_error_response(
-                "Failed to fetch KPIs",
-                500,
-                'ServiceError'
-            )
+            error_response = serialize_error_response("Failed to fetch KPIs", 500, 'ServiceError')
             return JsonResponse(error_response, status=500)
+
+        if not data.get('success', True):
+            status_code = data.get('status_code', 500)
+            error_response = serialize_error_response(data.get('error', 'Failed to fetch KPIs'), status_code, 'APIError')
+            return JsonResponse(error_response, status=status_code)
 
         # Serialize response
         response = serialize_kpi_response(data)

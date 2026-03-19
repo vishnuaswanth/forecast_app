@@ -1,6 +1,6 @@
 # Centene Forecasting — Deployment Guide
 
-**Stack:** Django 5 · Daphne (ASGI) · Django-Q2 · SQLite / MS SQL Server · IIS (reverse proxy) · NSSM (Windows services)
+**Stack:** Django 5 · Daphne (ASGI) · SQLite / MS SQL Server · IIS (reverse proxy) · NSSM (Windows services)
 
 ---
 
@@ -73,7 +73,7 @@ The Django app is a frontend only — the FastAPI backend at `API_BASE_URL` must
 python -c "from chat_app.routing import websocket_urlpatterns; print(websocket_urlpatterns)"
 ```
 
-Should print the `ws/chat/` pattern without import errors.
+Should print the `centene_forecasting/ws/chat/` pattern without import errors.
 
 ### 1.7 Freeze dependencies
 
@@ -114,7 +114,7 @@ xcopy /E /I /Y \\devmachine\share\Centene_Forecasting C:\inetpub\wwwroot\Centene
 ```powershell
 cd C:\inetpub\wwwroot\Centene_Forecasting
 python -m venv .venv
-.venv\Scripts\pip install -r centene_forecast_project\requirements.txt
+.venv\Scripts\pip install -r requirements.txt
 ```
 
 > **Do not** copy the `.venv` from your dev machine — always create a fresh one on the server.
@@ -148,7 +148,7 @@ $env:ALLOWED_HOSTS = "localhost"
 .\.venv\Scripts\python.exe manage.py collectstatic --noinput
 ```
 
-Output lands in `centene_forecast_project\staticfiles\`. Point IIS to this directory for static file serving.
+Output lands in `centene_forecast_project\staticfiles\`. Static files are served by WhiteNoise through Daphne — no IIS virtual directory needed.
 
 ### 3.3 Create an admin user (first deployment only)
 
@@ -198,19 +198,18 @@ The script will:
 1. Validate that `daphne.exe` and `python.exe` exist in the venv
 2. Verify NSSM is installed
 3. Write all variables to the Windows system environment (registry)
-4. Register and start two Windows services:
+4. Register and start one Windows service:
    - **CenteneForecasting** — runs `daphne -b 0.0.0.0 -p 8000 centene_forecast_project.asgi:application`
-   - **CenteneQ** — runs `python manage.py qcluster`
 
-### 4.3 Confirm services are running
+### 4.3 Confirm service is running
 
 ```powershell
-Get-Service CenteneForecasting, CenteneQ | Format-Table Name, Status
+Get-Service CenteneForecasting | Format-Table Name, Status
 ```
 
-Both should show `Status: Running`.
+Should show `Status: Running`.
 
-You can also see them in `services.msc` (Windows Services).
+You can also see it in `services.msc` (Windows Services).
 
 ---
 
@@ -233,7 +232,6 @@ Open a **new** PowerShell window (must be fresh — not the one that ran the scr
 
 ```powershell
 nssm get CenteneForecasting AppEnvironmentExtra
-nssm get CenteneQ AppEnvironmentExtra
 ```
 
 ### 5.3 Check Django reads them correctly
@@ -274,7 +272,7 @@ OPENAI key set    : True
 
 ## 6. Configure IIS as Reverse Proxy
 
-IIS forwards incoming HTTP/HTTPS traffic to Daphne running on `localhost:8000`.
+IIS forwards incoming HTTP/HTTPS and WebSocket traffic to Daphne running on `localhost:8000`. The app is served under the `/centene_forecasting/` path. Static files are served by WhiteNoise directly through Daphne — no IIS virtual directory required.
 
 ### 6.1 Required IIS modules
 
@@ -292,7 +290,7 @@ Open **IIS Manager → Server node → Application Request Routing Cache → Ser
 
 ### 6.3 Add URL Rewrite rules to your site's `web.config`
 
-Create or edit `C:\inetpub\wwwroot\Centene_Forecasting\web.config`:
+Create or edit `C:\inetpub\wwwroot\web.config` on the IIS site that hosts multiple apps:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -301,25 +299,27 @@ Create or edit `C:\inetpub\wwwroot\Centene_Forecasting\web.config`:
     <rewrite>
       <rules>
         <!-- WebSocket upgrade — must come before HTTP rule -->
-        <rule name="WebSocket Proxy" stopProcessing="true">
-          <match url="^ws/(.*)" />
-          <action type="Rewrite" url="ws://localhost:8000/ws/{R:1}" />
+        <rule name="Centene Forecasting - WebSocket" stopProcessing="true">
+          <match url="^centene_forecasting/(.*)" />
+          <conditions>
+            <add input="{HTTP_UPGRADE}" pattern="^WebSocket$" />
+          </conditions>
+          <action type="Rewrite" url="ws://localhost:8000/centene_forecasting/{R:1}" />
         </rule>
-        <!-- Static files served directly by IIS -->
-        <rule name="Static Files" stopProcessing="true">
-          <match url="^Centene-app/static/(.*)" />
-          <action type="None" />
+
+        <!-- HTTP traffic (pages + static files via WhiteNoise) → Daphne -->
+        <rule name="Centene Forecasting - HTTP" stopProcessing="true">
+          <match url="^centene_forecasting/(.*)" />
+          <action type="Rewrite" url="http://localhost:8000/centene_forecasting/{R:1}" />
         </rule>
-        <!-- All other traffic → Daphne -->
-        <rule name="Django Proxy" stopProcessing="true">
-          <match url="(.*)" />
-          <action type="Rewrite" url="http://localhost:8000/{R:1}" />
+
+        <!-- Root redirect to app -->
+        <rule name="Centene Forecasting - Root Redirect" stopProcessing="true">
+          <match url="^$" />
+          <action type="Redirect" url="/centene_forecasting/" redirectType="Found" />
         </rule>
       </rules>
     </rewrite>
-    <!-- Serve staticfiles directory for /Centene-app/static/ -->
-    <virtualDirectory path="/Centene-app/static"
-      physicalPath="C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project\staticfiles" />
   </system.webServer>
 </configuration>
 ```
@@ -337,19 +337,19 @@ iisreset
 ### 7.1 HTTP response
 
 ```powershell
-# Should return 302 redirect to login page (not a 500)
+# Should return 302 redirect to /centene_forecasting/
 Invoke-WebRequest http://localhost:8000/ -MaximumRedirection 0 -ErrorAction SilentlyContinue |
     Select-Object StatusCode, Headers
 ```
 
-Expected: `StatusCode: 302`, `Location: /login/`
+Expected: `StatusCode: 302`, `Location: /centene_forecasting/`
 
 ### 7.2 Login page loads
 
-Open a browser and navigate to `http://your.server.hostname/`. The login page should render with NTT Data styling.
+Open a browser and navigate to `http://your.server.hostname/centene_forecasting/`. The login page should render with NTT Data styling.
 
 Check:
-- [ ] Logo and CSS load (static files working)
+- [ ] Logo and CSS load (static files working via WhiteNoise)
 - [ ] The email link at the bottom opens a mail client (`mailto:` working)
 - [ ] No browser console errors about missing JS files
 
@@ -360,17 +360,9 @@ Log in with a valid NTT Data `AMERICAS\username` and password. The LDAP backend 
 ### 7.4 WebSocket connects
 
 Open the Chat page. In the browser developer tools → Network tab → filter by `WS`:
-- A WebSocket connection to `ws://your.server.hostname/ws/chat/...` should show status `101 Switching Protocols`.
+- A WebSocket connection to `ws://your.server.hostname/centene_forecasting/ws/chat/` should show status `101 Switching Protocols`.
 
-### 7.5 Background tasks (Django-Q) work
-
-Upload a test file. In the Django admin at `/admin/` → **Django Q → Queued Tasks** and **Successful Tasks**, confirm the task appears and completes. Check the CenteneQ service log if it stays queued:
-
-```powershell
-Get-Content C:\Logs\CenteneForecasting\qcluster_stdout.log -Tail 20
-```
-
-### 7.6 FastAPI backend connectivity
+### 7.5 FastAPI backend connectivity
 
 ```powershell
 # From the server — confirms the backend is reachable from Django's perspective
@@ -382,11 +374,11 @@ print(r.status_code, r.text[:200])
 "
 ```
 
-### 7.7 Power BI nav link
+### 7.6 Power BI nav link
 
 Log in, open the sidebar. The **Power BI Dashboard** link should point to the `PBIRS_CLAIMS_CAPACITY_URL` value — not a hardcoded IP. Right-click the link → Copy URL to verify.
 
-### 7.8 Check application logs
+### 7.7 Check application logs
 
 ```powershell
 # Live tail of Daphne stderr (startup errors, unhandled exceptions)
@@ -408,8 +400,8 @@ Get-Content (Get-ChildItem C:\Logs\CenteneForecasting\*.log | Sort LastWriteTime
 # Verify it is set in the Machine scope
 [System.Environment]::GetEnvironmentVariable('SECRET_KEY', 'Machine')
 
-# Restart both services to pick up registry changes
-Restart-Service CenteneForecasting, CenteneQ
+# Restart service to pick up registry changes
+Restart-Service CenteneForecasting
 ```
 
 ---
@@ -429,7 +421,7 @@ Restart-Service CenteneForecasting
 
 ### Static files return 404
 
-**Cause:** `collectstatic` was not run, or the IIS virtual directory path is wrong.
+**Cause:** `collectstatic` was not run.
 
 ```powershell
 # Re-run collectstatic
@@ -440,7 +432,7 @@ cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
 Get-ChildItem .\staticfiles\ | Measure-Object
 ```
 
-Also confirm the virtual directory in `web.config` matches the `staticfiles\` path exactly.
+Static files are served by WhiteNoise through Daphne at `/centene_forecasting/static/` — no IIS virtual directory configuration needed.
 
 ---
 
@@ -457,7 +449,7 @@ Also confirm the virtual directory in `web.config` matches the `staticfiles\` pa
 ### LDAP login fails — "Invalid credentials"
 
 **Cause A:** The user has not been assigned a Django Group (ADMIN / MANAGER / VIEWER).
-→ Fix: Log in as superuser at `/admin/`, go to **Users**, find the user, assign a group.
+→ Fix: Log in as superuser at `/centene_forecasting/admin/`, go to **Users**, find the user, assign a group.
 
 **Cause B:** The server cannot reach the LDAP host.
 ```powershell
@@ -492,23 +484,7 @@ Test-Path C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project\.env
 If it exists and was accidentally deployed, delete it:
 ```powershell
 Remove-Item C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project\.env
-Restart-Service CenteneForecasting, CenteneQ
-```
-
----
-
-### `CenteneQ` service starts but tasks stay queued
-
-**Cause:** The worker process crashed or the ORM queue table is locked.
-
-```powershell
-# Check for errors in qcluster log
-Get-Content C:\Logs\CenteneForecasting\qcluster_stderr.log -Tail 30
-
-# Restart the worker
-Restart-Service CenteneQ
-
-# In Django admin → Django Q → Failed Tasks — check error messages
+Restart-Service CenteneForecasting
 ```
 
 ---
@@ -520,8 +496,7 @@ Restart-Service CenteneQ
 ```powershell
 # Add network dependency so the service waits for network
 nssm set CenteneForecasting DependOnService Tcpip
-nssm set CenteneQ DependOnService CenteneForecasting
-Restart-Service CenteneForecasting, CenteneQ
+Restart-Service CenteneForecasting
 ```
 
 ---
@@ -530,13 +505,12 @@ Restart-Service CenteneForecasting, CenteneQ
 
 ```powershell
 # Start / stop / restart
-Start-Service   CenteneForecasting, CenteneQ
-Stop-Service    CenteneForecasting, CenteneQ
-Restart-Service CenteneForecasting, CenteneQ
+Start-Service   CenteneForecasting
+Stop-Service    CenteneForecasting
+Restart-Service CenteneForecasting
 
 # Live log tailing
-Get-Content C:\Logs\CenteneForecasting\daphne_stderr.log  -Tail 30 -Wait
-Get-Content C:\Logs\CenteneForecasting\qcluster_stderr.log -Tail 30 -Wait
+Get-Content C:\Logs\CenteneForecasting\daphne_stderr.log -Tail 30 -Wait
 
 # Django shell on the server
 cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
@@ -546,5 +520,5 @@ cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
 git -C C:\inetpub\wwwroot\Centene_Forecasting pull
 .\.venv\Scripts\python.exe manage.py migrate --noinput
 .\.venv\Scripts\python.exe manage.py collectstatic --noinput
-Restart-Service CenteneForecasting, CenteneQ
+Restart-Service CenteneForecasting
 ```
