@@ -15,15 +15,21 @@
 # =============================================================================
 # CONFIGURABLE VARIABLES — edit these before running
 # =============================================================================
+
+# --- Paths ---
 $ProjectRoot    = "C:\inetpub\wwwroot\Centene_Forecasting"
 $DjangoDir      = "$ProjectRoot\centene_forecast_project"
 $VenvPython     = "$ProjectRoot\.venv\Scripts\python.exe"
 $VenvDaphne     = "$ProjectRoot\.venv\Scripts\daphne.exe"
 $LogDir         = "C:\Logs\CenteneForecasting"
-$Port           = 8000
-$Host           = "0.0.0.0"
-$AsgiModule     = "centene_forecast_project.asgi:application"
 $NssmPath       = "nssm"   # Change to full path if nssm is not on PATH, e.g. "C:\tools\nssm.exe"
+
+# --- Daphne server binding (must match web.config rewrite rule port) ---
+$CenteneForecastingHost = "127.0.0.1"   # Bind to loopback only; IIS proxies from outside
+$CenteneForecastingPort = 8096          # Change to any free port; verify with: netstat -ano | findstr LISTENING
+
+# --- ASGI application ---
+$AsgiModule     = "centene_forecast_project.asgi:application"
 
 # Windows environment variables to set for both services
 $EnvVars = @{
@@ -74,7 +80,7 @@ function Register-DaphneService {
 
     Write-Host "Registering $ServiceName service..." -ForegroundColor Cyan
     & $NssmPath install $ServiceName $VenvDaphne
-    & $NssmPath set $ServiceName AppParameters "-b $Host -p $Port $AsgiModule"
+    & $NssmPath set $ServiceName AppParameters "-b $CenteneForecastingHost -p $CenteneForecastingPort $AsgiModule"
     & $NssmPath set $ServiceName AppDirectory $DjangoDir
     & $NssmPath set $ServiceName DisplayName "Centene Forecasting (Daphne ASGI)"
     & $NssmPath set $ServiceName Description "Centene Forecasting Django/Channels application served via Daphne."
@@ -131,11 +137,11 @@ Get-Service -Name "CenteneForecasting" | Format-Table Name, Status, DisplayName 
 
 Write-Host ""
 Write-Host "Setup complete." -ForegroundColor Green
-Write-Host "App is available at http://localhost:$Port/" -ForegroundColor Green
+Write-Host "App is available at http://$CenteneForecastingHost`:$CenteneForecastingPort/" -ForegroundColor Green
 Write-Host "Logs: $LogDir" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  1. Update SECRET_KEY and OPENAI_API_KEY in `$EnvVars at the top of this script and re-run, OR"
 Write-Host "     populate centene_forecast_project\.env with correct values."
-Write-Host "  2. Configure IIS as a reverse proxy to http://localhost:$Port/ (Application Request Routing module)."
+Write-Host "  2. Configure IIS as a reverse proxy to http://$CenteneForecastingHost`:$CenteneForecastingPort/ (Application Request Routing module)."
 Write-Host "  3. Run 'python manage.py collectstatic --noinput' to serve static files via IIS."
