@@ -33,6 +33,4 @@ Write-Host "=== System Environment Variables ===" -ForegroundColor White
 
 Write-Host ""
 Write-Host "=== Django Settings ===" -ForegroundColor White
-Push-Location $DjangoDir
-& $Python $CheckScript
-Pop-Location
+& $Python $CheckScript $DjangoDir

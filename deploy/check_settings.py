@@ -1,5 +1,9 @@
 import os, sys, django
 
+# Accept Django project directory as argument
+if len(sys.argv) > 1:
+    sys.path.insert(0, sys.argv[1])
+
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "centene_forecast_project.settings")
 django.setup()
 
