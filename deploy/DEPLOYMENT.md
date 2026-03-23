@@ -70,12 +70,43 @@ The Django app is a frontend only — the FastAPI backend at `API_BASE_URL` must
 ### 1.6 Confirm WebSocket route is registered
 
 ```powershell
-python -c "from chat_app.routing import websocket_urlpatterns; print(websocket_urlpatterns)"
+python -c "import os, django; os.environ['DJANGO_SETTINGS_MODULE']='centene_forecast_project.settings'; django.setup(); from chat_app.routing import websocket_urlpatterns; print(websocket_urlpatterns)"
 ```
 
 Should print the `centene_forecasting/ws/chat/` pattern without import errors.
 
-### 1.7 Freeze dependencies
+### 1.7 Confirm Daphne starts and serves the app
+
+Run Daphne directly (the same way NSSM will run it on the server) and verify it responds before setting it up as a service.
+
+```powershell
+cd centene_forecast_project
+daphne -b 127.0.0.1 -p 8096 centene_forecast_project.asgi:application
+```
+
+In a **separate terminal**, test HTTP and WebSocket:
+
+```powershell
+# HTTP — should return a redirect or login page (not a connection error)
+curl -I http://127.0.0.1:8096/centene_forecasting/
+
+# Static files — should return 200 (WhiteNoise serves them through Daphne)
+curl -I http://127.0.0.1:8096/centene_forecasting/static/css/base.css
+```
+
+Expected responses — all of these confirm Daphne is running correctly:
+
+| Response | Meaning |
+|----------|---------|
+| `200 OK` | Page served directly (DEBUG=True) |
+| `302 Found` | Redirecting to login page |
+| `301 Moved Permanently` | `SECURE_SSL_REDIRECT=True` redirecting http → https (normal for DEBUG=False) |
+
+Any `Connection refused` or `Failed to connect` means Daphne did not start — check the terminal output for errors.
+
+Stop Daphne with `Ctrl+C` once verified.
+
+### 1.8 Freeze dependencies
 
 ```powershell
 pip freeze > requirements-lock.txt

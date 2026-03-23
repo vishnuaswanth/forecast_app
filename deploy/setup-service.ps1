@@ -49,12 +49,10 @@ function Ensure-NssmInstalled {
         $null = & $NssmPath version 2>&1
         Write-Host "[OK] NSSM found." -ForegroundColor Green
     } catch {
-        Write-Error @"
-NSSM not found at '$NssmPath'.
-Download from https://nssm.cc/download, extract nssm.exe, and either:
-  - Add its directory to your PATH, OR
-  - Set `$NssmPath in this script to the full path of nssm.exe
-"@
+        Write-Error "NSSM not found at '$NssmPath'."
+        Write-Host "Download from https://nssm.cc/download, extract nssm.exe, and either:" -ForegroundColor Red
+        Write-Host "  - Add its directory to your PATH, OR" -ForegroundColor Red
+        Write-Host "  - Set `$NssmPath in this script to the full path of nssm.exe" -ForegroundColor Red
         exit 1
     }
 }
@@ -145,3 +143,4 @@ Write-Host "  1. Update SECRET_KEY and OPENAI_API_KEY in `$EnvVars at the top of
 Write-Host "     populate centene_forecast_project\.env with correct values."
 Write-Host "  2. Configure IIS as a reverse proxy to http://$CenteneForecastingHost`:$CenteneForecastingPort/ (Application Request Routing module)."
 Write-Host "  3. Run 'python manage.py collectstatic --noinput' to serve static files via IIS."
+\r
