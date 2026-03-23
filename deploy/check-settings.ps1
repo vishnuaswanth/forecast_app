@@ -9,6 +9,7 @@ $NssmPath    = "C:\nssm.exe"
 $ServiceName = "CenteneForecasting"
 $DjangoDir   = "C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project"
 $Python      = "C:\inetpub\wwwroot\Centene_Forecasting\.venv\Scripts\python.exe"
+$CheckScript = "C:\inetpub\wwwroot\Centene_Forecasting\deploy\check_settings.py"
 
 # =============================================================================
 # CHECKS
@@ -32,18 +33,6 @@ Write-Host "=== System Environment Variables ===" -ForegroundColor White
 
 Write-Host ""
 Write-Host "=== Django Settings ===" -ForegroundColor White
-& $Python -c @"
-import os, sys
-sys.path.insert(0, r"$DjangoDir")
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "centene_forecast_project.settings")
-import django
-django.setup()
-from django.conf import settings
-print(f"DEBUG              : {settings.DEBUG}")
-print(f"ALLOWED_HOSTS      : {settings.ALLOWED_HOSTS}")
-print(f"CSRF_ORIGINS       : {settings.CSRF_TRUSTED_ORIGINS}")
-print(f"SSL_REDIRECT       : {settings.SECURE_SSL_REDIRECT}")
-print(f"API_BASE_URL       : {settings.API_BASE_URL}")
-print(f"SECRET_KEY set     : {bool(settings.SECRET_KEY)}")
-print(f"OPENAI key set     : {bool(getattr(settings, \"OPENAI_API_KEY\", \"\"))}")
-"@
+Push-Location $DjangoDir
+& $Python $CheckScript
+Pop-Location
