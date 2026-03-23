@@ -35,12 +35,18 @@ Write-Host "Stopping $ServiceName..." -ForegroundColor Cyan
 Stop-Service -Name $ServiceName -Force
 Start-Sleep -Seconds 2
 
-# Build all env vars as an array and set in a single NSSM call
-# (multiple calls replace each other — all vars must be passed at once)
+# Set env vars in two places:
+# 1. NSSM AppEnvironmentExtra — used by the Daphne service process
+# 2. Windows system environment — used by manage.py shell and other CLI commands
 Write-Host "Setting environment variables..." -ForegroundColor Cyan
+
 $envArray = $EnvVars.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
 & $NssmPath set $ServiceName AppEnvironmentExtra @envArray | Out-Null
-$EnvVars.Keys | ForEach-Object { Write-Host "  Set $_" -ForegroundColor Gray }
+
+foreach ($key in $EnvVars.Keys) {
+    [System.Environment]::SetEnvironmentVariable($key, $EnvVars[$key], [System.EnvironmentVariableTarget]::Machine)
+    Write-Host "  Set $key" -ForegroundColor Gray
+}
 Write-Host "[OK] Environment variables set." -ForegroundColor Green
 
 # Start service
