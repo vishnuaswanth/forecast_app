@@ -1,4 +1,4 @@
-﻿#Requires -RunAsAdministrator
+﻿# Requires -RunAsAdministrator
 # One-time script to register CenteneForecasting as a Windows service using NSSM.
 # Run this once on first deployment. Use setup-service.ps1 for env vars and restarts.
 

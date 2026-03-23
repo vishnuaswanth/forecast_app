@@ -1,4 +1,4 @@
-# Centene Forecasting — Deployment Guide
+# Centene Forecasting - Deployment Guide
 
 **Stack:** Django 5 · Daphne (ASGI) · SQLite / MS SQL Server · IIS (reverse proxy) · NSSM (Windows services)
 
@@ -9,7 +9,7 @@
 1. [Dev Environment Checks](#1-dev-environment-checks)
 2. [Prepare the Production Server](#2-prepare-the-production-server)
 3. [Deploy the Application](#3-deploy-the-application)
-4. [Run the PowerShell Setup Script](#4-run-the-powershell-setup-script)
+4. [Register and Configure the Service](#4-register-and-configure-the-service)
 5. [Verify Environment Variables](#5-verify-environment-variables)
 6. [Configure IIS as Reverse Proxy](#6-configure-iis-as-reverse-proxy)
 7. [Verify the Application Is Working](#7-verify-the-application-is-working)
@@ -37,11 +37,12 @@ Expected output: `System check identified no issues (0 silenced).`
 $env:DEBUG = "False"
 $env:SECRET_KEY = "temp-check-key"
 $env:ALLOWED_HOSTS = "localhost"
+$env:SECURE_SSL_REDIRECT = "False"
 python manage.py check --deploy
 $env:DEBUG = $null   # restore
 ```
 
-Fix any `CRITICAL` items before proceeding. `WARNING` items about HTTPS are expected for an internal HTTP deployment.
+Fix any `CRITICAL` items before proceeding. `WARNING` items about HTTPS are expected since IIS handles SSL termination.
 
 ### 1.3 Confirm migrations are up to date
 
@@ -84,25 +85,25 @@ cd centene_forecast_project
 daphne -b 127.0.0.1 -p 8096 centene_forecast_project.asgi:application
 ```
 
-In a **separate terminal**, test HTTP and WebSocket:
+In a **separate terminal**, test HTTP and static files:
 
 ```powershell
-# HTTP — should return a redirect or login page (not a connection error)
+# HTTP - should return a redirect to login page
 curl -I http://127.0.0.1:8096/centene_forecasting/
 
-# Static files — should return 200 (WhiteNoise serves them through Daphne)
+# Static files - should return 200 (WhiteNoise serves them through Daphne)
 curl -I http://127.0.0.1:8096/centene_forecasting/static/css/base.css
 ```
 
-Expected responses — all of these confirm Daphne is running correctly:
+Expected responses:
 
 | Response | Meaning |
 |----------|---------|
-| `200 OK` | Page served directly (DEBUG=True) |
-| `302 Found` | Redirecting to login page |
-| `301 Moved Permanently` | `SECURE_SSL_REDIRECT=True` redirecting http → https (normal for DEBUG=False) |
+| `200 OK` | Page served directly |
+| `302 Found` | Redirecting to login page (normal) |
+| `301 Moved Permanently` | `SECURE_SSL_REDIRECT=True` — set it to `False` in `.env` |
 
-Any `Connection refused` or `Failed to connect` means Daphne did not start — check the terminal output for errors.
+Any `Connection refused` means Daphne did not start — check the terminal output for errors.
 
 Stop Daphne with `Ctrl+C` once verified.
 
@@ -125,18 +126,30 @@ Install the following on the Windows server:
 | Tool | Notes |
 |------|-------|
 | Python 3.11+ | Download from python.org; add to PATH |
-| NSSM | Download from https://nssm.cc/download; add `nssm.exe` to PATH or `C:\tools\` |
-| IIS with ARR | Enable Application Request Routing and URL Rewrite modules |
+| NSSM | Download from https://nssm.cc/download; place `nssm.exe` at `C:\nssm.exe` |
+| IIS with ARR | Enable Application Request Routing, URL Rewrite, and WebSocket Protocol modules |
 | Git | To pull source code |
 | ODBC Driver 17 | Required only if switching from SQLite to MS SQL Server |
+
+Verify WebSocket Protocol is installed:
+
+```powershell
+Get-WindowsFeature Web-WebSockets
+```
+
+`InstallState` should show `Installed`. If not:
+
+```powershell
+Install-WindowsFeature Web-WebSockets
+```
 
 ### 2.2 Copy the source code
 
 ```powershell
-# Option A — git clone
+# Option A - git clone
 git clone <repo-url> C:\inetpub\wwwroot\Centene_Forecasting
 
-# Option B — xcopy from dev machine
+# Option B - xcopy from dev machine
 xcopy /E /I /Y \\devmachine\share\Centene_Forecasting C:\inetpub\wwwroot\Centene_Forecasting
 ```
 
@@ -150,11 +163,13 @@ python -m venv .venv
 
 > **Do not** copy the `.venv` from your dev machine — always create a fresh one on the server.
 
-### 2.4 Create the log directory
+### 2.4 Check the port is free
 
 ```powershell
-New-Item -ItemType Directory -Force -Path C:\Logs\CenteneForecasting
+netstat -ano | findstr ":8096"
 ```
+
+No output means the port is free. If occupied, choose a different port and update it in `deploy\register-service.ps1` and the IIS `web.config` rule.
 
 ---
 
@@ -166,8 +181,8 @@ New-Item -ItemType Directory -Force -Path C:\Logs\CenteneForecasting
 cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
 
 # Set minimal env vars for this step
-$env:SECRET_KEY   = "temp"
-$env:DEBUG        = "True"
+$env:SECRET_KEY    = "temp"
+$env:DEBUG         = "True"
 $env:ALLOWED_HOSTS = "localhost"
 
 .\.venv\Scripts\python.exe manage.py migrate
@@ -191,46 +206,62 @@ On subsequent deployments, skip this step — the database already has users.
 
 ---
 
-## 4. Run the PowerShell Setup Script
+## 4. Register and Configure the Service
 
-### 4.1 Edit the script variables
+Two scripts in `deploy\` handle the service setup:
 
-Open `deploy\setup-service.ps1` and fill in the `$EnvVars` block at the top:
+| Script | When to run |
+|--------|-------------|
+| `register-service.ps1` | **Once** — first deployment, registers the NSSM service |
+| `setup-service.ps1` | **Every deployment** — sets environment variables and restarts the service |
+
+Open **PowerShell as Administrator** for both scripts:
+
+```powershell
+Set-ExecutionPolicy RemoteSigned -Scope Process
+cd C:\inetpub\wwwroot\Centene_Forecasting
+```
+
+### 4.1 Register the service (first deployment only)
+
+Open `deploy\register-service.ps1` and confirm the variables at the top:
+
+```powershell
+$NssmPath               = "C:\nssm.exe"
+$ProjectRoot            = "C:\inetpub\wwwroot\Centene_Forecasting"
+$CenteneForecastingHost = "127.0.0.1"   # loopback only - IIS proxies from outside
+$CenteneForecastingPort = 8096          # must match web.config rewrite rule port
+```
+
+Then run:
+
+```powershell
+.\deploy\register-service.ps1
+```
+
+### 4.2 Set environment variables and start the service
+
+Open `deploy\setup-service.ps1` and fill in the `$EnvVars` block:
 
 ```powershell
 $EnvVars = @{
-    "DJANGO_SETTINGS_MODULE" = "centene_forecast_project.settings"
-    "SECRET_KEY"             = "your-actual-secret-key-here"        # ← change
-    "DEBUG"                  = "False"
-    "ALLOWED_HOSTS"          = "your.server.hostname,localhost"      # ← change
-    "OPENAI_API_KEY"         = "sk-..."                              # ← change
-    "PBIRS_CLAIMS_CAPACITY_URL" = "http://10.111.36.98/reports/..."  # ← confirm
+    "DJANGO_SETTINGS_MODULE"    = "centene_forecast_project.settings"
+    "SECRET_KEY"                = "your-actual-secret-key-here"       # <- change
+    "DEBUG"                     = "False"
+    "ALLOWED_HOSTS"             = "your.server.hostname,localhost"     # <- change
+    "SECURE_SSL_REDIRECT"       = "False"   # IIS handles HTTPS, not Django
+    "OPENAI_API_KEY"            = "sk-..."                             # <- change
+    "PBIRS_CLAIMS_CAPACITY_URL" = "http://10.111.36.98/reports/..."   # <- confirm
 }
 ```
 
-Also confirm the path variables match your server layout:
+Then run:
 
 ```powershell
-$ProjectRoot = "C:\inetpub\wwwroot\Centene_Forecasting"
-$Port        = 8000
-```
-
-### 4.2 Run the script
-
-Open **PowerShell as Administrator**, then:
-
-```powershell
-Set-ExecutionPolicy RemoteSigned -Scope Process   # allow running unsigned scripts
-cd C:\inetpub\wwwroot\Centene_Forecasting
 .\deploy\setup-service.ps1
 ```
 
-The script will:
-1. Validate that `daphne.exe` and `python.exe` exist in the venv
-2. Verify NSSM is installed
-3. Write all variables to the Windows system environment (registry)
-4. Register and start one Windows service:
-   - **CenteneForecasting** — runs `daphne -b 0.0.0.0 -p 8000 centene_forecast_project.asgi:application`
+This sets all variables in the Windows system environment (registry) and restarts the service.
 
 ### 4.3 Confirm service is running
 
@@ -238,9 +269,7 @@ The script will:
 Get-Service CenteneForecasting | Format-Table Name, Status
 ```
 
-Should show `Status: Running`.
-
-You can also see it in `services.msc` (Windows Services).
+Should show `Status: Running`. Also visible in `services.msc`.
 
 ---
 
@@ -251,7 +280,7 @@ You can also see it in `services.msc` (Windows Services).
 Open a **new** PowerShell window (must be fresh — not the one that ran the script):
 
 ```powershell
-@('SECRET_KEY','DEBUG','ALLOWED_HOSTS','OPENAI_API_KEY','PBIRS_CLAIMS_CAPACITY_URL',
+@('SECRET_KEY','DEBUG','ALLOWED_HOSTS','SECURE_SSL_REDIRECT','OPENAI_API_KEY',
   'DJANGO_SETTINGS_MODULE') | ForEach-Object {
     $val = [System.Environment]::GetEnvironmentVariable($_, 'Machine')
     $preview = if ($val) { $val.Substring(0, [Math]::Min(30, $val.Length)) + '...' } else { '<NOT SET>' }
@@ -259,13 +288,7 @@ Open a **new** PowerShell window (must be fresh — not the one that ran the scr
 }
 ```
 
-### 5.2 Check NSSM picked them up
-
-```powershell
-nssm get CenteneForecasting AppEnvironmentExtra
-```
-
-### 5.3 Check Django reads them correctly
+### 5.2 Check Django reads them correctly
 
 ```powershell
 cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
@@ -275,8 +298,8 @@ from django.conf import settings
 print('SECRET_KEY set    :', bool(settings.SECRET_KEY) and 'insecure' not in settings.SECRET_KEY)
 print('DEBUG             :', settings.DEBUG)
 print('ALLOWED_HOSTS     :', settings.ALLOWED_HOSTS)
+print('SSL_REDIRECT      :', settings.SECURE_SSL_REDIRECT)
 print('API_BASE_URL      :', settings.API_BASE_URL)
-print('PBIRS URL set     :', bool(settings.PBIRS_CLAIMS_CAPACITY_URL))
 print('OPENAI key set    :', bool(settings.LLM_CONFIG.get('api_key')))
 "
 ```
@@ -286,12 +309,12 @@ Expected output:
 SECRET_KEY set    : True
 DEBUG             : False
 ALLOWED_HOSTS     : ['your.server.hostname', 'localhost']
+SSL_REDIRECT      : False
 API_BASE_URL      : http://127.0.0.1:8888
-PBIRS URL set     : True
 OPENAI key set    : True
 ```
 
-### 5.4 Run the full deployment check
+### 5.3 Run the full deployment check
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py check --deploy
@@ -303,11 +326,11 @@ OPENAI key set    : True
 
 ## 6. Configure IIS as Reverse Proxy
 
-IIS forwards incoming HTTP/HTTPS and WebSocket traffic to Daphne running on `localhost:8000`. The app is served under the `/centene_forecasting/` path. Static files are served by WhiteNoise directly through Daphne — no IIS virtual directory required.
+IIS forwards incoming HTTPS traffic to Daphne running on `127.0.0.1:8096` over plain HTTP internally. SSL termination happens at IIS — Daphne only ever receives plain HTTP. Static files are served by WhiteNoise through Daphne — no IIS virtual directory required.
 
 ### 6.1 Required IIS modules
 
-Make sure these are installed via **Server Manager → Add Roles and Features → Web Server (IIS)**:
+Make sure these are installed via **Server Manager -> Add Roles and Features -> Web Server (IIS)**:
 
 - Application Request Routing (ARR) 3.0
 - URL Rewrite 2.1
@@ -315,61 +338,49 @@ Make sure these are installed via **Server Manager → Add Roles and Features �
 
 ### 6.2 Enable ARR proxy
 
-Open **IIS Manager → Server node → Application Request Routing Cache → Server Proxy Settings**:
+Open **IIS Manager -> Server node -> Application Request Routing Cache -> Server Proxy Settings**:
 - Check **Enable proxy**
 - Click **Apply**
 
 ### 6.3 Add URL Rewrite rules to your site's `web.config`
 
-Create or edit `C:\inetpub\wwwroot\web.config` on the IIS site that hosts multiple apps:
+Edit `C:\inetpub\wwwroot\web.config` on the IIS site that hosts multiple apps. Add the Centene Forecasting rules alongside your existing app rules:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
   <system.webServer>
     <rewrite>
-      <!-- Allow URL Rewrite to set the X-Forwarded-Proto server variable -->
-      <allowedServerVariables>
-        <add name="HTTP_X_FORWARDED_PROTO" />
-        <add name="HTTP_X_FORWARDED_HOST" />
-      </allowedServerVariables>
-
       <rules>
-        <!-- WebSocket upgrade — must come before HTTP rule -->
-        <rule name="Centene Forecasting - WebSocket" stopProcessing="true">
+
+        <!-- your other app rules (uarboi, bipapp, etc.) remain here -->
+
+        <!-- Centene Forecasting - WebSocket (must come before HTTP rule) -->
+        <rule name="centene_forecasting_ws" stopProcessing="true">
           <match url="^centene_forecasting/(.*)" />
           <conditions>
             <add input="{HTTP_UPGRADE}" pattern="^WebSocket$" />
           </conditions>
-          <serverVariables>
-            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
-            <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
-          </serverVariables>
-          <action type="Rewrite" url="ws://localhost:8000/centene_forecasting/{R:1}" />
+          <action type="Rewrite" url="ws://127.0.0.1:8096/centene_forecasting/{R:1}" />
         </rule>
 
-        <!-- HTTP/HTTPS traffic (pages + static files via WhiteNoise) → Daphne -->
-        <rule name="Centene Forecasting - HTTP" stopProcessing="true">
-          <match url="^centene_forecasting/(.*)" />
-          <serverVariables>
-            <set name="HTTP_X_FORWARDED_PROTO" value="https" />
-            <set name="HTTP_X_FORWARDED_HOST" value="{HTTP_HOST}" />
-          </serverVariables>
-          <action type="Rewrite" url="http://localhost:8000/centene_forecasting/{R:1}" />
+        <!-- Centene Forecasting - all HTTP/HTTPS traffic -->
+        <rule name="centene_forecasting" stopProcessing="true">
+          <match url="^centene_forecasting(/.*)?$" />
+          <action type="Rewrite" url="http://127.0.0.1:8096/centene_forecasting{R:1}" />
         </rule>
 
         <!-- Root redirect to app -->
-        <rule name="Centene Forecasting - Root Redirect" stopProcessing="true">
+        <rule name="centene_forecasting_root" stopProcessing="true">
           <match url="^$" />
           <action type="Redirect" url="/centene_forecasting/" redirectType="Found" />
         </rule>
+
       </rules>
     </rewrite>
   </system.webServer>
 </configuration>
 ```
-
-> **Note:** The `allowedServerVariables` block is required — IIS URL Rewrite will throw an error if you try to set a server variable that isn't declared there first. The `HTTP_X_FORWARDED_PROTO` variable tells Django (via `SECURE_PROXY_SSL_HEADER`) that the original request came over HTTPS.
 
 ### 6.4 Restart IIS
 
@@ -381,38 +392,35 @@ iisreset
 
 ## 7. Verify the Application Is Working
 
-### 7.1 HTTP response
+### 7.1 Daphne responds directly
 
 ```powershell
-# Should return 302 redirect to /centene_forecasting/
-Invoke-WebRequest http://localhost:8000/ -MaximumRedirection 0 -ErrorAction SilentlyContinue |
-    Select-Object StatusCode, Headers
+curl -I http://127.0.0.1:8096/centene_forecasting/
 ```
 
-Expected: `StatusCode: 302`, `Location: /centene_forecasting/`
+Expected: `HTTP/1.1 302` (redirect to login). Any response confirms Daphne is running.
 
 ### 7.2 Login page loads
 
-Open a browser and navigate to `http://your.server.hostname/centene_forecasting/`. The login page should render with NTT Data styling.
+Open a browser and navigate to `https://your.server.hostname/centene_forecasting/`. The login page should render with correct styling.
 
 Check:
 - [ ] Logo and CSS load (static files working via WhiteNoise)
-- [ ] The email link at the bottom opens a mail client (`mailto:` working)
 - [ ] No browser console errors about missing JS files
 
 ### 7.3 LDAP login works
 
-Log in with a valid NTT Data `AMERICAS\username` and password. The LDAP backend authenticates against `ldap://americas.global.nttdata.com`. If login fails, see [Common Issues](#8-common-issues-and-fixes).
+Log in with a valid NTT Data `AMERICAS\username` and password. If login fails, see [Common Issues](#8-common-issues-and-fixes).
 
 ### 7.4 WebSocket connects
 
-Open the Chat page. In the browser developer tools → Network tab → filter by `WS`:
-- A WebSocket connection to `ws://your.server.hostname/centene_forecasting/ws/chat/` should show status `101 Switching Protocols`.
+Open the Chat page. In browser developer tools -> Network tab -> filter by `WS`:
+- A WebSocket connection to `wss://your.server.hostname/centene_forecasting/ws/chat/` should show status `101 Switching Protocols`.
 
 ### 7.5 FastAPI backend connectivity
 
 ```powershell
-# From the server — confirms the backend is reachable from Django's perspective
+# From the server - confirms the backend is reachable from Django's perspective
 .\.venv\Scripts\python.exe -c "
 import httpx, os
 url = os.environ.get('API_BASE_URL', 'http://127.0.0.1:8888')
@@ -421,17 +429,13 @@ print(r.status_code, r.text[:200])
 "
 ```
 
-### 7.6 Power BI nav link
-
-Log in, open the sidebar. The **Power BI Dashboard** link should point to the `PBIRS_CLAIMS_CAPACITY_URL` value — not a hardcoded IP. Right-click the link → Copy URL to verify.
-
-### 7.7 Check application logs
+### 7.6 Check application logs
 
 ```powershell
 # Live tail of Daphne stderr (startup errors, unhandled exceptions)
 Get-Content C:\Logs\CenteneForecasting\daphne_stderr.log -Tail 50 -Wait
 
-# Structured LLM/chat logs (JSON format)
+# Structured Django logs
 Get-Content (Get-ChildItem C:\Logs\CenteneForecasting\*.log | Sort LastWriteTime -Desc | Select -First 1).FullName -Tail 30
 ```
 
@@ -453,13 +457,13 @@ Restart-Service CenteneForecasting
 
 ---
 
-### `DisallowedHost` — 400 Bad Request
+### `DisallowedHost` - 400 Bad Request
 
-**Cause:** The server's hostname is not in `ALLOWED_HOSTS`.
+**Cause:** The server hostname is not in `ALLOWED_HOSTS`.
+
+Update `ALLOWED_HOSTS` in `deploy\setup-service.ps1` and re-run it, or update directly:
 
 ```powershell
-# Add the hostname without rerunning the full script
-nssm set CenteneForecasting AppEnvironmentExtra "ALLOWED_HOSTS=new.hostname,localhost"
 [System.Environment]::SetEnvironmentVariable('ALLOWED_HOSTS','new.hostname,localhost','Machine')
 Restart-Service CenteneForecasting
 ```
@@ -471,32 +475,41 @@ Restart-Service CenteneForecasting
 **Cause:** `collectstatic` was not run.
 
 ```powershell
-# Re-run collectstatic
 cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
 .\.venv\Scripts\python.exe manage.py collectstatic --noinput
-
-# Confirm the directory exists and has files
-Get-ChildItem .\staticfiles\ | Measure-Object
+Restart-Service CenteneForecasting
 ```
-
-Static files are served by WhiteNoise through Daphne at `/centene_forecasting/static/` — no IIS virtual directory configuration needed.
 
 ---
 
 ### WebSocket handshake fails (403 or connection refused)
 
-**Cause A:** `ALLOWED_HOSTS` does not include the server hostname — Django's `AllowedHostsOriginValidator` rejects the upgrade.
-→ Fix: add the hostname to `ALLOWED_HOSTS` (see above).
+**Cause A:** `ALLOWED_HOSTS` does not include the server hostname.
+-> Fix: add the hostname to `ALLOWED_HOSTS` and restart the service.
 
 **Cause B:** IIS ARR WebSocket rewrite rule is missing or ARR proxy not enabled.
-→ Fix: re-check [Section 6](#6-configure-iis-as-reverse-proxy) and confirm the WebSocket IIS feature is installed.
+-> Fix: re-check [Section 6](#6-configure-iis-as-reverse-proxy).
+
+**Cause C:** WebSocket Protocol IIS feature not installed.
+-> Fix: `Install-WindowsFeature Web-WebSockets` then `iisreset`.
 
 ---
 
-### LDAP login fails — "Invalid credentials"
+### Page redirects to `https://127.0.0.1:8096/` and fails
+
+**Cause:** `SECURE_SSL_REDIRECT` is `True` — Django is redirecting HTTP to HTTPS internally, but Daphne only serves HTTP.
+
+```powershell
+[System.Environment]::SetEnvironmentVariable('SECURE_SSL_REDIRECT','False','Machine')
+Restart-Service CenteneForecasting
+```
+
+---
+
+### LDAP login fails - "Invalid credentials"
 
 **Cause A:** The user has not been assigned a Django Group (ADMIN / MANAGER / VIEWER).
-→ Fix: Log in as superuser at `/centene_forecasting/admin/`, go to **Users**, find the user, assign a group.
+-> Fix: Log in as superuser at `/centene_forecasting/admin/`, go to **Users**, find the user, assign a group.
 
 **Cause B:** The server cannot reach the LDAP host.
 ```powershell
@@ -518,31 +531,12 @@ Restart-Service CenteneForecasting
 
 ---
 
-### `.env` file overrides production secrets
-
-**Cause:** `django-environ` reads `.env` from the project directory if it exists, overriding the system environment variables.
-
-```powershell
-# Confirm no .env is present on the server
-Test-Path C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project\.env
-# Should return False
-```
-
-If it exists and was accidentally deployed, delete it:
-```powershell
-Remove-Item C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project\.env
-Restart-Service CenteneForecasting
-```
-
----
-
 ### Service fails to start after server reboot
 
-**Cause:** NSSM service dependency on the network not configured — Daphne starts before the network stack is ready.
+**Cause:** Daphne starts before the network stack is ready.
 
 ```powershell
-# Add network dependency so the service waits for network
-nssm set CenteneForecasting DependOnService Tcpip
+C:\nssm.exe set CenteneForecasting DependOnService Tcpip
 Restart-Service CenteneForecasting
 ```
 
@@ -567,5 +561,5 @@ cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
 git -C C:\inetpub\wwwroot\Centene_Forecasting pull
 .\.venv\Scripts\python.exe manage.py migrate --noinput
 .\.venv\Scripts\python.exe manage.py collectstatic --noinput
-Restart-Service CenteneForecasting
+.\deploy\setup-service.ps1
 ```
