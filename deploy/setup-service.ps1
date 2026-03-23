@@ -35,12 +35,12 @@ Write-Host "Stopping $ServiceName..." -ForegroundColor Cyan
 Stop-Service -Name $ServiceName -Force
 Start-Sleep -Seconds 2
 
-# Write each env var into NSSM AppEnvironmentExtra
+# Build all env vars as an array and set in a single NSSM call
+# (multiple calls replace each other — all vars must be passed at once)
 Write-Host "Setting environment variables..." -ForegroundColor Cyan
-foreach ($key in $EnvVars.Keys) {
-    & $NssmPath set $ServiceName AppEnvironmentExtra "$key=$($EnvVars[$key])" | Out-Null
-    Write-Host "  Set $key" -ForegroundColor Gray
-}
+$envArray = $EnvVars.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
+& $NssmPath set $ServiceName AppEnvironmentExtra @envArray | Out-Null
+$EnvVars.Keys | ForEach-Object { Write-Host "  Set $_" -ForegroundColor Gray }
 Write-Host "[OK] Environment variables set." -ForegroundColor Green
 
 # Start service
