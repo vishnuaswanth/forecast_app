@@ -72,9 +72,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Accept the connection
         await self.accept()
 
-        # Get or create conversation for this user
+        # Create a new conversation for this session
         try:
-            self.conversation_id = await self.get_or_create_conversation()
+            self.conversation_id = await self.create_new_conversation()
         except Exception as e:
             logger.error(f"Failed to create conversation for user {self.user.portal_id}: {str(e)}")
             await self.close(code=4003)
@@ -640,21 +640,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             logger.error(f"Failed to send error message: {str(e)}")
 
     @database_sync_to_async
-    def get_or_create_conversation(self) -> str:
-        """
-        Get or create active conversation for the user.
-        """
-        if not self.user:
-            raise ValueError("User is required to create conversation")
-
-        conversation, created = ChatConversation.objects.get_or_create(
-            user=self.user,
-            is_active=True,
-            defaults={'title': 'New Chat'}
-        )
-        return str(conversation.id)
-
-    @database_sync_to_async
     def mark_conversation_inactive(self, conversation_id: str) -> None:
         """
         Mark a conversation as inactive (archive it).
@@ -682,12 +667,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def create_new_conversation(self) -> str:
         """
         Create a new active conversation for the user.
-        Sets title with timestamp for easy identification.
+        Deactivates all previous active conversations first.
         """
         from datetime import datetime
 
         if not self.user:
             raise ValueError("User is required to create conversation")
+
+        # Deactivate all existing active conversations for this user
+        ChatConversation.objects.filter(
+            user=self.user, is_active=True
+        ).update(is_active=False)
 
         conversation = ChatConversation.objects.create(
             user=self.user,
