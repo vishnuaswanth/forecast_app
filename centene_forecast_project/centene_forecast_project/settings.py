@@ -20,8 +20,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Initialize django-environ
 env = environ.Env(
     # Set default values and casting
-    DEBUG=(bool, False),
-    OPENAI_API_KEY=(str, ''),
+    CENTENE_DEBUG=(bool, False),
+    CENTENE_OPENAI_API_KEY=(str, ''),
 )
 
 # Read .env file
@@ -32,12 +32,12 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = env('SECRET_KEY')
+SECRET_KEY = env('CENTENE_SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = env.bool('DEBUG', default=False)
+DEBUG = env.bool('CENTENE_DEBUG', default=False)
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
+ALLOWED_HOSTS = env.list('CENTENE_ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
 
 # Reverse proxy: IIS terminates HTTPS and forwards plain HTTP to Daphne.
 # Django must trust X-Forwarded-Proto set by IIS to know the original request was HTTPS.
@@ -46,16 +46,16 @@ USE_X_FORWARDED_HOST = True
 USE_X_FORWARDED_PORT = True
 
 # CSRF: allow requests from the production HTTPS origin
-CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=[])
+CSRF_TRUSTED_ORIGINS = env.list('CENTENE_CSRF_TRUSTED_ORIGINS', default=[])
 
 # Production security settings (no-op when DEBUG=True and not HTTPS)
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
-SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=not DEBUG)
-SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
-CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
-SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=31536000 if not DEBUG else 0)
+SECURE_SSL_REDIRECT = env.bool('CENTENE_SECURE_SSL_REDIRECT', default=not DEBUG)
+SESSION_COOKIE_SECURE = env.bool('CENTENE_SESSION_COOKIE_SECURE', default=not DEBUG)
+CSRF_COOKIE_SECURE = env.bool('CENTENE_CSRF_COOKIE_SECURE', default=not DEBUG)
+SECURE_HSTS_SECONDS = env.int('CENTENE_SECURE_HSTS_SECONDS', default=31536000 if not DEBUG else 0)
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
 
@@ -229,10 +229,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 
-API_BASE_URL = "http://127.0.0.1:8888"
+API_BASE_URL = env('CENTENE_API_BASE_URL', default='http://127.0.0.1:8888')
 
 PBIRS_CLAIMS_CAPACITY_URL = env(
-    'PBIRS_CLAIMS_CAPACITY_URL',
+    'CENTENE_PBIRS_CLAIMS_CAPACITY_URL',
     default='',
 )
 
@@ -250,7 +250,7 @@ CHAT_CONFIG = {
 LLM_CONFIG = {
     'provider': 'openai',
     'model': 'gpt-4o',  # Stable model. Try 'gpt-5' or 'gpt-5.2' for latest capability
-    'api_key': env('OPENAI_API_KEY'),  # Read from .env file
+    'api_key': env('CENTENE_OPENAI_API_KEY'),  # Read from .env file
     'max_tokens': 4096,
     'temperature': 0.1,
     'use_langchain': True,

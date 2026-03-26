@@ -136,6 +136,166 @@
         </div>
     </div>
 
+    <!-- ====================================================
+         Ramp Campaign Manager Modal (Stage → Preview → Result)
+         ==================================================== -->
+    <div id="ramp-campaign-modal" class="ramp-modal-overlay" style="display:none;">
+        <div class="ramp-modal-container" style="max-width:96vw;width:1100px;min-width:700px;">
+
+            <!-- ── STAGE VIEW ── -->
+            <div id="campaign-stage-view">
+                <div class="ramp-modal-header">
+                    <h5>Ramp Campaign Manager</h5>
+                    <button id="campaign-modal-close-btn" class="ramp-modal-close-btn">&#10005;</button>
+                </div>
+                <div class="ramp-modal-body" style="padding:16px 20px;">
+                    <p id="campaign-report-label" class="text-muted" style="margin-bottom:12px;"></p>
+
+                    <!-- Staging table -->
+                    <div style="overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;">
+                        <table class="table table-sm table-bordered mb-0" id="campaign-staging-table">
+                            <thead class="thead-light" style="position:sticky;top:0;z-index:1;">
+                                <tr>
+                                    <th style="white-space:nowrap;">Forecast ID</th>
+                                    <th>LOB</th>
+                                    <th>State</th>
+                                    <th>Case Type</th>
+                                    <th>Month</th>
+                                    <th>Ramp Name</th>
+                                    <th>Summary</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="campaign-staging-tbody">
+                                <tr id="campaign-empty-row">
+                                    <td colspan="8" class="text-center text-muted" style="padding:20px;">
+                                        No ramps staged yet — click "+ Add New Ramp" to begin.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p id="campaign-stage-summary" class="text-muted" style="margin-top:8px;font-size:0.85em;"></p>
+                </div>
+                <div class="ramp-modal-footer">
+                    <span id="campaign-stage-error" class="ramp-modal-error" style="display:none;"></span>
+                    <button id="campaign-add-ramp-btn" class="btn btn-secondary">+ Add New Ramp</button>
+                    <button id="campaign-submit-all-btn" class="btn btn-primary" style="margin-left:auto;">Submit All Ramps &rarr;</button>
+                </div>
+            </div>
+
+            <!-- ── PREVIEW VIEW ── -->
+            <div id="campaign-preview-view" style="display:none;">
+                <div class="ramp-modal-header">
+                    <h5>Ramp Campaign Manager &mdash; Preview</h5>
+                    <button id="campaign-preview-close-btn" class="ramp-modal-close-btn">&#10005;</button>
+                </div>
+                <div class="ramp-modal-body" style="padding:16px 20px;">
+                    <p id="campaign-preview-summary" class="text-muted" style="margin-bottom:12px;"></p>
+                    <div style="overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="thead-light" style="position:sticky;top:0;z-index:1;">
+                                <tr>
+                                    <th>Forecast ID</th>
+                                    <th>LOB / Case Type</th>
+                                    <th>Month</th>
+                                    <th>&Delta; FTE</th>
+                                    <th>&Delta; Capacity</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="campaign-preview-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:12px;font-weight:600;" id="campaign-preview-totals"></div>
+                </div>
+                <div class="ramp-modal-footer">
+                    <span id="campaign-preview-error" class="ramp-modal-error" style="display:none;"></span>
+                    <button id="campaign-back-to-stage-btn" class="btn btn-secondary">&larr; Back to Edit</button>
+                    <button id="campaign-confirm-apply-btn" class="btn btn-success" style="margin-left:auto;">&#10003; Confirm Apply All</button>
+                </div>
+            </div>
+
+            <!-- ── RESULT VIEW ── -->
+            <div id="campaign-result-view" style="display:none;">
+                <div class="ramp-modal-header">
+                    <h5>Ramp Campaign Manager &mdash; Results</h5>
+                    <button id="campaign-result-close-btn" class="ramp-modal-close-btn">&#10005;</button>
+                </div>
+                <div class="ramp-modal-body" style="padding:16px 20px;">
+                    <p id="campaign-result-summary" class="text-muted" style="margin-bottom:12px;"></p>
+                    <div style="overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;">
+                        <table class="table table-sm table-bordered mb-0">
+                            <thead class="thead-light" style="position:sticky;top:0;z-index:1;">
+                                <tr>
+                                    <th>Forecast ID</th>
+                                    <th>LOB / Case Type</th>
+                                    <th>Month</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="campaign-result-tbody"></tbody>
+                        </table>
+                    </div>
+                    <p class="text-muted" style="margin-top:10px;font-size:0.85em;">
+                        Staging table cleared. Re-add failed rows manually if needed.
+                    </p>
+                </div>
+                <div class="ramp-modal-footer">
+                    <button id="campaign-result-done-btn" class="btn btn-primary" style="margin-left:auto;">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====================================================
+         Add / Edit Ramp Sub-Modal (single forecast row × months)
+         ==================================================== -->
+    <div id="ramp-add-sub-modal" class="ramp-modal-overlay" style="display:none;z-index:1060;">
+        <div class="ramp-modal-container" style="max-width:780px;width:780px;">
+            <div class="ramp-modal-header">
+                <h5 id="add-sub-modal-title">Add New Ramp</h5>
+                <button id="add-sub-modal-close-btn" class="ramp-modal-close-btn">&#10005;</button>
+            </div>
+            <div class="ramp-modal-body" style="padding:16px 20px;max-height:72vh;overflow-y:auto;">
+
+                <!-- ① Forecast Row selector (hidden in Edit mode) -->
+                <div id="add-sub-row-selector" style="margin-bottom:16px;">
+                    <strong>① Forecast Row</strong>
+                    <select id="add-sub-row-select" class="form-control" style="margin-top:6px;">
+                        <option value="">— Select a forecast row —</option>
+                    </select>
+                </div>
+
+                <!-- ② Month checkboxes (hidden in Edit mode) -->
+                <div id="add-sub-month-selector" style="margin-bottom:16px;">
+                    <strong>② Forecast Months</strong>
+                    <div id="add-sub-month-checks" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:12px;"></div>
+                </div>
+
+                <!-- ③ Week template tabs -->
+                <div style="margin-bottom:16px;">
+                    <strong id="add-sub-weeks-label">③ Ramp Template</strong>
+                    <div id="add-sub-month-tabs" style="display:flex;gap:4px;flex-wrap:wrap;margin:8px 0 0;"></div>
+                    <div id="add-sub-weeks-content" style="margin-top:8px;">
+                        <!-- Week table injected here by JS -->
+                    </div>
+                </div>
+
+                <!-- Ramp Name -->
+                <div style="margin-bottom:4px;">
+                    <label style="font-weight:600;">Ramp Name</label>
+                    <input type="text" id="add-sub-ramp-name" class="form-control" placeholder="e.g. Q2-Onboarding-Ramp" />
+                </div>
+            </div>
+            <div class="ramp-modal-footer">
+                <span id="add-sub-error" class="ramp-modal-error" style="display:none;"></span>
+                <button id="add-sub-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="add-sub-confirm-btn" class="btn btn-primary" style="margin-left:auto;">Add to Campaign &rarr;</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Ramp Input Modal (separate from data-view modal) -->
     <div id="ramp-modal-overlay" class="ramp-modal-overlay" style="display: none;">
         <div id="ramp-modal-container" class="ramp-modal-container">

@@ -10,14 +10,15 @@ $NssmPath    = "C:\nssm.exe"
 $ServiceName = "CenteneForecasting"
 
 $EnvVars = @{
-    "DJANGO_SETTINGS_MODULE"    = "centene_forecast_project.settings"
-    "SECRET_KEY"                = "REPLACE_WITH_YOUR_SECRET_KEY"
-    "DEBUG"                     = "False"
-    "ALLOWED_HOSTS"             = "YOUR_SERVER_HOSTNAME,localhost"
-    "SECURE_SSL_REDIRECT"       = "False"
-    "CSRF_TRUSTED_ORIGINS"      = "https://YOUR_SERVER_HOSTNAME"
-    "OPENAI_API_KEY"            = "REPLACE_WITH_YOUR_OPENAI_KEY"
-    "PBIRS_CLAIMS_CAPACITY_URL" = "http://10.111.36.98/reports/powerbi/COMMERCIAL/Centene/Claims%20Capacity%20Planning%20Dashboard?rs:Embed=true"
+    "DJANGO_SETTINGS_MODULE"           = "centene_forecast_project.settings"
+    "CENTENE_SECRET_KEY"               = "REPLACE_WITH_YOUR_SECRET_KEY"
+    "CENTENE_DEBUG"                    = "False"
+    "CENTENE_ALLOWED_HOSTS"            = "YOUR_SERVER_HOSTNAME,localhost"
+    "CENTENE_SECURE_SSL_REDIRECT"      = "False"
+    "CENTENE_CSRF_TRUSTED_ORIGINS"     = "https://YOUR_SERVER_HOSTNAME"
+    "CENTENE_OPENAI_API_KEY"           = "REPLACE_WITH_YOUR_OPENAI_KEY"
+    "CENTENE_API_BASE_URL"             = "http://127.0.0.1:8888"
+    "CENTENE_PBIRS_CLAIMS_CAPACITY_URL"= "http://10.111.36.98/reports/powerbi/COMMERCIAL/Centene/Claims%20Capacity%20Planning%20Dashboard?rs:Embed=true"
 }
 
 # =============================================================================

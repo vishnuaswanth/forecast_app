@@ -1831,6 +1831,78 @@ def generate_bulk_ramp_preview_ui(
     '''
 
 
+def generate_campaign_entry_card_ui(
+    months: dict,
+    lob_list: list,
+    month_weeks: dict,
+    report_label: str = '',
+) -> str:
+    """
+    Generate entry card for the Ramp Campaign Manager.
+
+    Embeds available months, LOB list, and pre-calculated week boundaries
+    so the JS modal never needs extra API calls.
+
+    Args:
+        months: Dict mapping Month1/Month2/... → 'Apr-25'/'May-25'/...
+        lob_list: List of dicts {forecast_id, main_lob, state, case_type}
+        month_weeks: Dict mapping 'YYYY-MM' → list of week dicts from calculate_weeks()
+        report_label: Human-readable report label (e.g. "March 2025")
+
+    Returns:
+        HTML string for campaign entry card with "Open Campaign Manager" button
+    """
+    safe_label = html_module.escape(str(report_label))
+    lob_count = len(lob_list)
+    month_count = len(months)
+
+    # Build month_key → label mapping for JS (e.g. {"2025-04": "Apr-25"})
+    import calendar as _cal
+    month_key_labels = {}
+    for _label in months.values():
+        try:
+            abbr, yr_short = _label.split('-')
+            mo = list(_cal.month_abbr).index(abbr)
+            yr = 2000 + int(yr_short)
+            month_key_labels[f"{yr:04d}-{mo:02d}"] = _label
+        except Exception:
+            pass
+
+    months_json = html_module.escape(json.dumps(month_key_labels))
+    lobs_json = html_module.escape(json.dumps(lob_list))
+    month_weeks_json = html_module.escape(json.dumps(month_weeks))
+
+    logger.info(
+        f"[UI Tools] Generated campaign entry card: {lob_count} LOBs, "
+        f"{month_count} months for {report_label}"
+    )
+    return f'''
+    <div class="campaign-entry-card card border-primary">
+        <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between">
+            <strong>&#128197; Ramp Campaign Manager</strong>
+            <span class="badge bg-white text-primary">{safe_label}</span>
+        </div>
+        <div class="card-body">
+            <p class="mb-2 text-muted small">
+                <strong>{lob_count}</strong> forecast rows &nbsp;&bull;&nbsp;
+                <strong>{month_count}</strong> forecast months available
+            </p>
+            <p class="mb-3">
+                Use the Campaign Manager to configure, preview, and apply ramp data
+                across multiple LOBs and forecast months at once.
+            </p>
+            <button class="btn btn-primary campaign-open-manager-btn"
+                    data-campaign-months="{months_json}"
+                    data-campaign-lobs="{lobs_json}"
+                    data-campaign-month-weeks="{month_weeks_json}"
+                    data-report-label="{safe_label}">
+                Open Campaign Manager
+            </button>
+        </div>
+    </div>
+    '''
+
+
 def generate_bulk_ramp_result_ui(
     ramps_applied: list,
     ramps_failed: list,

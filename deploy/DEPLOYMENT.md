@@ -34,12 +34,12 @@ Expected output: `System check identified no issues (0 silenced).`
 
 ```powershell
 # Set DEBUG=False temporarily to surface production warnings
-$env:DEBUG = "False"
-$env:SECRET_KEY = "temp-check-key"
-$env:ALLOWED_HOSTS = "localhost"
-$env:SECURE_SSL_REDIRECT = "False"
+$env:CENTENE_DEBUG = "False"
+$env:CENTENE_SECRET_KEY = "temp-check-key"
+$env:CENTENE_ALLOWED_HOSTS = "localhost"
+$env:CENTENE_SECURE_SSL_REDIRECT = "False"
 python manage.py check --deploy
-$env:DEBUG = $null   # restore
+$env:CENTENE_DEBUG = $null   # restore
 ```
 
 Fix any `CRITICAL` items before proceeding. `WARNING` items about HTTPS are expected since IIS handles SSL termination.
@@ -181,9 +181,9 @@ No output means the port is free. If occupied, choose a different port and updat
 cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
 
 # Set minimal env vars for this step
-$env:SECRET_KEY    = "temp"
-$env:DEBUG         = "True"
-$env:ALLOWED_HOSTS = "localhost"
+$env:CENTENE_SECRET_KEY    = "temp"
+$env:CENTENE_DEBUG         = "True"
+$env:CENTENE_ALLOWED_HOSTS = "localhost"
 
 .\.venv\Scripts\python.exe manage.py migrate
 ```
@@ -245,13 +245,14 @@ Open `deploy\setup-service.ps1` and fill in the `$EnvVars` block:
 
 ```powershell
 $EnvVars = @{
-    "DJANGO_SETTINGS_MODULE"    = "centene_forecast_project.settings"
-    "SECRET_KEY"                = "your-actual-secret-key-here"       # <- change
-    "DEBUG"                     = "False"
-    "ALLOWED_HOSTS"             = "your.server.hostname,localhost"     # <- change
-    "SECURE_SSL_REDIRECT"       = "False"   # IIS handles HTTPS, not Django
-    "OPENAI_API_KEY"            = "sk-..."                             # <- change
-    "PBIRS_CLAIMS_CAPACITY_URL" = "http://10.111.36.98/reports/..."   # <- confirm
+    "DJANGO_SETTINGS_MODULE"           = "centene_forecast_project.settings"
+    "CENTENE_SECRET_KEY"               = "your-actual-secret-key-here"       # <- change
+    "CENTENE_DEBUG"                    = "False"
+    "CENTENE_ALLOWED_HOSTS"            = "your.server.hostname,localhost"     # <- change
+    "CENTENE_SECURE_SSL_REDIRECT"      = "False"   # IIS handles HTTPS, not Django
+    "CENTENE_OPENAI_API_KEY"           = "sk-..."                             # <- change
+    "CENTENE_API_BASE_URL"             = "http://127.0.0.1:8888"
+    "CENTENE_PBIRS_CLAIMS_CAPACITY_URL"= "http://10.111.36.98/reports/..."   # <- confirm
 }
 ```
 
@@ -280,11 +281,11 @@ Should show `Status: Running`. Also visible in `services.msc`.
 Open a **new** PowerShell window (must be fresh — not the one that ran the script):
 
 ```powershell
-@('SECRET_KEY','DEBUG','ALLOWED_HOSTS','SECURE_SSL_REDIRECT','OPENAI_API_KEY',
-  'DJANGO_SETTINGS_MODULE') | ForEach-Object {
+@('CENTENE_SECRET_KEY','CENTENE_DEBUG','CENTENE_ALLOWED_HOSTS','CENTENE_SECURE_SSL_REDIRECT',
+  'CENTENE_OPENAI_API_KEY','CENTENE_API_BASE_URL','DJANGO_SETTINGS_MODULE') | ForEach-Object {
     $val = [System.Environment]::GetEnvironmentVariable($_, 'Machine')
     $preview = if ($val) { $val.Substring(0, [Math]::Min(30, $val.Length)) + '...' } else { '<NOT SET>' }
-    "{0,-35} = {1}" -f $_, $preview
+    "{0,-40} = {1}" -f $_, $preview
 }
 ```
 
@@ -443,13 +444,13 @@ Get-Content (Get-ChildItem C:\Logs\CenteneForecasting\*.log | Sort LastWriteTime
 
 ## 8. Common Issues and Fixes
 
-### `KeyError: 'SECRET_KEY'` on startup
+### `KeyError: 'CENTENE_SECRET_KEY'` on startup
 
 **Cause:** Environment variable not set, or the service started before the script finished writing to the registry.
 
 ```powershell
 # Verify it is set in the Machine scope
-[System.Environment]::GetEnvironmentVariable('SECRET_KEY', 'Machine')
+[System.Environment]::GetEnvironmentVariable('CENTENE_SECRET_KEY', 'Machine')
 
 # Restart service to pick up registry changes
 Restart-Service CenteneForecasting
@@ -461,10 +462,10 @@ Restart-Service CenteneForecasting
 
 **Cause:** The server hostname is not in `ALLOWED_HOSTS`.
 
-Update `ALLOWED_HOSTS` in `deploy\setup-service.ps1` and re-run it, or update directly:
+Update `CENTENE_ALLOWED_HOSTS` in `deploy\setup-service.ps1` and re-run it, or update directly:
 
 ```powershell
-[System.Environment]::SetEnvironmentVariable('ALLOWED_HOSTS','new.hostname,localhost','Machine')
+[System.Environment]::SetEnvironmentVariable('CENTENE_ALLOWED_HOSTS','new.hostname,localhost','Machine')
 Restart-Service CenteneForecasting
 ```
 
@@ -500,7 +501,7 @@ Restart-Service CenteneForecasting
 **Cause:** `SECURE_SSL_REDIRECT` is `True` — Django is redirecting HTTP to HTTPS internally, but Daphne only serves HTTP.
 
 ```powershell
-[System.Environment]::SetEnvironmentVariable('SECURE_SSL_REDIRECT','False','Machine')
+[System.Environment]::SetEnvironmentVariable('CENTENE_SECURE_SSL_REDIRECT','False','Machine')
 Restart-Service CenteneForecasting
 ```
 

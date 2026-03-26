@@ -152,6 +152,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_confirm_bulk_ramp_submission(data)
             elif message_type == 'apply_bulk_ramp':
                 await self.handle_apply_bulk_ramp(data)
+            elif message_type == 'submit_ramp_campaign':
+                await self.handle_submit_ramp_campaign(data)
+            elif message_type == 'apply_ramp_campaign':
+                await self.handle_apply_ramp_campaign(data)
             else:
                 await self.send_error(f"Unknown message type: {message_type}")
 
@@ -581,6 +585,94 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'success': False,
                 'message': str(e),
                 'ui_component': '',
+            })
+
+    async def handle_submit_ramp_campaign(self, data: Dict[str, Any]) -> None:
+        """
+        Handle staged campaign rows submitted from the Campaign Manager modal.
+        Validates each row, calls bulk-preview for each (forecast_id, month_key) in parallel,
+        and returns preview data so the modal can transition to the Preview view.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        campaign_rows = data.get('campaign_rows', [])
+
+        if not campaign_rows:
+            await self.send_json({
+                'type': 'campaign_preview',
+                'success': False,
+                'message': 'No campaign rows provided',
+                'preview_rows': [],
+                'total_fte_delta': 0,
+                'total_cap_delta': 0,
+            })
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.process_ramp_campaign_submission(
+                campaign_rows=campaign_rows,
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'campaign_preview',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'preview_rows': result.get('preview_rows', []),
+                'total_fte_delta': result.get('total_fte_delta', 0),
+                'total_cap_delta': result.get('total_cap_delta', 0),
+            })
+        except Exception as e:
+            logger.error(f"Error processing ramp campaign submission: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'campaign_preview',
+                'success': False,
+                'message': str(e),
+                'preview_rows': [],
+                'total_fte_delta': 0,
+                'total_cap_delta': 0,
+            })
+
+    async def handle_apply_ramp_campaign(self, data: Dict[str, Any]) -> None:
+        """
+        Handle user confirming the campaign apply (Confirm Apply All).
+        Calls the backend bulk-apply for all staged rows in parallel and returns result data
+        so the modal can transition to the Result view.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_error("Chat service not initialized")
+            return
+
+        await self.send_json({'type': 'typing', 'is_typing': True})
+
+        try:
+            result = await self.chat_service.execute_ramp_campaign_apply(
+                conversation_id=self.conversation_id,
+                user=self.user,
+            )
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'campaign_apply_result',
+                'success': result.get('success', False),
+                'message': result.get('message', ''),
+                'applied': result.get('applied', []),
+                'failed': result.get('failed', []),
+            })
+        except Exception as e:
+            logger.error(f"Error applying ramp campaign: {e}")
+            await self.send_json({'type': 'typing', 'is_typing': False})
+            await self.send_json({
+                'type': 'campaign_apply_result',
+                'success': False,
+                'message': str(e),
+                'applied': [],
+                'failed': [],
             })
 
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:

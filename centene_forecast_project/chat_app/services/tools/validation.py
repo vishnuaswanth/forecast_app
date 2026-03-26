@@ -306,6 +306,16 @@ class ConversationContext(BaseModel):
         description="Normalised list of named ramps (ramp_name, weeks) for bulk-edit. Format: [{ramp_name, weeks, totalRampEmployees}]"
     )
 
+    # ===== CAMPAIGN STATE =====
+    pending_campaign_data: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Staged campaign rows submitted by user. Format: [{forecast_id, month_key, ramp_name, weeks, ...}]"
+    )
+    pending_campaign_preview: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Preview results per campaign row. Format: [{forecast_id, month_key, ramp_name, fte_delta, cap_delta, error}]"
+    )
+
     # ===== METADATA =====
     last_updated: datetime = Field(default_factory=datetime.now)
     turn_count: int = Field(default=0, description="Number of conversation turns")
@@ -455,6 +465,8 @@ class ConversationContext(BaseModel):
         self.pending_ramp_data = None
         self.pending_ramp_preview = None
         self.pending_ramp_list_data = None
+        self.pending_campaign_data = None
+        self.pending_campaign_preview = None
 
     def sync_legacy_fields(self):
         """

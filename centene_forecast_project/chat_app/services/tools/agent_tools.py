@@ -38,6 +38,7 @@ from chat_app.services.tools.ui_tools import (
     generate_applied_ramp_ui,
     generate_ramp_list_ui,
     generate_forecast_confirmation_card,
+    generate_campaign_entry_card_ui,
 )
 from chat_app.services.tools.calculation_tools import (
     calculate_cph_impact,
@@ -117,6 +118,11 @@ class SetupRampInput(BaseModel):
 class GetAppliedRampInput(BaseModel):
     month: Optional[int] = Field(default=None, description="Forecast month (1-12). Overrides context if provided.")
     year: Optional[int] = Field(default=None, description="Forecast year (e.g. 2026). Overrides context if provided.")
+
+
+class SetupRampCampaignInput(BaseModel):
+    """Tool that requires no parameters — operates at report level."""
+    pass
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -641,6 +647,68 @@ def make_agent_tools(
             "data": data,
         }
 
+    # ── setup_ramp_campaign ──────────────────────────────────────────────────
+
+    async def _setup_ramp_campaign() -> dict:
+        """Open the Ramp Campaign Manager for bulk ramp configuration across all LOBs and months."""
+        import calendar as cal
+
+        fresh_ctx = await context_manager.get_context(conversation_id)
+
+        if not fresh_ctx.last_forecast_data:
+            return {
+                "message": "No forecast data in context. Please fetch forecast data first.",
+                "ui_component": generate_error_ui(
+                    "Please fetch forecast data before opening the Campaign Manager.",
+                    error_type="validation", admin_contact=False
+                ),
+                "data": {},
+            }
+
+        records = fresh_ctx.last_forecast_data.get('records', [])
+        lob_list = [
+            {
+                'forecast_id': int(r.get('forecast_id', r.get('id', 0))),
+                'main_lob': r.get('main_lob', ''),
+                'state': r.get('state', 'N/A'),
+                'case_type': r.get('case_type', ''),
+            }
+            for r in records
+        ]
+
+        months = fresh_ctx.forecast_months or {}
+
+        # Pre-calculate week boundaries for every available forecast month
+        from chat_app.utils.week_calculator import calculate_weeks
+        month_weeks = {}
+        for month_label in months.values():
+            try:
+                abbr, yr_short = month_label.split('-')
+                mo = list(cal.month_abbr).index(abbr)
+                yr = 2000 + int(yr_short)
+                month_key = f"{yr:04d}-{mo:02d}"
+                month_weeks[month_key] = calculate_weeks(yr, mo)
+            except Exception:
+                pass
+
+        report_label = ''
+        if fresh_ctx.forecast_report_month and fresh_ctx.forecast_report_year:
+            report_label = (
+                f"{cal.month_name[fresh_ctx.forecast_report_month]} "
+                f"{fresh_ctx.forecast_report_year}"
+            )
+
+        ui = generate_campaign_entry_card_ui(months, lob_list, month_weeks, report_label)
+
+        return {
+            "message": (
+                f"Ramp Campaign Manager ready with {len(lob_list)} forecast rows "
+                f"and {len(months)} forecast months."
+            ),
+            "ui_component": ui,
+            "data": {"lob_count": len(lob_list), "month_count": len(months)},
+        }
+
     # ── Assemble tool list ───────────────────────────────────────────────────
 
     propose_data_fetch_tool = StructuredTool.from_function(
@@ -744,6 +812,20 @@ def make_agent_tools(
         args_schema=GetAppliedRampInput,
     )
 
+    setup_ramp_campaign_tool = StructuredTool.from_function(
+        coroutine=_setup_ramp_campaign,
+        name="setup_ramp_campaign",
+        description=(
+            "Open the Ramp Campaign Manager to configure ramps across ALL LOBs and ALL forecast months at once. "
+            "Use this when the user wants to apply ramps in bulk across multiple LOBs or multiple months. "
+            "Trigger phrases: 'ramp all LOBs', 'bulk ramp campaign', 'apply ramp to all', "
+            "'ramp across all months', 'campaign ramp', 'open campaign manager', 'bulk ramp all'. "
+            "Does NOT require a selected forecast row — operates at the full report level. "
+            "Requires forecast data to already be loaded (use get_forecast_data or propose_data_fetch first)."
+        ),
+        args_schema=SetupRampCampaignInput,
+    )
+
     return [
         propose_data_fetch_tool,
         get_forecast_tool,
@@ -754,4 +836,5 @@ def make_agent_tools(
         clear_context_tool,
         setup_ramp_tool,
         get_applied_ramp_tool,
+        setup_ramp_campaign_tool,
     ]

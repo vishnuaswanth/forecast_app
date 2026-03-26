@@ -991,6 +991,261 @@ class ChatService:
             "ui_component": ui,
         }
 
+    async def process_ramp_campaign_submission(
+        self,
+        campaign_rows: list,
+        conversation_id: str,
+        user,
+    ) -> dict:
+        """
+        Validate campaign rows, call bulk-preview for each (forecast_id, month_key)
+        combo in parallel, and return preview data for all rows.
+
+        Args:
+            campaign_rows: List of staged rows [{forecast_id, month_key, ramp_name, weeks, ...}]
+            conversation_id: Current conversation ID
+            user: Django user object
+
+        Returns:
+            Dict with success, message, preview_rows, total_fte_delta, total_cap_delta
+        """
+        import asyncio
+        from collections import defaultdict
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.forecast_tools import call_bulk_preview_ramp
+
+        context_manager = get_context_manager()
+
+        if not campaign_rows:
+            return {
+                "success": False,
+                "message": "No campaign rows provided.",
+                "preview_rows": [],
+                "total_fte_delta": 0,
+                "total_cap_delta": 0,
+            }
+
+        # Basic validation
+        errors = []
+        for i, row in enumerate(campaign_rows):
+            if not row.get('forecast_id'):
+                errors.append(f"Row {i+1}: missing forecast_id")
+            if not row.get('month_key'):
+                errors.append(f"Row {i+1}: missing month_key")
+            if not row.get('weeks'):
+                errors.append(f"Row {i+1}: missing weeks data")
+        if errors:
+            return {
+                "success": False,
+                "message": "Validation failed: " + "; ".join(errors),
+                "preview_rows": [],
+                "total_fte_delta": 0,
+                "total_cap_delta": 0,
+            }
+
+        # Store campaign data in context for apply step
+        await context_manager.update_entities(conversation_id, pending_campaign_data=campaign_rows)
+
+        # Group rows by (forecast_id, month_key) → list of ramp payloads
+        groups = defaultdict(list)
+        for row in campaign_rows:
+            key = (int(row['forecast_id']), row['month_key'])
+            groups[key].append({
+                'ramp_name': row.get('ramp_name', 'Campaign-Ramp'),
+                'weeks': row['weeks'],
+                'totalRampEmployees': row.get('totalRampEmployees', 0),
+            })
+
+        # Call bulk-preview for each combo in parallel
+        async def _safe_preview(forecast_id, month_key, ramps):
+            try:
+                return await call_bulk_preview_ramp(forecast_id, month_key, {"ramps": ramps})
+            except Exception as e:
+                return e
+
+        group_items = list(groups.items())
+        results = await asyncio.gather(*[
+            _safe_preview(fid, mk, ramps) for (fid, mk), ramps in group_items
+        ])
+
+        # Build flat preview_rows list (one entry per original campaign row)
+        preview_rows = []
+        for idx, ((forecast_id, month_key), ramps) in enumerate(group_items):
+            result = results[idx]
+            for ramp in ramps:
+                orig = next(
+                    (r for r in campaign_rows
+                     if int(r['forecast_id']) == forecast_id
+                     and r['month_key'] == month_key
+                     and r.get('ramp_name') == ramp['ramp_name']),
+                    {}
+                )
+                if isinstance(result, Exception):
+                    preview_rows.append({
+                        'forecast_id': forecast_id,
+                        'main_lob': orig.get('main_lob', ''),
+                        'state': orig.get('state', ''),
+                        'case_type': orig.get('case_type', ''),
+                        'month_key': month_key,
+                        'month_label': orig.get('month_label', month_key),
+                        'ramp_name': ramp['ramp_name'],
+                        'fte_delta': None,
+                        'cap_delta': None,
+                        'error': str(result),
+                    })
+                else:
+                    per_ramp = result.get('per_ramp_previews', [])
+                    ramp_preview = next(
+                        (p for p in per_ramp if p.get('ramp_name') == ramp['ramp_name']),
+                        per_ramp[0] if per_ramp else {}
+                    )
+                    diff = ramp_preview.get('diff', {})
+                    preview_rows.append({
+                        'forecast_id': forecast_id,
+                        'main_lob': orig.get('main_lob', ''),
+                        'state': orig.get('state', ''),
+                        'case_type': orig.get('case_type', ''),
+                        'month_key': month_key,
+                        'month_label': orig.get('month_label', month_key),
+                        'ramp_name': ramp['ramp_name'],
+                        'fte_delta': diff.get('fte_available', 0),
+                        'cap_delta': diff.get('capacity', 0),
+                        'error': None,
+                    })
+
+        total_fte = sum(
+            (r['fte_delta'] or 0) for r in preview_rows if r['fte_delta'] is not None
+        )
+        total_cap = sum(
+            (r['cap_delta'] or 0) for r in preview_rows if r['cap_delta'] is not None
+        )
+
+        await context_manager.update_entities(conversation_id, pending_campaign_preview=preview_rows)
+
+        error_count = sum(1 for r in preview_rows if r.get('error'))
+        msg = f"Preview ready: {len(preview_rows)} ramp entries"
+        if error_count:
+            msg += f" ({error_count} failed to preview)"
+
+        logger.info(f"[Chat Service] Campaign preview: {len(preview_rows)} rows, {error_count} errors")
+        return {
+            "success": True,
+            "message": msg,
+            "preview_rows": preview_rows,
+            "total_fte_delta": total_fte,
+            "total_cap_delta": total_cap,
+        }
+
+    async def execute_ramp_campaign_apply(
+        self,
+        conversation_id: str,
+        user,
+    ) -> dict:
+        """
+        Apply all campaign rows by calling bulk-apply for each (forecast_id, month_key)
+        combo in parallel.
+
+        Args:
+            conversation_id: Current conversation ID
+            user: Django user object
+
+        Returns:
+            Dict with success, message, applied, failed
+        """
+        import asyncio
+        from collections import defaultdict
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.forecast_tools import call_bulk_apply_ramp
+
+        context_manager = get_context_manager()
+        ctx = await context_manager.get_context(conversation_id)
+
+        campaign_rows = ctx.pending_campaign_data
+        if not campaign_rows:
+            return {
+                "success": False,
+                "message": "No campaign data in context. Please resubmit campaign data.",
+                "applied": [],
+                "failed": [],
+            }
+
+        # Group by (forecast_id, month_key)
+        groups = defaultdict(list)
+        for row in campaign_rows:
+            key = (int(row['forecast_id']), row['month_key'])
+            groups[key].append({
+                'ramp_name': row.get('ramp_name', 'Campaign-Ramp'),
+                'weeks': row['weeks'],
+                'totalRampEmployees': row.get('totalRampEmployees', 0),
+            })
+
+        # Apply in parallel
+        async def _safe_apply(forecast_id, month_key, ramps):
+            try:
+                return await call_bulk_apply_ramp(forecast_id, month_key, {"ramps": ramps})
+            except Exception as e:
+                return e
+
+        group_items = list(groups.items())
+        results = await asyncio.gather(*[
+            _safe_apply(fid, mk, ramps) for (fid, mk), ramps in group_items
+        ])
+
+        # Build per-row result lists
+        applied = []
+        failed = []
+
+        for idx, ((forecast_id, month_key), ramps) in enumerate(group_items):
+            result = results[idx]
+            ramps_failed_names: set = set()
+
+            if not isinstance(result, Exception):
+                ramps_failed_names = set(result.get('ramps_failed', []))
+
+            for ramp in ramps:
+                orig = next(
+                    (r for r in campaign_rows
+                     if int(r['forecast_id']) == forecast_id
+                     and r['month_key'] == month_key
+                     and r.get('ramp_name') == ramp['ramp_name']),
+                    {}
+                )
+                entry = {
+                    'forecast_id': forecast_id,
+                    'main_lob': orig.get('main_lob', ''),
+                    'state': orig.get('state', ''),
+                    'case_type': orig.get('case_type', ''),
+                    'month_key': month_key,
+                    'month_label': orig.get('month_label', month_key),
+                    'ramp_name': ramp['ramp_name'],
+                }
+
+                if isinstance(result, Exception):
+                    entry['error'] = str(result)
+                    failed.append(entry)
+                elif ramp['ramp_name'] in ramps_failed_names:
+                    entry['error'] = 'Apply failed on server'
+                    failed.append(entry)
+                else:
+                    applied.append(entry)
+
+        # Clear campaign state on completion
+        fresh_ctx = await context_manager.get_context(conversation_id)
+        fresh_ctx.pending_campaign_data = None
+        fresh_ctx.pending_campaign_preview = None
+        await context_manager.save_context(fresh_ctx)
+
+        logger.info(
+            f"[Chat Service] Campaign apply complete: "
+            f"{len(applied)} applied, {len(failed)} failed"
+        )
+        return {
+            "success": len(failed) == 0,
+            "message": f"Campaign applied: {len(applied)} successful, {len(failed)} failed.",
+            "applied": applied,
+            "failed": failed,
+        }
+
     async def _get_message_history(self, conversation_id: str, limit: int = 10) -> list:
         """
         Retrieve recent message history from database as role/content dicts.

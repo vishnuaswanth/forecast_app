@@ -29,6 +29,12 @@
         lastBulkRampSubmission: null, // Last submitted bulk payload (for "Edit Again")
         bulkRampForecastId: null,
         bulkRampMonthKey: null,
+        // ── Campaign Manager state ────────────────────────────────────────
+        campaignModalData: null,      // { months, lobs, monthWeeks, reportLabel }
+        campaignStagingRows: [],       // [{forecast_id, main_lob, state, case_type, month_key, month_label, ramp_name, weeks}]
+        campaignSubModalWeeks: {},     // { "2025-04": [{...week with rampPercent/rampEmployees}] }
+        campaignSubActiveMonth: null,  // active tab month key in sub-modal
+        campaignEditingIndex: null,    // staging row index being edited (null = add new)
     };
 
     // ========================================================================
@@ -190,6 +196,12 @@
                 case 'bulk_ramp_apply_result':
                     handleBulkRampApplyResult(data);
                     break;
+                case 'campaign_preview':
+                    handleCampaignPreview(data);
+                    break;
+                case 'campaign_apply_result':
+                    handleCampaignApplyResult(data);
+                    break;
                 default:
                     console.warn('[Chat] Unknown message type:', data.type);
             }
@@ -296,6 +308,7 @@
         attachRampOpenListeners();
         attachRampListShowDataListeners();
         attachForecastFetchConfirmListeners();
+        attachCampaignOpenListeners();
     }
 
     function handleToolResult(data) {
@@ -1764,6 +1777,481 @@
     }
 
     // ========================================================================
+    // Campaign Manager Modal
+    // ========================================================================
+
+    // Convert "Apr-25" → "2025-04"
+    function monthLabelToKey(label) {
+        const monthMap = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+                           Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+        const parts = label.split('-');
+        if (parts.length !== 2) return label;
+        const mo = monthMap[parts[0]] || '01';
+        return '20' + parts[1] + '-' + mo;
+    }
+
+    function attachCampaignOpenListeners() {
+        elements.messagesArea.querySelectorAll('.campaign-open-manager-btn').forEach(btn => {
+            if (!btn.hasAttribute('data-listener-attached')) {
+                btn.setAttribute('data-listener-attached', 'true');
+                btn.addEventListener('click', function() { openCampaignModal(this); });
+            }
+        });
+    }
+
+    function openCampaignModal(btn) {
+        try {
+            const monthsRaw  = JSON.parse(btn.getAttribute('data-campaign-months').replace(/&quot;/g, '"'));
+            const lobs       = JSON.parse(btn.getAttribute('data-campaign-lobs').replace(/&quot;/g, '"'));
+            const monthWeeks = JSON.parse(btn.getAttribute('data-campaign-month-weeks').replace(/&quot;/g, '"'));
+            const reportLabel = btn.getAttribute('data-report-label') || '';
+
+            // Backend sends {"2025-04": "Apr-25", ...}; convert values to ordered label array
+            const months = Array.isArray(monthsRaw) ? monthsRaw : Object.values(monthsRaw);
+
+            ChatState.campaignModalData   = { months, lobs, monthWeeks, reportLabel };
+            ChatState.campaignStagingRows  = [];
+            ChatState.campaignEditingIndex = null;
+
+            document.getElementById('campaign-report-label').textContent = reportLabel;
+            updateStagingTable();
+            showCampaignView('stage');
+            document.getElementById('ramp-campaign-modal').style.display = 'flex';
+        } catch (err) {
+            console.error('[Campaign] Error opening campaign modal:', err);
+        }
+    }
+
+    function closeCampaignModal() {
+        document.getElementById('ramp-campaign-modal').style.display = 'none';
+        ChatState.campaignStagingRows  = [];
+        ChatState.campaignModalData    = null;
+        ChatState.campaignEditingIndex = null;
+    }
+
+    function showCampaignView(view) {
+        ['stage', 'preview', 'result'].forEach(v => {
+            const el = document.getElementById('campaign-' + v + '-view');
+            if (el) el.style.display = (v === view) ? '' : 'none';
+        });
+    }
+
+    function buildRowSummary(row) {
+        const weeks = row.weeks || [];
+        if (weeks.length === 0) return '';
+        const pcts = weeks.map(w => w.rampPercent !== undefined ? w.rampPercent : (w.ramp_percent || 0));
+        const emps = weeks.map(w => w.rampEmployees !== undefined ? w.rampEmployees : (w.employee_count || 0));
+        const minPct = Math.min(...pcts);
+        const maxPct = Math.max(...pcts);
+        const maxEmp = Math.max(...emps);
+        return `${weeks.length}wk · ${maxEmp}emp · ${minPct}→${maxPct}%`;
+    }
+
+    function updateStagingTable() {
+        const tbody     = document.getElementById('campaign-staging-tbody');
+        const summaryEl = document.getElementById('campaign-stage-summary');
+        const rows      = ChatState.campaignStagingRows;
+
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding:20px;">No ramps staged yet — click "+ Add New Ramp" to begin.</td></tr>`;
+            if (summaryEl) summaryEl.textContent = '';
+            return;
+        }
+
+        tbody.innerHTML = rows.map((row, idx) => `
+            <tr>
+                <td>${row.forecast_id}</td>
+                <td>${escapeHtml(row.main_lob)}</td>
+                <td>${escapeHtml(row.state)}</td>
+                <td>${escapeHtml(row.case_type)}</td>
+                <td>${escapeHtml(row.month_label)}</td>
+                <td>${escapeHtml(row.ramp_name)}</td>
+                <td style="font-size:0.85em;">${buildRowSummary(row)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary campaign-edit-row-btn" data-idx="${idx}">Edit</button>
+                    <button class="btn btn-sm btn-outline-danger campaign-del-row-btn" data-idx="${idx}" style="margin-left:4px;">Del</button>
+                </td>
+            </tr>`).join('');
+
+        tbody.querySelectorAll('.campaign-edit-row-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                openEditRampSubModal(parseInt(this.getAttribute('data-idx'), 10));
+            });
+        });
+        tbody.querySelectorAll('.campaign-del-row-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                ChatState.campaignStagingRows.splice(parseInt(this.getAttribute('data-idx'), 10), 1);
+                updateStagingTable();
+            });
+        });
+
+        if (summaryEl) {
+            const uniqueLobs = new Set(rows.map(r => r.forecast_id));
+            summaryEl.textContent = `Total staged: ${rows.length} ramp${rows.length !== 1 ? 's' : ''} across ${uniqueLobs.size} forecast row${uniqueLobs.size !== 1 ? 's' : ''}`;
+        }
+    }
+
+    // ── Add / Edit Ramp Sub-Modal ─────────────────────────────────────────────
+
+    function openAddRampSubModal() {
+        ChatState.campaignEditingIndex  = null;
+        ChatState.campaignSubModalWeeks = {};
+        ChatState.campaignSubActiveMonth = null;
+
+        document.getElementById('add-sub-modal-title').textContent = 'Add New Ramp';
+        document.getElementById('add-sub-row-selector').style.display  = '';
+        document.getElementById('add-sub-month-selector').style.display = '';
+
+        // Populate forecast row dropdown
+        const lobs   = (ChatState.campaignModalData || {}).lobs || [];
+        const select = document.getElementById('add-sub-row-select');
+        select.innerHTML = '<option value="">— Select a forecast row —</option>' +
+            lobs.map(lob => `<option value="${lob.forecast_id}">${escapeHtml(lob.main_lob)} | ${escapeHtml(lob.state)} | ${escapeHtml(lob.case_type)}</option>`).join('');
+
+        // Populate month checkboxes
+        const months = (ChatState.campaignModalData || {}).months || [];
+        document.getElementById('add-sub-month-checks').innerHTML = months.map(m => {
+            const mk = monthLabelToKey(m);
+            return `<label style="cursor:pointer;user-select:none;">
+                <input type="checkbox" class="campaign-month-check" value="${mk}" data-label="${escapeHtml(m)}" style="margin-right:4px;">
+                ${escapeHtml(m)}</label>`;
+        }).join('');
+        document.getElementById('add-sub-month-checks').querySelectorAll('.campaign-month-check').forEach(cb => {
+            cb.addEventListener('change', onSubModalMonthChange);
+        });
+
+        // Clear tabs & content
+        document.getElementById('add-sub-month-tabs').innerHTML = '';
+        document.getElementById('add-sub-weeks-content').innerHTML =
+            '<p class="text-muted" style="margin-top:8px;font-size:0.9em;">Select month(s) above to configure weeks.</p>';
+        document.getElementById('add-sub-ramp-name').value = '';
+        document.getElementById('add-sub-confirm-btn').textContent = 'Add to Campaign →';
+        clearSubModalError();
+
+        document.getElementById('ramp-add-sub-modal').style.display = 'flex';
+    }
+
+    function openEditRampSubModal(idx) {
+        const row = ChatState.campaignStagingRows[idx];
+        if (!row) return;
+
+        ChatState.campaignEditingIndex   = idx;
+        ChatState.campaignSubModalWeeks  = {};
+        ChatState.campaignSubModalWeeks[row.month_key] = row.weeks.map(w => ({ ...w }));
+        ChatState.campaignSubActiveMonth = row.month_key;
+
+        document.getElementById('add-sub-modal-title').textContent =
+            `Edit Ramp — ${escapeHtml(row.main_lob)} | ${escapeHtml(row.state)} | ${escapeHtml(row.case_type)} — ${escapeHtml(row.month_label)}`;
+
+        document.getElementById('add-sub-row-selector').style.display  = 'none';
+        document.getElementById('add-sub-month-selector').style.display = 'none';
+
+        // Single tab
+        document.getElementById('add-sub-month-tabs').innerHTML =
+            `<button class="btn btn-sm btn-primary campaign-month-tab" data-month="${row.month_key}">${escapeHtml(row.month_label)}</button>`;
+
+        renderSubModalWeekTable(row.month_key);
+        document.getElementById('add-sub-ramp-name').value = row.ramp_name;
+        document.getElementById('add-sub-confirm-btn').textContent = 'Update →';
+        clearSubModalError();
+
+        document.getElementById('ramp-add-sub-modal').style.display = 'flex';
+    }
+
+    function closeAddRampSubModal() {
+        document.getElementById('ramp-add-sub-modal').style.display = 'none';
+        ChatState.campaignSubModalWeeks  = {};
+        ChatState.campaignSubActiveMonth = null;
+        ChatState.campaignEditingIndex   = null;
+    }
+
+    function clearSubModalError() {
+        const err = document.getElementById('add-sub-error');
+        if (err) { err.style.display = 'none'; err.textContent = ''; }
+    }
+
+    function showSubModalError(msg) {
+        const err = document.getElementById('add-sub-error');
+        if (err) { err.textContent = msg; err.style.display = 'block'; }
+    }
+
+    function onSubModalMonthChange() {
+        // Save current tab data before rebuilding
+        if (ChatState.campaignSubActiveMonth) saveSubModalCurrentTab();
+
+        const monthWeeks = (ChatState.campaignModalData || {}).monthWeeks || {};
+        const checked = Array.from(document.getElementById('add-sub-month-checks').querySelectorAll('.campaign-month-check:checked'));
+
+        // Initialize week data for newly checked months
+        checked.forEach(cb => {
+            const mk = cb.value;
+            if (!ChatState.campaignSubModalWeeks[mk]) {
+                const template = monthWeeks[mk] || [];
+                ChatState.campaignSubModalWeeks[mk] = template.map(w => ({
+                    ...w,
+                    rampPercent: 100,
+                    rampEmployees: 0,
+                }));
+            }
+        });
+
+        // Remove unchecked months
+        Object.keys(ChatState.campaignSubModalWeeks).forEach(mk => {
+            if (!checked.find(cb => cb.value === mk)) {
+                delete ChatState.campaignSubModalWeeks[mk];
+            }
+        });
+
+        if (checked.length === 0) {
+            document.getElementById('add-sub-month-tabs').innerHTML = '';
+            document.getElementById('add-sub-weeks-content').innerHTML =
+                '<p class="text-muted" style="margin-top:8px;font-size:0.9em;">Select month(s) above to configure weeks.</p>';
+            ChatState.campaignSubActiveMonth = null;
+            return;
+        }
+
+        // Keep active month or default to first
+        if (!ChatState.campaignSubModalWeeks[ChatState.campaignSubActiveMonth]) {
+            ChatState.campaignSubActiveMonth = checked[0].value;
+        }
+
+        rebuildSubModalTabs(checked);
+        renderSubModalWeekTable(ChatState.campaignSubActiveMonth);
+    }
+
+    function rebuildSubModalTabs(checkedCbs) {
+        const tabContainer = document.getElementById('add-sub-month-tabs');
+        tabContainer.innerHTML = checkedCbs.map(cb => {
+            const isActive = cb.value === ChatState.campaignSubActiveMonth;
+            return `<button class="btn btn-sm ${isActive ? 'btn-primary' : 'btn-outline-secondary'} campaign-month-tab"
+                            data-month="${cb.value}" data-label="${escapeHtml(cb.getAttribute('data-label'))}">
+                ${escapeHtml(cb.getAttribute('data-label'))}</button>`;
+        }).join('');
+
+        tabContainer.querySelectorAll('.campaign-month-tab').forEach(btn => {
+            btn.addEventListener('click', function() {
+                saveSubModalCurrentTab();
+                ChatState.campaignSubActiveMonth = this.getAttribute('data-month');
+                tabContainer.querySelectorAll('.campaign-month-tab').forEach(b => {
+                    b.className = 'btn btn-sm ' + (b.getAttribute('data-month') === ChatState.campaignSubActiveMonth ? 'btn-primary' : 'btn-outline-secondary') + ' campaign-month-tab';
+                });
+                renderSubModalWeekTable(ChatState.campaignSubActiveMonth);
+            });
+        });
+    }
+
+    function saveSubModalCurrentTab() {
+        const mk = ChatState.campaignSubActiveMonth;
+        if (!mk || !ChatState.campaignSubModalWeeks[mk]) return;
+
+        document.getElementById('add-sub-weeks-content').querySelectorAll('.sub-week-row').forEach((row, idx) => {
+            const pctInput = row.querySelector('.sub-week-pct');
+            const empInput = row.querySelector('.sub-week-emp');
+            if (ChatState.campaignSubModalWeeks[mk][idx]) {
+                ChatState.campaignSubModalWeeks[mk][idx].rampPercent   = parseFloat(pctInput ? pctInput.value : 100) || 0;
+                ChatState.campaignSubModalWeeks[mk][idx].rampEmployees = parseInt(empInput ? empInput.value : 0, 10) || 0;
+            }
+        });
+    }
+
+    function renderSubModalWeekTable(monthKey) {
+        const weeks   = ChatState.campaignSubModalWeeks[monthKey] || [];
+        const content = document.getElementById('add-sub-weeks-content');
+
+        if (weeks.length === 0) {
+            content.innerHTML = '<p class="text-muted">No week data for this month.</p>';
+            return;
+        }
+
+        content.innerHTML = `
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:8px;padding:8px;background:#f8f9fa;border-radius:4px;flex-wrap:wrap;">
+                <span style="font-size:0.85em;font-weight:600;">Bulk update:</span>
+                Ramp % all weeks <input type="number" id="sub-bulk-pct" class="form-control form-control-sm" style="width:70px;display:inline-block;" min="0" max="100" placeholder="0-100">
+                <button class="btn btn-sm btn-outline-secondary" id="sub-bulk-pct-apply">Apply</button>
+                &nbsp; Employees all weeks <input type="number" id="sub-bulk-emp" class="form-control form-control-sm" style="width:70px;display:inline-block;" min="0" placeholder="0">
+                <button class="btn btn-sm btn-outline-secondary" id="sub-bulk-emp-apply">Apply</button>
+            </div>
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="thead-light">
+                    <tr><th>Week</th><th>Date Range</th><th>Working Days</th><th>Ramp %</th><th>Employees</th></tr>
+                </thead>
+                <tbody>
+                    ${weeks.map((w, idx) => {
+                        const label     = escapeHtml(w.label || ('Week ' + (idx + 1)));
+                        const dateRange = w.startDate ? `${w.startDate} – ${w.endDate}` : '';
+                        const days      = w.workingDays !== undefined ? w.workingDays : (w.working_days || 0);
+                        const pct       = w.rampPercent !== undefined ? w.rampPercent : (w.ramp_percent || 100);
+                        const emp       = w.rampEmployees !== undefined ? w.rampEmployees : (w.employee_count || 0);
+                        return `<tr class="sub-week-row">
+                            <td>${label}</td>
+                            <td style="font-size:0.85em;">${dateRange}</td>
+                            <td class="text-center">${days}</td>
+                            <td><input type="number" class="form-control form-control-sm sub-week-pct" style="width:80px;" min="0" max="100" step="0.1" value="${pct}" data-idx="${idx}"></td>
+                            <td><input type="number" class="form-control form-control-sm sub-week-emp" style="width:80px;" min="0" value="${emp}" data-idx="${idx}"></td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>`;
+
+        document.getElementById('sub-bulk-pct-apply').addEventListener('click', function() {
+            const val = parseFloat(document.getElementById('sub-bulk-pct').value);
+            if (!isNaN(val)) content.querySelectorAll('.sub-week-pct').forEach(inp => inp.value = val);
+        });
+        document.getElementById('sub-bulk-emp-apply').addEventListener('click', function() {
+            const val = parseInt(document.getElementById('sub-bulk-emp').value, 10);
+            if (!isNaN(val)) content.querySelectorAll('.sub-week-emp').forEach(inp => inp.value = val);
+        });
+    }
+
+    function handleAddSubConfirm() {
+        clearSubModalError();
+
+        // Save current tab input values
+        if (ChatState.campaignSubActiveMonth) saveSubModalCurrentTab();
+
+        const isEdit   = ChatState.campaignEditingIndex !== null;
+        const rampName = document.getElementById('add-sub-ramp-name').value.trim() || 'Default';
+
+        if (isEdit) {
+            const idx = ChatState.campaignEditingIndex;
+            const row = ChatState.campaignStagingRows[idx];
+            const weeks = ChatState.campaignSubModalWeeks[row.month_key] || [];
+            if (weeks.length === 0) { showSubModalError('No week data found.'); return; }
+            ChatState.campaignStagingRows[idx] = { ...row, ramp_name: rampName, weeks: weeks.map(w => ({ ...w })) };
+        } else {
+            const forecastId = parseInt(document.getElementById('add-sub-row-select').value, 10);
+            if (!forecastId) { showSubModalError('Please select a forecast row.'); return; }
+
+            const selectedMonths = Object.keys(ChatState.campaignSubModalWeeks);
+            if (selectedMonths.length === 0) { showSubModalError('Please select at least one forecast month.'); return; }
+
+            const lobs    = (ChatState.campaignModalData || {}).lobs || [];
+            const lobInfo = lobs.find(l => l.forecast_id === forecastId);
+            if (!lobInfo) { showSubModalError('Selected forecast row not found.'); return; }
+
+            // Build month → label map
+            const monthLabelMap = {};
+            ((ChatState.campaignModalData || {}).months || []).forEach(m => {
+                monthLabelMap[monthLabelToKey(m)] = m;
+            });
+
+            selectedMonths.forEach(mk => {
+                const weeks = ChatState.campaignSubModalWeeks[mk] || [];
+                ChatState.campaignStagingRows.push({
+                    forecast_id: lobInfo.forecast_id,
+                    main_lob:    lobInfo.main_lob,
+                    state:       lobInfo.state,
+                    case_type:   lobInfo.case_type,
+                    month_key:   mk,
+                    month_label: monthLabelMap[mk] || mk,
+                    ramp_name:   rampName,
+                    weeks:       weeks.map(w => ({ ...w })),
+                });
+            });
+        }
+
+        closeAddRampSubModal();
+        updateStagingTable();
+    }
+
+    // ── Campaign WS flow ──────────────────────────────────────────────────────
+
+    function submitCampaign() {
+        const rows = ChatState.campaignStagingRows;
+        if (!rows || rows.length === 0) {
+            const errEl = document.getElementById('campaign-stage-error');
+            errEl.textContent = 'No ramps staged. Add at least one ramp before submitting.';
+            errEl.style.display = 'block';
+            return;
+        }
+        document.getElementById('campaign-stage-error').style.display = 'none';
+        document.getElementById('campaign-submit-all-btn').disabled = true;
+        showThinkingBubble();
+        sendWebSocketMessage({ type: 'submit_ramp_campaign', campaign_rows: rows });
+    }
+
+    function handleCampaignPreview(data) {
+        hideThinkingBubble();
+        const submitBtn = document.getElementById('campaign-submit-all-btn');
+        if (submitBtn) submitBtn.disabled = false;
+
+        if (!data.success) {
+            const errEl = document.getElementById('campaign-stage-error');
+            if (errEl) { errEl.textContent = data.message || 'Preview failed.'; errEl.style.display = 'block'; }
+            return;
+        }
+
+        const previewRows = data.preview_rows || [];
+        const totalFte    = data.total_fte_delta || 0;
+        const totalCap    = data.total_cap_delta || 0;
+
+        document.getElementById('campaign-preview-tbody').innerHTML = previewRows.map(row => {
+            const fteDelta = row.fte_delta;
+            const capDelta = row.cap_delta;
+            const fteStr = (typeof fteDelta === 'number') ? (fteDelta >= 0 ? '+' + fteDelta : '' + fteDelta) : '—';
+            const capStr = (typeof capDelta === 'number') ? (capDelta >= 0 ? '+' + capDelta.toLocaleString() : capDelta.toLocaleString()) : '—';
+            const errClass = row.error ? 'text-danger' : '';
+            const status   = row.error ? 'Error: ' + escapeHtml(row.error) : 'OK';
+            return `<tr class="${errClass}">
+                <td>${row.forecast_id}</td>
+                <td>${escapeHtml(row.main_lob || '')} / ${escapeHtml(row.case_type || '')}</td>
+                <td>${escapeHtml(row.month_label || row.month_key || '')}</td>
+                <td class="text-end">${fteStr}</td>
+                <td class="text-end">${capStr}</td>
+                <td>${status}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('campaign-preview-summary').textContent = `${previewRows.length} ramp configuration${previewRows.length !== 1 ? 's' : ''} ready to apply`;
+        document.getElementById('campaign-preview-totals').innerHTML =
+            `Total &Delta; FTE: <span class="${totalFte >= 0 ? 'text-success' : 'text-danger'}">${totalFte >= 0 ? '+' : ''}${totalFte}</span>` +
+            `&nbsp;&nbsp; Total &Delta; Capacity: <span class="${totalCap >= 0 ? 'text-success' : 'text-danger'}">${totalCap >= 0 ? '+' : ''}${totalCap.toLocaleString()}</span>`;
+        document.getElementById('campaign-preview-error').style.display = 'none';
+        document.getElementById('campaign-confirm-apply-btn').disabled = false;
+        showCampaignView('preview');
+    }
+
+    function applyCampaign() {
+        document.getElementById('campaign-confirm-apply-btn').disabled = true;
+        showThinkingBubble();
+        sendWebSocketMessage({ type: 'apply_ramp_campaign' });
+    }
+
+    function handleCampaignApplyResult(data) {
+        hideThinkingBubble();
+        const applyBtn = document.getElementById('campaign-confirm-apply-btn');
+        if (applyBtn) applyBtn.disabled = false;
+
+        const applied = data.applied || [];
+        const failed  = data.failed  || [];
+        const total   = applied.length + failed.length;
+
+        const allResults = [
+            ...applied.map(r => ({ ...r, status: 'applied' })),
+            ...failed.map(r => ({ ...r, status:  'failed'  })),
+        ];
+
+        document.getElementById('campaign-result-tbody').innerHTML = allResults.map(row => {
+            const statusHtml = row.status === 'applied'
+                ? '<span class="text-success">&#10003; Applied</span>'
+                : `<span class="text-danger">&#10007; ${escapeHtml(row.error || 'Failed')}</span>`;
+            return `<tr>
+                <td>${row.forecast_id}</td>
+                <td>${escapeHtml(row.main_lob || '')} / ${escapeHtml(row.case_type || '')}</td>
+                <td>${escapeHtml(row.month_label || row.month_key || '')}</td>
+                <td>${statusHtml}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('campaign-result-summary').textContent =
+            `${total} submitted — ✓ Applied: ${applied.length}   ✗ Failed: ${failed.length}`;
+
+        // Clear staging after apply
+        ChatState.campaignStagingRows = [];
+        showCampaignView('result');
+    }
+
+    // ========================================================================
     // Event Listeners
     // ========================================================================
     function attachEventListeners() {
@@ -1828,6 +2316,40 @@
                 if (e.target === elements.bulkRampModal) {
                     closeBulkRampModal();
                 }
+            });
+        }
+
+        // Campaign Manager modal
+        const campaignModal = document.getElementById('ramp-campaign-modal');
+        ['campaign-modal-close-btn', 'campaign-preview-close-btn', 'campaign-result-close-btn', 'campaign-result-done-btn'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('click', closeCampaignModal);
+        });
+        if (campaignModal) {
+            campaignModal.addEventListener('click', e => {
+                if (e.target === campaignModal) closeCampaignModal();
+            });
+        }
+        const addRampBtn = document.getElementById('campaign-add-ramp-btn');
+        if (addRampBtn) addRampBtn.addEventListener('click', openAddRampSubModal);
+        const submitAllBtn = document.getElementById('campaign-submit-all-btn');
+        if (submitAllBtn) submitAllBtn.addEventListener('click', submitCampaign);
+        const backToStageBtn = document.getElementById('campaign-back-to-stage-btn');
+        if (backToStageBtn) backToStageBtn.addEventListener('click', () => showCampaignView('stage'));
+        const confirmApplyBtn = document.getElementById('campaign-confirm-apply-btn');
+        if (confirmApplyBtn) confirmApplyBtn.addEventListener('click', applyCampaign);
+
+        // Add/Edit Ramp Sub-Modal
+        const addSubModal = document.getElementById('ramp-add-sub-modal');
+        const addSubCloseBtn  = document.getElementById('add-sub-modal-close-btn');
+        const addSubCancelBtn = document.getElementById('add-sub-cancel-btn');
+        const addSubConfirmBtn = document.getElementById('add-sub-confirm-btn');
+        if (addSubCloseBtn)  addSubCloseBtn.addEventListener('click', closeAddRampSubModal);
+        if (addSubCancelBtn) addSubCancelBtn.addEventListener('click', closeAddRampSubModal);
+        if (addSubConfirmBtn) addSubConfirmBtn.addEventListener('click', handleAddSubConfirm);
+        if (addSubModal) {
+            addSubModal.addEventListener('click', e => {
+                if (e.target === addSubModal) closeAddRampSubModal();
             });
         }
 
