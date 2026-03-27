@@ -1780,6 +1780,75 @@
     // Campaign Manager Modal
     // ========================================================================
 
+    // ── Client-side week boundary calculator (mirrors Python calculate_weeks) ──
+
+    function formatDateISO(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function calculateWeeksForMonth(monthKey) {
+        // monthKey: "YYYY-MM"
+        const parts = monthKey.split('-');
+        if (parts.length !== 2) return [];
+        const year  = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);  // 1-based
+        if (isNaN(year) || isNaN(month) || month < 1 || month > 12) return [];
+
+        const ABBR = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+        const firstDay = new Date(year, month - 1, 1);
+        const lastDay  = new Date(year, month, 0);   // day 0 of next month = last day of this month
+
+        // Find Monday of the week containing firstDay  (JS: Sun=0, Mon=1, ..., Sat=6)
+        let monday = new Date(firstDay);
+        const dow = firstDay.getDay();
+        if (dow === 6) {            // Saturday → skip to next Monday
+            monday.setDate(firstDay.getDate() + 2);
+        } else if (dow === 0) {     // Sunday → skip to next Monday
+            monday.setDate(firstDay.getDate() + 1);
+        } else {                    // Mon–Fri → back-track to Monday
+            monday.setDate(firstDay.getDate() - (dow - 1));
+        }
+
+        const weeks = [];
+        while (monday <= lastDay) {
+            const sunday   = new Date(monday); sunday.setDate(monday.getDate() + 6);
+            const wkStart  = new Date(Math.max(monday.getTime(), firstDay.getTime()));
+            const wkEnd    = new Date(Math.min(sunday.getTime(),  lastDay.getTime()));
+
+            // Count Mon–Fri working days in clipped range
+            let workingDays = 0;
+            const cur = new Date(wkStart);
+            while (cur <= wkEnd) {
+                const wd = cur.getDay();
+                if (wd >= 1 && wd <= 5) workingDays++;
+                cur.setDate(cur.getDate() + 1);
+            }
+
+            if (workingDays > 0) {
+                // First working day of the range (for label)
+                const labelDate = new Date(wkStart);
+                while (labelDate.getDay() === 0 || labelDate.getDay() === 6) {
+                    labelDate.setDate(labelDate.getDate() + 1);
+                }
+                const label = `${ABBR[month]}-${labelDate.getDate()}-${year}`;
+                weeks.push({
+                    label:       label,
+                    startDate:   formatDateISO(wkStart),
+                    endDate:     formatDateISO(wkEnd),
+                    workingDays: workingDays,
+                    rampPercent:    100,
+                    rampEmployees:  0,
+                });
+            }
+            monday.setDate(monday.getDate() + 7);
+        }
+        return weeks;
+    }
+
     // Convert "Apr-25" → "2025-04"
     function monthLabelToKey(label) {
         const monthMap = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -1982,16 +2051,22 @@
         const monthWeeks = (ChatState.campaignModalData || {}).monthWeeks || {};
         const checked = Array.from(document.getElementById('add-sub-month-checks').querySelectorAll('.campaign-month-check:checked'));
 
-        // Initialize week data for newly checked months
+        // Initialize week data for newly checked months (use server data; fall back to JS calculation)
         checked.forEach(cb => {
             const mk = cb.value;
-            if (!ChatState.campaignSubModalWeeks[mk]) {
-                const template = monthWeeks[mk] || [];
-                ChatState.campaignSubModalWeeks[mk] = template.map(w => ({
-                    ...w,
-                    rampPercent: 100,
-                    rampEmployees: 0,
-                }));
+            const existing = ChatState.campaignSubModalWeeks[mk];
+            if (!existing || existing.length === 0) {
+                const template = monthWeeks[mk];
+                if (template && template.length > 0) {
+                    ChatState.campaignSubModalWeeks[mk] = template.map(w => ({
+                        ...w,
+                        rampPercent: 100,
+                        rampEmployees: 0,
+                    }));
+                } else {
+                    // Fall back to client-side calculation
+                    ChatState.campaignSubModalWeeks[mk] = calculateWeeksForMonth(mk);
+                }
             }
         });
 
