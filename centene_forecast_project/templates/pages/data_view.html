@@ -106,7 +106,7 @@
                             <div class="col-sm-2" id="market-container">
                                 <div class="filter-dropdown-wrapper" id="market-wrapper">
                                     <select class="form-select form-select-sm mb-3" name="market">
-                                        {% for option in insurance_options %}
+                                        {% for option in market_options %}
                                             <option value="{{ option.value }}" {% if selected_values.market == option.value %}selected{% endif %}>{{ option.display }}</option>
                                         {% endfor %}
                                     </select>
@@ -140,7 +140,7 @@
                             <div class="col-sm-2" id="worktype-container">
                                 <div class="filter-dropdown-wrapper" id="worktype-wrapper">
                                     <select class="form-select form-select-sm mb-3" name="worktype">
-                                        {% for option in process_options %}
+                                        {% for option in worktype_options %}
                                             <option value="{{ option.value }}" {% if selected_values.worktype == option.value %}selected{% endif %}>{{ option.display }}</option>
                                         {% endfor %}
                                     </select>

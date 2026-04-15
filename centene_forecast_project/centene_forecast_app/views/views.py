@@ -578,7 +578,11 @@ def data_view(request):
 
     error_message = ""
     info_message = ""
-    years = client.get_forecast_filter_years()
+    request_data_type = request.GET.get('data_type', '')
+    if request_data_type in ('roster', 'prod_team_roster'):
+        years = client.get_roster_filter_years()
+    else:
+        years = client.get_forecast_filter_years()
 
     # Handle API error response
     if is_api_error(years):

@@ -8,6 +8,25 @@
     'use strict';
 
     // ============================================================
+    // CSRF HELPER
+    // ============================================================
+    function getCsrfToken() {
+        const name = 'csrftoken';
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // ============================================================
     // CONFIGURATION
     // ============================================================
     const CONFIG = window.CONFIGURATION_VIEW_CONFIG || {};
@@ -987,7 +1006,7 @@
 
             const response = await fetch(url, {
                 method: method,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                 body: JSON.stringify(data)
             });
 
@@ -1025,7 +1044,7 @@
 
         try {
             const url = URLS.monthConfigDelete.replace('{id}', configId);
-            const response = await fetch(url, { method: 'DELETE' });
+            const response = await fetch(url, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrfToken() } });
             const result = await response.json();
 
             if (!response.ok || !result.success) {
@@ -1042,7 +1061,7 @@
 
                     if (forceDelete.isConfirmed) {
                         const forceUrl = url + '?allow_orphan=true';
-                        const forceResponse = await fetch(forceUrl, { method: 'DELETE' });
+                        const forceResponse = await fetch(forceUrl, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrfToken() } });
                         const forceResult = await forceResponse.json();
 
                         if (!forceResponse.ok || !forceResult.success) {
@@ -1267,7 +1286,7 @@
         try {
             const response = await fetch(URLS.monthConfigBulkCreate, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                 body: JSON.stringify({ configurations: configs })
             });
 
@@ -1635,7 +1654,7 @@
 
             const response = await fetch(url, {
                 method: method,
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                 body: JSON.stringify(data)
             });
 
@@ -1674,7 +1693,7 @@
 
         try {
             const url = URLS.targetCphDelete.replace('{id}', configId);
-            const response = await fetch(url, { method: 'DELETE' });
+            const response = await fetch(url, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrfToken() } });
             const result = await response.json();
 
             if (!response.ok || !result.success) {
@@ -1788,7 +1807,7 @@
         try {
             const response = await fetch(URLS.targetCphBulkCreate, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
                 body: JSON.stringify({ configurations: configs })
             });
 

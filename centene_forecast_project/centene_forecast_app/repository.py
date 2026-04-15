@@ -651,6 +651,24 @@ class APIClient:
         """
         return self._make_request('GET', '/forecast/filter-years')
 
+    @cache_with_ttl(ttl=ForecastCacheConfig.CASCADE_TTL, key_prefix='cascade:roster_years')
+    def get_roster_filter_years(self) -> Dict[str, List[Dict[str, str]]]:
+        """
+        Get available years for roster/prod_team_roster filter dropdowns.
+
+        Returns:
+            Dictionary with 'years' list
+
+        Example:
+            {
+                'years': [
+                    {'value': '2025', 'display': '2025'},
+                    {'value': '2024', 'display': '2024'}
+                ]
+            }
+        """
+        return self._make_request('GET', '/roster/filter-years')
+
     @cache_with_ttl(ttl=ForecastCacheConfig.CASCADE_TTL, key_prefix='cascade:months')
     def get_forecast_months_for_year(self, year: int) -> List[Dict[str, str]]:
         """
@@ -1905,7 +1923,7 @@ class APIClient:
         """Clear month configuration cache after modifications."""
         try:
             from centene_forecast_app.app_utils.cache_utils import delete_pattern
-            cleared = delete_pattern('config:month_list:*')
+            cleared = delete_pattern('config:month_list*')
             logger.info(f"[Month Config] Cleared {cleared} cache entries")
         except Exception as e:
             logger.warning(f"[Month Config] Failed to clear cache: {e}")
@@ -2086,11 +2104,11 @@ class APIClient:
             from centene_forecast_app.app_utils.cache_utils import delete_pattern
 
             # Clear list cache
-            list_cleared = delete_pattern('config:target_cph_list:*')
+            list_cleared = delete_pattern('config:target_cph_list*')
 
             # Clear distinct values cache
-            lob_cleared = delete_pattern('config:distinct_lobs:*')
-            case_type_cleared = delete_pattern('config:distinct_case_types:*')
+            lob_cleared = delete_pattern('config:distinct_lobs*')
+            case_type_cleared = delete_pattern('config:distinct_case_types*')
 
             logger.info(
                 f"[Target CPH Config] Cleared cache - list: {list_cleared}, "
@@ -2182,6 +2200,12 @@ def get_forecast_filter_years() -> Dict[str, List[Dict[str, str]]]:
     """Convenience function to get forecast filter years."""
     client = get_api_client()
     return client.get_forecast_filter_years()
+
+
+def get_roster_filter_years() -> Dict[str, List[Dict[str, str]]]:
+    """Convenience function to get roster/prod_team_roster filter years."""
+    client = get_api_client()
+    return client.get_roster_filter_years()
 
 
 def get_forecast_months_for_year(year: int) -> List[Dict[str, str]]:
