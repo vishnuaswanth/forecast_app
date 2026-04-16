@@ -1018,7 +1018,7 @@
 
             hideModal('month-config-modal');
             showSuccess(STATE.modal.mode === 'edit' ? 'Configuration updated successfully' : 'Configuration created successfully');
-            loadMonthConfigurations();
+            loadMonthConfigurations(true);
 
         } catch (error) {
             console.error('Failed to save configuration:', error);
@@ -1076,7 +1076,7 @@
             }
 
             showSuccess('Configuration deleted successfully');
-            loadMonthConfigurations();
+            loadMonthConfigurations(true);
 
         } catch (error) {
             console.error('Failed to delete configuration:', error);
@@ -1298,7 +1298,7 @@
 
             hideModal('month-config-bulk-modal');
             showSuccess(`Successfully created ${result.created_count} configuration(s)`);
-            loadMonthConfigurations();
+            loadMonthConfigurations(true);
 
         } catch (error) {
             console.error('Bulk create failed:', error);
