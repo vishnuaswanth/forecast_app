@@ -40,8 +40,8 @@
         settings: {
             previewPageSize: 25,
             historyPageSize: 5,
-            historyInitialLoad: 20,
-            historyLazyLoadSize: 10,
+            historyInitialLoad: 3,
+            historyLazyLoadSize: 3,
             maxUserNotesLength: 500,
             enableUserNotes: true
         }

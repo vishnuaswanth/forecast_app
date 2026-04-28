@@ -187,10 +187,23 @@ class EditViewSerializer:
                     except (ValueError, TypeError):
                         entry['records_modified'] = 0
 
+            # Normalize pagination: handle both nested {'pagination': {...}}
+            # and flat {'total': N, 'page': N, 'limit': N, 'has_more': bool}
+            raw_pagination = data.get('pagination', None)
+            if raw_pagination and isinstance(raw_pagination, dict):
+                pagination = raw_pagination
+            else:
+                pagination = {
+                    'total': data.get('total', 0),
+                    'page': data.get('page', 1),
+                    'limit': data.get('limit', 0),
+                    'has_more': data.get('has_more', False),
+                }
+
             response = {
                 'success': data.get('success', True),
                 'data': entries,
-                'pagination': data.get('pagination', {}),
+                'pagination': pagination,
                 'timestamp': _get_timestamp()
             }
 
