@@ -1050,10 +1050,12 @@ class ChatService:
         groups = defaultdict(list)
         for row in campaign_rows:
             key = (int(row['forecast_id']), row['month_key'])
+            weeks = row['weeks']
+            total = row.get('totalRampEmployees') or sum(w.get('rampEmployees', 0) for w in weeks)
             groups[key].append({
-                'ramp_name': row.get('ramp_name', 'Campaign-Ramp'),
-                'weeks': row['weeks'],
-                'totalRampEmployees': row.get('totalRampEmployees', 0),
+                'ramp_name': row.get('ramp_name', f'Ramp-{row["month_key"]}'),
+                'weeks': weeks,
+                'totalRampEmployees': int(total),
             })
 
         # Call bulk-preview for each combo in parallel
@@ -1173,10 +1175,12 @@ class ChatService:
         groups = defaultdict(list)
         for row in campaign_rows:
             key = (int(row['forecast_id']), row['month_key'])
+            weeks = row['weeks']
+            total = row.get('totalRampEmployees') or sum(w.get('rampEmployees', 0) for w in weeks)
             groups[key].append({
-                'ramp_name': row.get('ramp_name', 'Campaign-Ramp'),
-                'weeks': row['weeks'],
-                'totalRampEmployees': row.get('totalRampEmployees', 0),
+                'ramp_name': row.get('ramp_name', f'Ramp-{row["month_key"]}'),
+                'weeks': weeks,
+                'totalRampEmployees': int(total),
             })
 
         # Apply in parallel

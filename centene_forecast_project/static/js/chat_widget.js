@@ -1849,6 +1849,10 @@
         return weeks;
     }
 
+    function generateRampId() {
+        return Math.random().toString(36).substr(2, 8);
+    }
+
     // Convert "Apr-25" → "2025-04"
     function monthLabelToKey(label) {
         const monthMap = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -2020,7 +2024,7 @@
             `<button class="btn btn-sm btn-primary campaign-month-tab" data-month="${row.month_key}">${escapeHtml(row.month_label)}</button>`;
 
         renderSubModalWeekTable(row.month_key);
-        document.getElementById('add-sub-ramp-name').value = row.ramp_name;
+        document.getElementById('add-sub-ramp-name').value = row.ramp_tag || '';
         document.getElementById('add-sub-confirm-btn').textContent = 'Update →';
         clearSubModalError();
 
@@ -2184,15 +2188,26 @@
         // Save current tab input values
         if (ChatState.campaignSubActiveMonth) saveSubModalCurrentTab();
 
-        const isEdit   = ChatState.campaignEditingIndex !== null;
-        const rampName = document.getElementById('add-sub-ramp-name').value.trim() || 'Default';
+        const isEdit  = ChatState.campaignEditingIndex !== null;
+        const rampTag = document.getElementById('add-sub-ramp-name').value.trim();
 
         if (isEdit) {
             const idx = ChatState.campaignEditingIndex;
             const row = ChatState.campaignStagingRows[idx];
             const weeks = ChatState.campaignSubModalWeeks[row.month_key] || [];
             if (weeks.length === 0) { showSubModalError('No week data found.'); return; }
-            ChatState.campaignStagingRows[idx] = { ...row, ramp_name: rampName, weeks: weeks.map(w => ({ ...w })) };
+            const totalRampEmployees = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
+            const existingUid = (row.ramp_name || '').split('-').pop() || generateRampId();
+            const editedName = rampTag
+                ? `${rampTag}-${row.month_key}-${row.forecast_id}-${existingUid}`
+                : `Ramp-${row.month_key}-${row.forecast_id}-${existingUid}`;
+            ChatState.campaignStagingRows[idx] = {
+                ...row,
+                ramp_tag:           rampTag || 'Ramp',
+                ramp_name:          editedName,
+                weeks:              weeks.map(w => ({ ...w })),
+                totalRampEmployees: totalRampEmployees,
+            };
         } else {
             const forecastId = parseInt(document.getElementById('add-sub-row-select').value, 10);
             if (!forecastId) { showSubModalError('Please select a forecast row.'); return; }
@@ -2212,15 +2227,22 @@
 
             selectedMonths.forEach(mk => {
                 const weeks = ChatState.campaignSubModalWeeks[mk] || [];
+                const totalRampEmployees = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
+                const uid = generateRampId();
+                const generatedName = rampTag
+                    ? `${rampTag}-${mk}-${lobInfo.forecast_id}-${uid}`
+                    : `Ramp-${mk}-${lobInfo.forecast_id}-${uid}`;
                 ChatState.campaignStagingRows.push({
-                    forecast_id: lobInfo.forecast_id,
-                    main_lob:    lobInfo.main_lob,
-                    state:       lobInfo.state,
-                    case_type:   lobInfo.case_type,
-                    month_key:   mk,
-                    month_label: monthLabelMap[mk] || mk,
-                    ramp_name:   rampName,
-                    weeks:       weeks.map(w => ({ ...w })),
+                    forecast_id:        lobInfo.forecast_id,
+                    main_lob:           lobInfo.main_lob,
+                    state:              lobInfo.state,
+                    case_type:          lobInfo.case_type,
+                    month_key:          mk,
+                    month_label:        monthLabelMap[mk] || mk,
+                    ramp_tag:           rampTag || 'Ramp',
+                    ramp_name:          generatedName,
+                    weeks:              weeks.map(w => ({ ...w })),
+                    totalRampEmployees: totalRampEmployees,
                 });
             });
         }
