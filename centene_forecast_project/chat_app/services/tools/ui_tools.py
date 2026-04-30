@@ -1836,18 +1836,20 @@ def generate_campaign_entry_card_ui(
     lob_list: list,
     month_weeks: dict,
     report_label: str = '',
+    existing_ramps: list = None,
 ) -> str:
     """
     Generate entry card for the Ramp Campaign Manager.
 
-    Embeds available months, LOB list, and pre-calculated week boundaries
-    so the JS modal never needs extra API calls.
+    Embeds available months, LOB list, pre-calculated week boundaries, and existing
+    ramp data so the JS modal pre-populates the staging table on open.
 
     Args:
         months: Dict mapping Month1/Month2/... → 'Apr-25'/'May-25'/...
         lob_list: List of dicts {forecast_id, main_lob, state, case_type}
         month_weeks: Dict mapping 'YYYY-MM' → list of week dicts from calculate_weeks()
         report_label: Human-readable report label (e.g. "March 2025")
+        existing_ramps: List of staging-row dicts for pre-populating the staging table
 
     Returns:
         HTML string for campaign entry card with "Open Campaign Manager" button
@@ -1871,10 +1873,17 @@ def generate_campaign_entry_card_ui(
     months_json = html_module.escape(json.dumps(month_key_labels))
     lobs_json = html_module.escape(json.dumps(lob_list))
     month_weeks_json = html_module.escape(json.dumps(month_weeks))
+    existing_ramps_json = html_module.escape(json.dumps(existing_ramps or []))
+
+    existing_count = len(existing_ramps) if existing_ramps else 0
+    existing_note = (
+        f'<p class="mb-2 text-info small">&#9432; <strong>{existing_count}</strong> existing ramp(s) pre-loaded into the staging table.</p>'
+        if existing_count else ''
+    )
 
     logger.info(
         f"[UI Tools] Generated campaign entry card: {lob_count} LOBs, "
-        f"{month_count} months for {report_label}"
+        f"{month_count} months for {report_label}, {existing_count} existing ramps"
     )
     return f'''
     <div class="campaign-entry-card card border-primary">
@@ -1887,6 +1896,7 @@ def generate_campaign_entry_card_ui(
                 <strong>{lob_count}</strong> forecast rows &nbsp;&bull;&nbsp;
                 <strong>{month_count}</strong> forecast months available
             </p>
+            {existing_note}
             <p class="mb-3">
                 Use the Campaign Manager to configure, preview, and apply ramp data
                 across multiple LOBs and forecast months at once.
@@ -1895,9 +1905,67 @@ def generate_campaign_entry_card_ui(
                     data-campaign-months="{months_json}"
                     data-campaign-lobs="{lobs_json}"
                     data-campaign-month-weeks="{month_weeks_json}"
-                    data-report-label="{safe_label}">
+                    data-report-label="{safe_label}"
+                    data-existing-ramps="{existing_ramps_json}">
                 Open Campaign Manager
             </button>
+        </div>
+    </div>
+    '''
+
+
+def generate_campaign_ramp_summary_ui(updated_ramps: list) -> str:
+    """
+    Generate a compact summary card of updated ramp data after campaign apply.
+
+    Args:
+        updated_ramps: List of dicts with keys: forecast_id, main_lob, case_type,
+                       month_key, month_label, ramps (list of {ramp_name, weeks})
+
+    Returns:
+        HTML string for the updated ramp summary card
+    """
+    if not updated_ramps:
+        return ''
+
+    rows_html = ''
+    for entry in updated_ramps:
+        fid = entry.get('forecast_id', '')
+        lob = html_module.escape(str(entry.get('main_lob', '')))
+        case_type = html_module.escape(str(entry.get('case_type', '')))
+        month_label = html_module.escape(str(entry.get('month_label', entry.get('month_key', ''))))
+        ramps = entry.get('ramps', [])
+        ramp_names = ', '.join(html_module.escape(r.get('ramp_name', '')) for r in ramps) if ramps else '—'
+        week_count = sum(len(r.get('weeks', [])) for r in ramps)
+        rows_html += f'''
+        <tr>
+            <td>{fid}</td>
+            <td>{lob} / {case_type}</td>
+            <td>{month_label}</td>
+            <td>{ramp_names}</td>
+            <td class="text-center">{week_count}</td>
+        </tr>'''
+
+    return f'''
+    <div class="card border-success mt-2">
+        <div class="card-header bg-success text-white d-flex align-items-center">
+            <strong>&#10003; Updated Ramp Data</strong>
+        </div>
+        <div class="card-body p-2">
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0" style="font-size:0.85em;">
+                    <thead class="table-light">
+                        <tr>
+                            <th>ID</th>
+                            <th>LOB / Case Type</th>
+                            <th>Month</th>
+                            <th>Ramp Names</th>
+                            <th class="text-center">Weeks</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows_html}</tbody>
+                </table>
+            </div>
         </div>
     </div>
     '''

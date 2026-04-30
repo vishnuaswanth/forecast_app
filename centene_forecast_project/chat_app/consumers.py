@@ -664,6 +664,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'applied': result.get('applied', []),
                 'failed': result.get('failed', []),
             })
+            # Send updated ramp data as a chat message so the user can verify changes
+            updated_ramps = result.get('updated_ramps', [])
+            if result.get('success') and updated_ramps:
+                from chat_app.services.tools.ui_tools import generate_campaign_ramp_summary_ui
+                summary_html = generate_campaign_ramp_summary_ui(updated_ramps)
+                if summary_html:
+                    await self.send_json({
+                        'type': 'assistant_response',
+                        'ui_component': summary_html,
+                        'message': '',
+                        'metadata': {},
+                    })
         except Exception as e:
             logger.error(f"Error applying ramp campaign: {e}")
             await self.send_json({'type': 'typing', 'is_typing': False})

@@ -1878,12 +1878,14 @@
             const lobs       = JSON.parse(btn.getAttribute('data-campaign-lobs').replace(/&quot;/g, '"'));
             const monthWeeks = JSON.parse(btn.getAttribute('data-campaign-month-weeks').replace(/&quot;/g, '"'));
             const reportLabel = btn.getAttribute('data-report-label') || '';
+            const existingRaw = btn.getAttribute('data-existing-ramps') || '[]';
+            const existingRamps = JSON.parse(existingRaw.replace(/&quot;/g, '"'));
 
             // Backend sends {"2025-04": "Apr-25", ...}; convert values to ordered label array
             const months = Array.isArray(monthsRaw) ? monthsRaw : Object.values(monthsRaw);
 
             ChatState.campaignModalData   = { months, lobs, monthWeeks, reportLabel };
-            ChatState.campaignStagingRows  = [];
+            ChatState.campaignStagingRows  = existingRamps.length ? existingRamps : [];
             ChatState.campaignEditingIndex = null;
 
             document.getElementById('campaign-report-label').textContent = reportLabel;

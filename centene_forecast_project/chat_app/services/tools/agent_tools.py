@@ -698,7 +698,59 @@ def make_agent_tools(
                 f"{fresh_ctx.forecast_report_year}"
             )
 
-        ui = generate_campaign_entry_card_ui(months, lob_list, month_weeks, report_label)
+        # Build month_key → label mapping for constructing staging rows
+        import asyncio as _asyncio
+        month_key_to_label = {}
+        for _label in months.values():
+            try:
+                _abbr, _yr_short = _label.split('-')
+                _mo = list(cal.month_abbr).index(_abbr)
+                _yr = 2000 + int(_yr_short)
+                month_key_to_label[f"{_yr:04d}-{_mo:02d}"] = _label
+            except Exception:
+                pass
+
+        # Fetch existing ramps for every (forecast_id, month_key) pair in parallel
+        from chat_app.services.tools.forecast_tools import call_get_applied_ramp
+
+        async def _safe_fetch(lob, mk):
+            try:
+                return lob, mk, await call_get_applied_ramp(lob['forecast_id'], mk)
+            except Exception:
+                return lob, mk, None
+
+        fetch_tasks = [
+            _safe_fetch(lob, mk)
+            for lob in lob_list
+            for mk in month_key_to_label
+        ]
+        fetch_results = await _asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+        existing_ramps = []
+        for item in fetch_results:
+            if isinstance(item, Exception):
+                continue
+            lob, mk, data = item
+            if not data:
+                continue
+            ramps = data.get('ramps') or []
+            if not ramps:
+                ramp_data = data.get('ramp_data')
+                if ramp_data:
+                    ramps = [{'ramp_name': 'Default', 'weeks': ramp_data}]
+            for ramp in ramps:
+                existing_ramps.append({
+                    'forecast_id': lob['forecast_id'],
+                    'main_lob': lob['main_lob'],
+                    'state': lob['state'],
+                    'case_type': lob['case_type'],
+                    'month_key': mk,
+                    'month_label': month_key_to_label.get(mk, mk),
+                    'ramp_name': ramp.get('ramp_name', 'Default'),
+                    'weeks': ramp.get('weeks', []),
+                })
+
+        ui = generate_campaign_entry_card_ui(months, lob_list, month_weeks, report_label, existing_ramps)
 
         return {
             "message": (

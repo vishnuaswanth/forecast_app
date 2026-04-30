@@ -1239,6 +1239,52 @@ class ChatService:
         fresh_ctx.pending_campaign_preview = None
         await context_manager.save_context(fresh_ctx)
 
+        # Re-fetch updated ramps for successfully applied (forecast_id, month_key) pairs
+        from chat_app.services.tools.forecast_tools import call_get_applied_ramp
+        import calendar as _cal
+
+        applied_keys = list({(e['forecast_id'], e['month_key']) for e in applied})
+
+        async def _safe_refetch(forecast_id, month_key):
+            try:
+                return forecast_id, month_key, await call_get_applied_ramp(forecast_id, month_key)
+            except Exception:
+                return forecast_id, month_key, None
+
+        refetch_results = await asyncio.gather(*[
+            _safe_refetch(fid, mk) for fid, mk in applied_keys
+        ], return_exceptions=True)
+
+        # Build a lookup from applied rows for LOB metadata
+        applied_meta = {(e['forecast_id'], e['month_key']): e for e in applied}
+
+        updated_ramps = []
+        for item in refetch_results:
+            if isinstance(item, Exception):
+                continue
+            fid, mk, data = item
+            if not data:
+                continue
+            ramps = data.get('ramps') or []
+            if not ramps:
+                ramp_data = data.get('ramp_data')
+                if ramp_data:
+                    ramps = [{'ramp_name': 'Default', 'weeks': ramp_data}]
+            meta = applied_meta.get((fid, mk), {})
+            try:
+                yr, mo = int(mk[:4]), int(mk[5:7])
+                month_label = f"{_cal.month_abbr[mo]}-{str(yr)[2:]}"
+            except Exception:
+                month_label = mk
+            updated_ramps.append({
+                'forecast_id': fid,
+                'main_lob': meta.get('main_lob', ''),
+                'case_type': meta.get('case_type', ''),
+                'month_key': mk,
+                'month_label': month_label,
+                'ramps': ramps,
+            })
+
         logger.info(
             f"[Chat Service] Campaign apply complete: "
             f"{len(applied)} applied, {len(failed)} failed"
@@ -1248,6 +1294,7 @@ class ChatService:
             "message": f"Campaign applied: {len(applied)} successful, {len(failed)} failed.",
             "applied": applied,
             "failed": failed,
+            "updated_ramps": updated_ramps,
         }
 
     async def _get_message_history(self, conversation_id: str, limit: int = 10) -> list:
