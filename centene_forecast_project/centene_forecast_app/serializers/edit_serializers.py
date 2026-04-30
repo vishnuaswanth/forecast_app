@@ -191,7 +191,13 @@ class EditViewSerializer:
             # and flat {'total': N, 'page': N, 'limit': N, 'has_more': bool}
             raw_pagination = data.get('pagination', None)
             if raw_pagination and isinstance(raw_pagination, dict):
-                pagination = raw_pagination
+                # Use nested pagination but fill missing fields from flat keys as fallback
+                pagination = {
+                    'total': raw_pagination.get('total', data.get('total', 0)),
+                    'page': raw_pagination.get('page', data.get('page', 1)),
+                    'limit': raw_pagination.get('limit', data.get('limit', 0)),
+                    'has_more': raw_pagination.get('has_more', data.get('has_more', False)),
+                }
             else:
                 pagination = {
                     'total': data.get('total', 0),

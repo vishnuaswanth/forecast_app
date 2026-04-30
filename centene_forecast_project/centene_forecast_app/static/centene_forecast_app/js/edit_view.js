@@ -2232,14 +2232,14 @@
             }
 
             STATE.currentHistoryData = data;
-            STATE.totalHistoryCount = data.pagination.total;
+            STATE.totalHistoryCount = data.pagination?.total ?? 0;
 
             // Render history cards
             if (data.data && data.data.length > 0) {
                 renderHistoryCards(data.data, append);
                 STATE.loadedHistoryCount += data.data.length;
                 updateHistoryCounters();
-                updateLoadMoreButton(data.pagination.has_more);
+                updateLoadMoreButton(data.pagination?.has_more ?? false);
                 showElement(DOM.historyCardsContainer);
                 hideElement(DOM.historyNoResults);
             } else {
@@ -2361,7 +2361,7 @@
     function updateLoadMoreButton(hasMore) {
         const container = DOM.historyLoadMoreContainer;
 
-        if (hasMore && STATE.loadedHistoryCount < STATE.totalHistoryCount) {
+        if (hasMore) {
             showElement(container);
         } else {
             hideElement(container);
