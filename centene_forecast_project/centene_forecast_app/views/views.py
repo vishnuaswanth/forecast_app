@@ -63,6 +63,8 @@ BASE_URL = getattr(settings, 'API_BASE_URL' , "http://127.0.0.1:8080")
 
 def login_view(request):
     """Handles user login"""
+    if request.user.is_authenticated:
+        return redirect("forecast_app:time_zone")
     if request.method == "POST":
         username = request.POST.get('username')
         password = request.POST.get('password')
