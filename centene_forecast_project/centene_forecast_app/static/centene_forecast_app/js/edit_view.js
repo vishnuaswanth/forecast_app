@@ -834,6 +834,34 @@
     }
 
     /**
+     * Extract error info from a jQuery XHR rejection or a regular Error/thrown object.
+     * Returns {message, recommendation} suitable for display.
+     * @param {Object} error - jQuery jqXHR object or Error
+     * @returns {{message: string, recommendation: string|null}}
+     */
+    function extractReallocationError(error) {
+        // jQuery XHR error ($.ajax rejection on 4xx/5xx)
+        if (error && error.responseJSON) {
+            const body = error.responseJSON;
+            if (body.error && typeof body.error === 'object') {
+                return {
+                    message: body.error.error || 'An error occurred',
+                    recommendation: body.error.recommendation || null
+                };
+            }
+            return {
+                message: body.error || body.message || `Request failed (${error.status})`,
+                recommendation: null
+            };
+        }
+        // Regular Error or thrown object with recommendation
+        return {
+            message: error.message || 'An error occurred',
+            recommendation: error.recommendation || null
+        };
+    }
+
+    /**
      * Show error in alert element
      * @param {jQuery} errorElement - The error alert element
      * @param {jQuery} messageElement - The error message element
@@ -3760,12 +3788,20 @@
 
                 console.log(`Edit View: Loaded ${STATE.reallocation.allRecords.length} reallocation records`);
             } else {
-                throw new Error(response.message || response.error || 'Failed to load data');
+                const errObj = extractReallocationError({ responseJSON: response });
+                const err = new Error(errObj.message);
+                err.recommendation = errObj.recommendation;
+                throw err;
             }
 
         } catch (error) {
             console.error('Edit View: Failed to load reallocation data', error);
-            DOM.reallocationDataErrorMessage.text(error.message || 'Failed to load reallocation data');
+            const { message, recommendation } = extractReallocationError(error);
+            if (recommendation) {
+                DOM.reallocationDataErrorMessage.html(`<strong>${message}</strong><br><br><em>Recommendation:</em> ${recommendation}`);
+            } else {
+                DOM.reallocationDataErrorMessage.text(message);
+            }
             showElement(DOM.reallocationDataError);
         } finally {
             hideElement(DOM.reallocationDataLoading);
@@ -4422,12 +4458,20 @@
 
                 console.log('Edit View: Reallocation preview generated');
             } else {
-                throw new Error(response.message || response.error || 'Failed to generate preview');
+                const errObj = extractReallocationError({ responseJSON: response });
+                const err = new Error(errObj.message);
+                err.recommendation = errObj.recommendation;
+                throw err;
             }
 
         } catch (error) {
             console.error('Edit View: Failed to generate reallocation preview', error);
-            DOM.reallocationPreviewErrorMessage.text(error.message || 'Failed to generate preview');
+            const { message, recommendation } = extractReallocationError(error);
+            if (recommendation) {
+                DOM.reallocationPreviewErrorMessage.html(`<strong>${message}</strong><br><br><em>Recommendation:</em> ${recommendation}`);
+            } else {
+                DOM.reallocationPreviewErrorMessage.text(message);
+            }
             showElement(DOM.reallocationPreviewError);
         } finally {
             hideElement(DOM.reallocationPreviewLoading);
@@ -4646,15 +4690,19 @@
 
                 console.log('Edit View: Reallocation update successful');
             } else {
-                throw new Error(response.message || response.error || 'Update failed');
+                const errObj = extractReallocationError({ responseJSON: response });
+                const err = new Error(errObj.message);
+                err.recommendation = errObj.recommendation;
+                throw err;
             }
 
         } catch (error) {
             console.error('Edit View: Error submitting reallocation update', error);
+            const { message, recommendation } = extractReallocationError(error);
             showErrorDialog(
                 'Update Failed',
                 'The reallocation update could not be completed.',
-                `Error: ${error.message}`
+                recommendation ? `${message}<br><em>Recommendation: ${recommendation}</em>` : message
             );
         } finally {
             STATE.isSubmitting = false;
