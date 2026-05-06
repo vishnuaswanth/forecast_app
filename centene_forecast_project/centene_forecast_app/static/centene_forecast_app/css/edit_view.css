@@ -1879,7 +1879,8 @@
     font-weight: 500;
 }
 
-.cph-modified-input.edit-view-input-invalid {
+.cph-modified-input.edit-view-input-invalid,
+.reallocation-input.edit-view-input-invalid {
     background-color: #f8d7da;
     border-color: #dc3545;
 }

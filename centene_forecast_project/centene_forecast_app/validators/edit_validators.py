@@ -735,11 +735,19 @@ def validate_reallocation_modified_record(record: dict, idx: int = 0) -> None:
     except (ValueError, TypeError):
         raise ValidationError(f"Record {idx}: target_cph must be numeric")
 
+    if target_cph < 0:
+        raise ValidationError(f"Record {idx}: target_cph cannot be negative, got {target_cph}")
+
+    if target_cph != int(target_cph):
+        raise ValidationError(
+            f"Record {idx}: target_cph must be a whole number, got {target_cph}"
+        )
+
     min_cph = ForecastReallocationConfig.MIN_TARGET_CPH
     max_cph = ForecastReallocationConfig.MAX_TARGET_CPH
     if not (min_cph <= target_cph <= max_cph):
         raise ValidationError(
-            f"Record {idx}: target_cph must be between {min_cph} and {max_cph}, got {target_cph}"
+            f"Record {idx}: target_cph must be between {int(min_cph)} and {int(max_cph)}, got {int(target_cph)}"
         )
 
     # Validate months structure
@@ -768,11 +776,23 @@ def validate_reallocation_modified_record(record: dict, idx: int = 0) -> None:
 
         # Validate fte_avail range
         try:
-            fte_avail = int(month_data['fte_avail'])
+            fte_avail_raw = float(month_data['fte_avail'])
         except (ValueError, TypeError):
             raise ValidationError(
                 f"Record {idx}, month {month_key}: fte_avail must be an integer"
             )
+
+        if fte_avail_raw < 0:
+            raise ValidationError(
+                f"Record {idx}, month {month_key}: fte_avail cannot be negative, got {fte_avail_raw}"
+            )
+
+        if fte_avail_raw != int(fte_avail_raw):
+            raise ValidationError(
+                f"Record {idx}, month {month_key}: fte_avail must be a whole number, got {fte_avail_raw}"
+            )
+
+        fte_avail = int(fte_avail_raw)
 
         if not (min_fte <= fte_avail <= max_fte):
             raise ValidationError(

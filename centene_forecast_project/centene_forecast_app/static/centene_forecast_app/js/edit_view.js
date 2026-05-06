@@ -777,7 +777,15 @@
         try {
             const data = await response.json();
 
-            // Handle detail object with error and recommendation (bench allocation preview)
+            // Handle top-level error object: {success: false, error: {error: "...", recommendation: "..."}}
+            if (data.error && typeof data.error === 'object') {
+                return {
+                    error: data.error.error || 'An error occurred',
+                    recommendation: data.error.recommendation || null
+                };
+            }
+
+            // Handle detail object with error and recommendation
             if (data.detail && typeof data.detail === 'object' && !Array.isArray(data.detail)) {
                 if (data.detail.error || data.detail.recommendation) {
                     return {
@@ -788,28 +796,41 @@
             }
 
             // Try different error message fields
-            if (data.error) return data.error;
-            if (data.message) return data.message;
-            if (data.detail && typeof data.detail === 'string') return data.detail;
+            if (data.error) return { error: data.error, recommendation: null };
+            if (data.message) return { error: data.message, recommendation: null };
+            if (data.detail && typeof data.detail === 'string') return { error: data.detail, recommendation: null };
 
             // Handle validation errors (array format)
             if (data.errors && Array.isArray(data.errors)) {
-                return data.errors.map(e => e.message || e.msg || e).join('; ');
+                return { error: data.errors.map(e => e.message || e.msg || e).join('; '), recommendation: null };
             }
 
             // Handle FastAPI validation errors (array format)
             if (data.detail && Array.isArray(data.detail)) {
-                return data.detail.map(e => {
+                return { error: data.detail.map(e => {
                     const field = e.loc ? e.loc.join('.') : 'Field';
                     return `${field}: ${e.msg}`;
-                }).join('; ');
+                }).join('; '), recommendation: null };
             }
 
-            return `Request failed with status ${response.status}`;
+            return { error: `Request failed with status ${response.status}`, recommendation: null };
         } catch (parseError) {
             // If JSON parsing fails, return generic error
-            return `Request failed with status ${response.status}`;
+            return { error: `Request failed with status ${response.status}`, recommendation: null };
         }
+    }
+
+    /**
+     * Throw an error from an extractErrorMessage result, preserving recommendation if present.
+     * @param {Object|string} errorMsg - Result from extractErrorMessage
+     */
+    function throwExtractedError(errorMsg) {
+        if (typeof errorMsg === 'object' && errorMsg.error) {
+            const err = new Error(errorMsg.error);
+            err.recommendation = errorMsg.recommendation || null;
+            throw err;
+        }
+        throw new Error(typeof errorMsg === 'string' ? errorMsg : String(errorMsg));
     }
 
     /**
@@ -928,13 +949,13 @@
 
             if (!response.ok) {
                 const errorMsg = await extractErrorMessage(response);
-                throw new Error(errorMsg);
+                throwExtractedError(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error(data.message || 'Failed to load allocation reports');
+                throw new Error(data.error?.error || data.message || 'Failed to load allocation reports');
             }
 
             if (!data.data || data.data.length === 0) {
@@ -1084,23 +1105,13 @@
 
             if (!response.ok) {
                 const errorMsg = await extractErrorMessage(response);
-
-                // Check if errorMsg is an object with error and recommendation
-                if (typeof errorMsg === 'object' && errorMsg.error) {
-                    const errorObj = {
-                        message: errorMsg.error,
-                        recommendation: errorMsg.recommendation
-                    };
-                    throw errorObj;
-                }
-
-                throw new Error(errorMsg);
+                throwExtractedError(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error(data.message || 'Preview calculation failed');
+                throw new Error(data.error?.error || data.message || 'Preview calculation failed');
             }
 
             // Check if there are any modified records
@@ -2099,13 +2110,13 @@
 
             if (!response.ok) {
                 const errorMsg = await extractErrorMessage(response);
-                throw new Error(errorMsg);
+                throwExtractedError(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error(data.message || 'Update failed');
+                throw new Error(data.error?.error || data.message || 'Update failed');
             }
 
             // Success!
@@ -2244,13 +2255,13 @@
 
             if (!response.ok) {
                 const errorMsg = await extractErrorMessage(response);
-                throw new Error(errorMsg);
+                throwExtractedError(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error(data.message || 'Failed to fetch history log');
+                throw new Error(data.error?.error || data.message || 'Failed to fetch history log');
             }
 
             STATE.currentHistoryData = data;
@@ -2709,13 +2720,13 @@
 
             if (!response.ok) {
                 const errorMsg = await extractErrorMessage(response);
-                throw new Error(errorMsg);
+                throwExtractedError(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error(data.message || 'Failed to load CPH data');
+                throw new Error(data.error?.error || data.message || 'Failed to load CPH data');
             }
 
             if (!data.data || data.data.length === 0) {
@@ -3133,23 +3144,13 @@
 
             if (!response.ok) {
                 const errorMsg = await extractErrorMessage(response);
-
-                // Check if errorMsg is an object with error and recommendation
-                if (typeof errorMsg === 'object' && errorMsg.error) {
-                    const errorObj = {
-                        message: errorMsg.error,
-                        recommendation: errorMsg.recommendation
-                    };
-                    throw errorObj;
-                }
-
-                throw new Error(errorMsg);
+                throwExtractedError(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error(data.message || 'Preview calculation failed');
+                throw new Error(data.error?.error || data.message || 'Preview calculation failed');
             }
 
             // Check if there are any affected forecast rows
@@ -3382,13 +3383,13 @@
 
             if (!response.ok) {
                 const errorMsg = await extractErrorMessage(response);
-                throw new Error(errorMsg);
+                throwExtractedError(errorMsg);
             }
 
             const data = await response.json();
 
             if (!data.success) {
-                throw new Error(data.message || 'Update failed');
+                throw new Error(data.error?.error || data.message || 'Update failed');
             }
 
             // Show success message
@@ -3950,7 +3951,7 @@
                     </button>
                     <input type="number" class="edit-view-cell-input reallocation-input ${cphModified ? 'edit-view-cell-modified-input' : ''}"
                            data-row-key="${rowKey}" data-field="target_cph"
-                           value="${targetCph.toFixed(2)}" min="0" max="200" step="1">
+                           value="${Math.round(targetCph)}" min="0" max="200" step="1">
                     <button class="edit-view-btn-increment reallocation-increment-btn"
                             data-row-key="${rowKey}" data-field="target_cph" data-step="1">
                         <i class="fas fa-plus"></i>
@@ -4066,7 +4067,14 @@
         const rowKey = input.data('row-key');
         const field = input.data('field');
         const month = input.data('month');
-        const newValue = parseFloat(input.val()) || 0;
+        const newValue = parseFloat(input.val());
+
+        const max = field === 'target_cph' ? 200 : 999;
+        if (isNaN(newValue) || newValue < 0 || newValue > max || !Number.isInteger(newValue)) {
+            input.addClass('edit-view-input-invalid');
+            return;
+        }
+        input.removeClass('edit-view-input-invalid');
 
         setReallocationValue(rowKey, field, month, newValue);
     }
@@ -4092,8 +4100,8 @@
             currentValue = modifiedRecord.target_cph || originalRecord.target_cph || 0;
             min = 0;
             max = 200;
-            newValue = Math.max(min, Math.min(max, currentValue + delta));
-            modifiedRecord.target_cph = parseFloat(newValue.toFixed(2));
+            newValue = Math.round(Math.max(min, Math.min(max, currentValue + delta)));
+            modifiedRecord.target_cph = newValue;
             modifiedRecord.target_cph_change = modifiedRecord.target_cph - (originalRecord.target_cph || 0);
 
             // Store full reference object in modified_fields
@@ -4208,8 +4216,8 @@
         }
 
         if (field === 'target_cph') {
-            newValue = Math.max(0, Math.min(200, newValue));
-            modifiedRecord.target_cph = parseFloat(newValue.toFixed(2));
+            newValue = Math.round(Math.max(0, Math.min(200, newValue)));
+            modifiedRecord.target_cph = newValue;
             modifiedRecord.target_cph_change = modifiedRecord.target_cph - (originalRecord.target_cph || 0);
 
             // Store full reference object in modified_fields
