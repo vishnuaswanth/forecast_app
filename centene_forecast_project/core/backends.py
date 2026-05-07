@@ -1,7 +1,8 @@
 from django.contrib.auth.backends import BaseBackend
 from django.contrib.auth import get_user_model
 from django.contrib import messages
-from ldap3 import Server, Connection, ALL
+from ldap3 import Server, Connection, ALL, AUTO_BIND_TLS_BEFORE_BIND, Tls
+import ssl
 import logging
 
 logger=logging.getLogger('django')
@@ -17,8 +18,9 @@ class LDAPBackend(BaseBackend):
             Bind_Password = password  # Replace With The Bind User's Password
 
             #LDAP Server Configuration
-            SRVR = Server(LDAP_Server_URI, get_info=ALL)        
-            connection = Connection(SRVR, user=Bind_DN, password=Bind_Password, auto_bind=True)
+            tls = Tls(validate=ssl.CERT_NONE)
+            SRVR = Server(LDAP_Server_URI, get_info=ALL, tls=tls)
+            connection = Connection(SRVR, user=Bind_DN, password=Bind_Password, auto_bind=AUTO_BIND_TLS_BEFORE_BIND)
 
             # Bind to the LDAP server
             if not connection.bind():
