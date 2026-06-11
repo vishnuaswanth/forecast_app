@@ -362,7 +362,7 @@ Edit `C:\inetpub\wwwroot\web.config` on the IIS site that hosts multiple apps. A
           <conditions>
             <add input="{HTTP_UPGRADE}" pattern="^WebSocket$" />
           </conditions>
-          <action type="Rewrite" url="ws://127.0.0.1:8096/centene_forecasting/{R:1}" />
+          <action type="Rewrite" url="http://127.0.0.1:8096/centene_forecasting/{R:1}" />
         </rule>
 
         <!-- Centene Forecasting - all HTTP/HTTPS traffic -->

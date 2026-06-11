@@ -58,11 +58,12 @@ $(document).ready(function(){
             contentType: false,
             success: function(response){
                 console.log(response);
+                var warning = response && response.data && response.data.warning ? response.data.warning : null;
                 // Check success field first (preferred), then fallback to message check
                 if (response && response.success) {
-                    onUploadSuccess();
+                    onUploadSuccess(warning);
                 } else if (response && response.message && response.message.toLowerCase().includes('file uploaded')) {
-                    onUploadSuccess();
+                    onUploadSuccess(warning);
                 } else {
                     console.log("not handled case in upload");
                     location.reload();
@@ -91,14 +92,21 @@ $(document).ready(function(){
     }
 
 
-    function onUploadSuccess(){
+    function onUploadSuccess(warning){
         $('#error-message').text("").hide();
         $('#successMsg').show();
         $('#file_upload_input').val('');
         enable_upload_button();
 
+        if (warning) {
+            $('#warningMsg').text(warning).show();
+        } else {
+            $('#warningMsg').text("").hide();
+        }
+
         setTimeout(function() {
             $('#successMsg').hide();
+            $('#warningMsg').hide();
         }, 10000); // 10 seconds
 
         // Refresh the table asynchronously
