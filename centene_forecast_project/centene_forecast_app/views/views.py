@@ -217,10 +217,13 @@ def upload_view(request):
             logger.warning(f"Failed to clear caches after upload: {cache_error}")
 
         logger.info("File uploaded successfully: %s", uploaded_file.name)
-        return JsonResponse({
+        resp = {
             'success': True,
-            'message': response.get('message', "some error fetching message")
-        }, status=200)
+            'message': response.get('message', "some error fetching message"),
+        }
+        if response.get('data'):
+            resp['data'] = response['data']
+        return JsonResponse(resp, status=200)
     try:
         data = client.get_all_record_history()
         records =[]
