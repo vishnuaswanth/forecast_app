@@ -496,6 +496,29 @@ class ChatAPIClient:
             logger.error(f"[Chat API] Failed to bulk apply ramp: {str(e)}", exc_info=True)
             raise
 
+    def get_ramps_for_report(self, year: int, month: str) -> Dict:
+        """
+        Fetch all existing ramp data for a report period.
+
+        GET /api/v1/ramps/report/{year}/{month}
+
+        Args:
+            year: Report year (ForecastModel.Year)
+            month: Report month full name, e.g. "January"
+
+        Returns:
+            Dict with success flag and flat list of ramp dicts
+        """
+        endpoint = f"/api/v1/ramps/report/{year}/{month}"
+        try:
+            response = self.get(endpoint)
+            data = response.json()
+            logger.info(f"[Chat API] Bulk ramps fetched for {month} {year}")
+            return data
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to get ramps for report period: {str(e)}", exc_info=True)
+            raise
+
     def close(self):
         """Close the HTTP client and cleanup resources."""
         self.client.close()

@@ -991,6 +991,69 @@ class ChatService:
             "ui_component": ui,
         }
 
+    async def load_campaign_ramps(
+        self,
+        report_year: int,
+        report_month: str,
+        conversation_id: str,
+    ) -> dict:
+        """
+        Lazy-load all existing ramps for a report period via a single bulk API call.
+
+        Called by handle_load_campaign_ramps after the campaign modal opens so the
+        modal appears immediately and ramp data populates in the background.
+
+        Args:
+            report_year: ForecastModel.Year value
+            report_month: ForecastModel.Month full name, e.g. "January"
+            conversation_id: Current conversation ID
+
+        Returns:
+            Dict with success, ramps list (each entry has month_label added),
+            and the 6-month key set used to filter out out-of-window ramps.
+        """
+        import calendar as cal
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.forecast_tools import call_get_ramps_for_report
+
+        if not report_year or not report_month:
+            return {"success": False, "ramps": [], "message": "Missing report year or month"}
+
+        context_manager = get_context_manager()
+        ctx = await context_manager.get_context(conversation_id)
+
+        # Build month_key → label mapping from context (the 6 forecast months)
+        month_key_to_label: dict = {}
+        for label in (ctx.forecast_months or {}).values():
+            try:
+                abbr, yr_short = label.split('-')
+                mo = list(cal.month_abbr).index(abbr)
+                yr = 2000 + int(yr_short)
+                month_key_to_label[f"{yr:04d}-{mo:02d}"] = label
+            except Exception:
+                pass
+
+        try:
+            data = await call_get_ramps_for_report(report_year, report_month)
+        except Exception as e:
+            logger.error(f"[Chat Service] Failed to load campaign ramps: {e}", exc_info=True)
+            return {"success": False, "ramps": [], "message": str(e)}
+
+        ramps = data.get("ramps", [])
+
+        # Filter to only the 6 months visible in the current forecast window
+        if month_key_to_label:
+            ramps = [r for r in ramps if r.get("month_key") in month_key_to_label]
+
+        # Enrich with month_label
+        for r in ramps:
+            r["month_label"] = month_key_to_label.get(r["month_key"], r["month_key"])
+
+        logger.info(
+            f"[Chat Service] Loaded {len(ramps)} campaign ramps for {report_month} {report_year}"
+        )
+        return {"success": True, "ramps": ramps}
+
     async def process_ramp_campaign_submission(
         self,
         campaign_rows: list,

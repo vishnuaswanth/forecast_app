@@ -1837,6 +1837,8 @@ def generate_campaign_entry_card_ui(
     month_weeks: dict,
     report_label: str = '',
     existing_ramps: list = None,
+    report_year: int = 0,
+    report_month_name: str = '',
 ) -> str:
     """
     Generate entry card for the Ramp Campaign Manager.
@@ -1906,7 +1908,9 @@ def generate_campaign_entry_card_ui(
                     data-campaign-lobs="{lobs_json}"
                     data-campaign-month-weeks="{month_weeks_json}"
                     data-report-label="{safe_label}"
-                    data-existing-ramps="{existing_ramps_json}">
+                    data-report-year="{report_year}"
+                    data-report-month="{html_module.escape(report_month_name)}"
+                    data-existing-ramps="[]">
                 Open Campaign Manager
             </button>
         </div>

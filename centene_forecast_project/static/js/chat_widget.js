@@ -202,6 +202,9 @@
                 case 'campaign_apply_result':
                     handleCampaignApplyResult(data);
                     break;
+                case 'campaign_ramps_loaded':
+                    handleCampaignRampsLoaded(data);
+                    break;
                 default:
                     console.warn('[Chat] Unknown message type:', data.type);
             }
@@ -1874,34 +1877,136 @@
 
     function openCampaignModal(btn) {
         try {
-            const monthsRaw  = JSON.parse(btn.getAttribute('data-campaign-months').replace(/&quot;/g, '"'));
-            const lobs       = JSON.parse(btn.getAttribute('data-campaign-lobs').replace(/&quot;/g, '"'));
-            const monthWeeks = JSON.parse(btn.getAttribute('data-campaign-month-weeks').replace(/&quot;/g, '"'));
+            const monthsRaw   = JSON.parse(btn.getAttribute('data-campaign-months').replace(/&quot;/g, '"'));
+            const lobs        = JSON.parse(btn.getAttribute('data-campaign-lobs').replace(/&quot;/g, '"'));
+            const monthWeeks  = JSON.parse(btn.getAttribute('data-campaign-month-weeks').replace(/&quot;/g, '"'));
             const reportLabel = btn.getAttribute('data-report-label') || '';
-            const existingRaw = btn.getAttribute('data-existing-ramps') || '[]';
-            const existingRamps = JSON.parse(existingRaw.replace(/&quot;/g, '"'));
+            const reportYear  = parseInt(btn.getAttribute('data-report-year') || '0', 10);
+            const reportMonth = btn.getAttribute('data-report-month') || '';
 
             // Backend sends {"2025-04": "Apr-25", ...}; convert values to ordered label array
             const months = Array.isArray(monthsRaw) ? monthsRaw : Object.values(monthsRaw);
 
-            ChatState.campaignModalData   = { months, lobs, monthWeeks, reportLabel };
-            ChatState.campaignStagingRows  = existingRamps.length ? existingRamps : [];
+            ChatState.campaignModalData    = { months, lobs, monthWeeks, reportLabel };
+            ChatState.campaignStagingRows  = [];
             ChatState.campaignEditingIndex = null;
+            ChatState.campaignRampsLoading = true;
 
             document.getElementById('campaign-report-label').textContent = reportLabel;
-            updateStagingTable();
+            _showCampaignLoadingSpinner();
             showCampaignView('stage');
             document.getElementById('ramp-campaign-modal').style.display = 'flex';
+
+            // Request existing ramps lazily — modal is already open
+            if (reportYear && reportMonth) {
+                sendWebSocketMessage({
+                    type: 'load_campaign_ramps',
+                    report_year: reportYear,
+                    report_month: reportMonth,
+                });
+            } else {
+                // No report context; clear spinner and let user add manually
+                ChatState.campaignRampsLoading = false;
+                updateStagingTable();
+            }
         } catch (err) {
             console.error('[Campaign] Error opening campaign modal:', err);
         }
     }
 
+    function _showCampaignLoadingSpinner() {
+        const tbody = document.getElementById('campaign-staging-tbody');
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding:20px;">
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                Loading existing ramps&hellip;
+            </td></tr>`;
+        }
+        const summaryEl = document.getElementById('campaign-stage-summary');
+        if (summaryEl) summaryEl.textContent = '';
+    }
+
+    function handleCampaignRampsLoaded(data) {
+        if (!ChatState.campaignRampsLoading) return; // modal was closed before response
+        ChatState.campaignRampsLoading = false;
+
+        // Store raw fetched ramps for DB export and the DB Ramps table
+        ChatState.campaignFetchedRamps = (data.success && data.ramps) ? data.ramps : [];
+
+        // Update DB Ramps tab badge and build month sub-tabs
+        const dbCountEl = document.getElementById('campaign-dbramps-count');
+        if (dbCountEl) dbCountEl.textContent = ChatState.campaignFetchedRamps.length;
+        renderDbRampsMonthTabs();
+
+        // Enable Export DB Data button only when there is data
+        const exportDbBtn = document.getElementById('campaign-export-db-btn');
+        if (exportDbBtn) exportDbBtn.disabled = !ChatState.campaignFetchedRamps.length;
+
+        if (!data.success || !data.ramps || data.ramps.length === 0) {
+            // Nothing to merge — render whatever the user may have already staged
+            updateStagingTable();
+            return;
+        }
+
+        // Build lookup of rows the user added while loading was in progress
+        // Key: "forecastId|monthKey|rampName"
+        const existingKeys = new Set(
+            (ChatState.campaignStagingRows || []).map(r =>
+                `${r.forecast_id}|${r.month_key}|${r.ramp_name}`
+            )
+        );
+
+        // Merge: append fetched rows that don't collide with user-added rows
+        const fetched = data.ramps.map(r => ({
+            forecast_id:  r.forecast_id,
+            main_lob:     r.main_lob,
+            state:        r.state,
+            case_type:    r.case_type,
+            month_key:    r.month_key,
+            month_label:  r.month_label || r.month_key,
+            ramp_name:    r.ramp_name,
+            weeks:        (r.weeks || []).map(w => ({
+                label:        w.week_label,
+                startDate:    w.start_date,
+                endDate:      w.end_date,
+                workingDays:  w.working_days,
+                rampPercent:  w.ramp_percent,
+                rampEmployees: w.employee_count,
+            })),
+        }));
+
+        const merged = [...(ChatState.campaignStagingRows || [])];
+        for (const row of fetched) {
+            const key = `${row.forecast_id}|${row.month_key}|${row.ramp_name}`;
+            if (!existingKeys.has(key)) {
+                merged.push(row);
+            }
+        }
+
+        ChatState.campaignStagingRows = merged;
+        updateStagingTable();
+    }
+
     function closeCampaignModal() {
         document.getElementById('ramp-campaign-modal').style.display = 'none';
-        ChatState.campaignStagingRows  = [];
-        ChatState.campaignModalData    = null;
-        ChatState.campaignEditingIndex = null;
+        ChatState.campaignStagingRows        = [];
+        ChatState.campaignModalData          = null;
+        ChatState.campaignEditingIndex       = null;
+        ChatState.campaignRampsLoading       = false;
+        ChatState.campaignFetchedRamps       = [];
+        ChatState.campaignDbRampsActiveMonth = null;
+
+        // Reset DB Ramps tab state
+        const dbCountEl = document.getElementById('campaign-dbramps-count');
+        if (dbCountEl) dbCountEl.textContent = '0';
+        const exportDbBtn = document.getElementById('campaign-export-db-btn');
+        if (exportDbBtn) exportDbBtn.disabled = true;
+        ['filter-ramp-name','filter-ramp-lob','filter-ramp-state','filter-ramp-ctype'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        // Switch back to staging tab for next open
+        switchCampaignTab('staging');
     }
 
     function showCampaignView(view) {
@@ -2253,6 +2358,163 @@
         updateStagingTable();
     }
 
+    // ── Campaign tab switching ────────────────────────────────────────────────
+
+    function switchCampaignTab(tab) {
+        document.getElementById('campaign-tab-staging-panel').style.display = tab === 'staging' ? '' : 'none';
+        document.getElementById('campaign-tab-dbramps-panel').style.display  = tab === 'dbramps' ? '' : 'none';
+        document.getElementById('campaign-tab-staging').classList.toggle('active', tab === 'staging');
+        document.getElementById('campaign-tab-dbramps').classList.toggle('active', tab === 'dbramps');
+    }
+
+    // ── DB Ramps table: month sub-tabs ───────────────────────────────────────
+
+    function renderDbRampsMonthTabs() {
+        const ramps   = ChatState.campaignFetchedRamps || [];
+        const months  = (ChatState.campaignModalData || {}).months || []; // ["Jan-26", ...]
+        const presentKeys = new Set(ramps.map(r => r.month_key));
+
+        const orderedMonths = months
+            .map(label => {
+                const key = monthLabelToKey(label);
+                return presentKeys.has(key) ? { key, label } : null;
+            })
+            .filter(Boolean);
+
+        const container = document.getElementById('campaign-dbramps-month-tabs');
+        if (!container) return;
+
+        if (orderedMonths.length === 0) {
+            container.innerHTML = '<span class="text-muted" style="font-size:0.85em;">No DB ramp data found for this report period.</span>';
+            ChatState.campaignDbRampsActiveMonth = null;
+            renderDbRampsTable([]);
+            return;
+        }
+
+        container.innerHTML = orderedMonths.map((m, i) =>
+            `<button class="btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-outline-secondary'} dbramps-month-tab-btn"
+                     data-month-key="${m.key}" style="margin-right:2px;">${m.label}</button>`
+        ).join('');
+
+        ChatState.campaignDbRampsActiveMonth = orderedMonths[0].key;
+
+        container.querySelectorAll('.dbramps-month-tab-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                ChatState.campaignDbRampsActiveMonth = this.dataset.monthKey;
+                container.querySelectorAll('.dbramps-month-tab-btn').forEach(b => {
+                    b.classList.remove('btn-primary');
+                    b.classList.add('btn-outline-secondary');
+                });
+                this.classList.remove('btn-outline-secondary');
+                this.classList.add('btn-primary');
+                applyDbRampFilters();
+            });
+        });
+
+        applyDbRampFilters();
+    }
+
+    // ── DB Ramps table: filtering + rendering ────────────────────────────────
+
+    function applyDbRampFilters() {
+        const activeMonth = ChatState.campaignDbRampsActiveMonth;
+        const nameQ  = (document.getElementById('filter-ramp-name')?.value  || '').toLowerCase();
+        const lobQ   = (document.getElementById('filter-ramp-lob')?.value   || '').toLowerCase();
+        const stateQ = (document.getElementById('filter-ramp-state')?.value || '').toLowerCase();
+        const ctypeQ = (document.getElementById('filter-ramp-ctype')?.value || '').toLowerCase();
+
+        const filtered = (ChatState.campaignFetchedRamps || []).filter(r => {
+            if (activeMonth && r.month_key !== activeMonth) return false;
+            if (nameQ  && !(r.ramp_name  || '').toLowerCase().includes(nameQ))  return false;
+            if (lobQ   && !(r.main_lob   || '').toLowerCase().includes(lobQ))   return false;
+            if (stateQ && !(r.state      || '').toLowerCase().includes(stateQ)) return false;
+            if (ctypeQ && !(r.case_type  || '').toLowerCase().includes(ctypeQ)) return false;
+            return true;
+        });
+
+        renderDbRampsTable(filtered);
+    }
+
+    function renderDbRampsTable(ramps) {
+        const tbody     = document.getElementById('campaign-dbramps-tbody');
+        const summaryEl = document.getElementById('campaign-dbramps-summary');
+        if (!tbody) return;
+
+        if (!ramps || ramps.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:16px;">No ramps found.</td></tr>`;
+            if (summaryEl) summaryEl.textContent = '';
+            return;
+        }
+
+        tbody.innerHTML = ramps.map(r => {
+            const weeks   = r.weeks || [];
+            const weekCnt = weeks.length;
+            const peakEmp = weeks.length
+                ? Math.max(...weeks.map(w => w.employee_count || w.rampEmployees || 0))
+                : 0;
+            return `<tr>
+                <td>${r.forecast_id}</td>
+                <td>${escapeHtml(r.main_lob || '')}</td>
+                <td>${escapeHtml(r.state    || '')}</td>
+                <td>${escapeHtml(r.case_type || '')}</td>
+                <td>${escapeHtml(r.ramp_name || '')}</td>
+                <td class="text-center">${weekCnt}</td>
+                <td class="text-center">${peakEmp}</td>
+            </tr>`;
+        }).join('');
+
+        if (summaryEl) {
+            summaryEl.textContent = `Showing ${ramps.length} ramp${ramps.length !== 1 ? 's' : ''}`;
+        }
+    }
+
+    // ── Excel export ─────────────────────────────────────────────────────────
+
+    async function downloadRampExcel(mode) {
+        const ramps = mode === 'db'
+            ? (ChatState.campaignFetchedRamps || [])
+            : (ChatState.campaignStagingRows  || []);
+
+        if (!ramps.length) {
+            console.warn('[Campaign] No ramp data to export for mode:', mode);
+            return;
+        }
+
+        const labelParts = ((ChatState.campaignModalData || {}).reportLabel || '').split(' ');
+        const repMonth   = labelParts[0] || '';
+        const repYear    = labelParts[1] || '';
+        const csrfToken  = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+
+        try {
+            const resp = await fetch('/centene_forecasting/chat/download-ramp-excel/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                body: JSON.stringify({ mode, ramps, report_month: repMonth, report_year: repYear }),
+            });
+
+            if (!resp.ok) {
+                console.error('[Campaign] Excel export failed:', resp.status);
+                return;
+            }
+
+            const blob = await resp.blob();
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `ramp_data_${mode}_${repMonth}_${repYear}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('[Campaign] Excel export error:', err);
+        }
+    }
+
     // ── Campaign WS flow ──────────────────────────────────────────────────────
 
     function submitCampaign() {
@@ -2433,6 +2695,32 @@
         if (addRampBtn) addRampBtn.addEventListener('click', openAddRampSubModal);
         const submitAllBtn = document.getElementById('campaign-submit-all-btn');
         if (submitAllBtn) submitAllBtn.addEventListener('click', submitCampaign);
+
+        // Campaign tab switching
+        const tabStaging  = document.getElementById('campaign-tab-staging');
+        const tabDbRamps  = document.getElementById('campaign-tab-dbramps');
+        if (tabStaging) tabStaging.addEventListener('click', () => switchCampaignTab('staging'));
+        if (tabDbRamps) tabDbRamps.addEventListener('click',  () => switchCampaignTab('dbramps'));
+
+        // DB Ramps text filters
+        ['filter-ramp-name','filter-ramp-lob','filter-ramp-state','filter-ramp-ctype'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', applyDbRampFilters);
+        });
+        const filterClearBtn = document.getElementById('filter-ramp-clear');
+        if (filterClearBtn) filterClearBtn.addEventListener('click', () => {
+            ['filter-ramp-name','filter-ramp-lob','filter-ramp-state','filter-ramp-ctype'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            applyDbRampFilters();
+        });
+
+        // Export buttons
+        const exportDbBtn = document.getElementById('campaign-export-db-btn');
+        const exportUiBtn = document.getElementById('campaign-export-ui-btn');
+        if (exportDbBtn) exportDbBtn.addEventListener('click', () => downloadRampExcel('db'));
+        if (exportUiBtn) exportUiBtn.addEventListener('click', () => downloadRampExcel('ui'));
         const backToStageBtn = document.getElementById('campaign-back-to-stage-btn');
         if (backToStageBtn) backToStageBtn.addEventListener('click', () => showCampaignView('stage'));
         const confirmApplyBtn = document.getElementById('campaign-confirm-apply-btn');

@@ -149,40 +149,112 @@
                     <button id="campaign-modal-close-btn" class="ramp-modal-close-btn">&#10005;</button>
                 </div>
                 <div class="ramp-modal-body" style="padding:16px 20px;">
-                    <p id="campaign-report-label" class="text-muted" style="margin-bottom:12px;"></p>
+                    <p id="campaign-report-label" class="text-muted" style="margin-bottom:10px;"></p>
 
-                    <!-- Staging table -->
-                    <div style="overflow-x:auto;max-height:340px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;">
-                        <table class="table table-sm table-bordered mb-0" id="campaign-staging-table">
-                            <thead class="thead-light" style="position:sticky;top:0;z-index:1;">
-                                <tr>
-                                    <th style="white-space:nowrap;">Forecast ID</th>
-                                    <th>LOB</th>
-                                    <th>State</th>
-                                    <th>Case Type</th>
-                                    <th>Month</th>
-                                    <th>Ramp Name</th>
-                                    <th>Summary</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="campaign-staging-tbody">
-                                <tr id="campaign-empty-row">
-                                    <td colspan="8" class="text-center text-muted" style="padding:20px;">
-                                        No ramps staged yet — click "+ Add New Ramp" to begin.
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- Top-level tab nav: Staging | DB Ramps -->
+                    <div style="border-bottom:1px solid #dee2e6;margin-bottom:12px;display:flex;gap:0;">
+                        <button id="campaign-tab-staging" class="campaign-tab-btn active">
+                            Staging&nbsp;<span id="campaign-staging-count" class="badge bg-secondary" style="font-size:0.75em;">0</span>
+                        </button>
+                        <button id="campaign-tab-dbramps" class="campaign-tab-btn">
+                            DB Ramps&nbsp;<span id="campaign-dbramps-count" class="badge bg-info" style="font-size:0.75em;">0</span>
+                        </button>
                     </div>
-                    <p id="campaign-stage-summary" class="text-muted" style="margin-top:8px;font-size:0.85em;"></p>
+
+                    <!-- Tab 1: Staging table -->
+                    <div id="campaign-tab-staging-panel">
+                        <div style="overflow-x:auto;max-height:300px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;">
+                            <table class="table table-sm table-bordered mb-0" id="campaign-staging-table">
+                                <thead class="thead-light" style="position:sticky;top:0;z-index:1;">
+                                    <tr>
+                                        <th style="white-space:nowrap;">Forecast ID</th>
+                                        <th>LOB</th>
+                                        <th>State</th>
+                                        <th>Case Type</th>
+                                        <th>Month</th>
+                                        <th>Ramp Name</th>
+                                        <th>Summary</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="campaign-staging-tbody">
+                                    <tr id="campaign-empty-row">
+                                        <td colspan="8" class="text-center text-muted" style="padding:20px;">
+                                            No ramps staged yet — click "+ Add New Ramp" to begin.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p id="campaign-stage-summary" class="text-muted" style="margin-top:8px;font-size:0.85em;"></p>
+                    </div>
+
+                    <!-- Tab 2: DB Ramps — month sub-tabs + filters + table -->
+                    <div id="campaign-tab-dbramps-panel" style="display:none;">
+                        <!-- Month sub-tabs (populated by JS) -->
+                        <div id="campaign-dbramps-month-tabs" style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;"></div>
+
+                        <!-- Text filters -->
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                            <input id="filter-ramp-name"  class="form-control form-control-sm" placeholder="Ramp name&#8230;"  style="width:180px;">
+                            <input id="filter-ramp-lob"   class="form-control form-control-sm" placeholder="LOB&#8230;"        style="width:160px;">
+                            <input id="filter-ramp-state" class="form-control form-control-sm" placeholder="State&#8230;"      style="width:100px;">
+                            <input id="filter-ramp-ctype" class="form-control form-control-sm" placeholder="Case type&#8230;"  style="width:160px;">
+                            <button id="filter-ramp-clear" class="btn btn-sm btn-outline-secondary">Clear</button>
+                        </div>
+
+                        <div style="overflow-x:auto;max-height:220px;overflow-y:auto;border:1px solid #dee2e6;border-radius:4px;">
+                            <table class="table table-sm table-bordered mb-0" id="campaign-dbramps-table">
+                                <thead class="thead-light" style="position:sticky;top:0;z-index:1;">
+                                    <tr>
+                                        <th style="white-space:nowrap;">Forecast ID</th>
+                                        <th>LOB</th>
+                                        <th>State</th>
+                                        <th>Case Type</th>
+                                        <th>Ramp Name</th>
+                                        <th>Weeks</th>
+                                        <th>Peak Emp</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="campaign-dbramps-tbody"></tbody>
+                            </table>
+                        </div>
+                        <p id="campaign-dbramps-summary" class="text-muted" style="margin-top:6px;font-size:0.85em;"></p>
+                    </div>
                 </div>
                 <div class="ramp-modal-footer">
                     <span id="campaign-stage-error" class="ramp-modal-error" style="display:none;"></span>
                     <button id="campaign-add-ramp-btn" class="btn btn-secondary">+ Add New Ramp</button>
+                    <div class="btn-group" style="margin-left:8px;">
+                        <button id="campaign-export-db-btn" class="btn btn-outline-success btn-sm" disabled title="Export data currently in database">
+                            &#8659; Export DB Data
+                        </button>
+                        <button id="campaign-export-ui-btn" class="btn btn-outline-primary btn-sm" title="Export current staging rows">
+                            &#8659; Export UI Data
+                        </button>
+                    </div>
                     <button id="campaign-submit-all-btn" class="btn btn-primary" style="margin-left:auto;">Submit All Ramps &rarr;</button>
                 </div>
             </div>
+
+            <style>
+            .campaign-tab-btn {
+                padding: 6px 16px;
+                border: 1px solid #dee2e6;
+                border-bottom: none;
+                background: #f8f9fa;
+                cursor: pointer;
+                font-size: 0.9em;
+                color: #495057;
+            }
+            .campaign-tab-btn.active {
+                background: #fff;
+                border-bottom: 2px solid #fff;
+                margin-bottom: -1px;
+                font-weight: 600;
+                color: #007bff;
+            }
+            </style>
 
             <!-- ── PREVIEW VIEW ── -->
             <div id="campaign-preview-view" style="display:none;">

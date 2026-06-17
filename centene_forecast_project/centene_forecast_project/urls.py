@@ -21,6 +21,7 @@ from django.views.generic import RedirectView
 urlpatterns = [
     path('centene_forecasting/admin/', admin.site.urls),
     path('centene_forecasting/', include(('centene_forecast_app.urls', 'forecast_app'), namespace='forecast_app')),
+    path('centene_forecasting/chat/', include(('chat_app.urls', 'chat_app'), namespace='chat_app')),
     # Redirect bare root to the app
     path('', RedirectView.as_view(url='/centene_forecasting/', permanent=False)),
 ]

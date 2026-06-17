@@ -156,6 +156,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.handle_submit_ramp_campaign(data)
             elif message_type == 'apply_ramp_campaign':
                 await self.handle_apply_ramp_campaign(data)
+            elif message_type == 'load_campaign_ramps':
+                await self.handle_load_campaign_ramps(data)
             else:
                 await self.send_error(f"Unknown message type: {message_type}")
 
@@ -685,6 +687,39 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 'message': str(e),
                 'applied': [],
                 'failed': [],
+            })
+
+    async def handle_load_campaign_ramps(self, data: Dict[str, Any]) -> None:
+        """
+        Handle request to lazy-load existing ramps for the campaign modal.
+        Called immediately after the modal opens so it appears without delay.
+        """
+        if not self.chat_service or not self.conversation_id:
+            await self.send_json({'type': 'campaign_ramps_loaded', 'success': False, 'ramps': []})
+            return
+
+        report_year = data.get('report_year')
+        report_month = data.get('report_month', '')
+
+        try:
+            result = await self.chat_service.load_campaign_ramps(
+                report_year=report_year,
+                report_month=report_month,
+                conversation_id=self.conversation_id,
+            )
+            await self.send_json({
+                'type': 'campaign_ramps_loaded',
+                'success': result.get('success', False),
+                'ramps': result.get('ramps', []),
+                'message': result.get('message', ''),
+            })
+        except Exception as e:
+            logger.error(f"Error loading campaign ramps: {e}")
+            await self.send_json({
+                'type': 'campaign_ramps_loaded',
+                'success': False,
+                'ramps': [],
+                'message': str(e),
             })
 
     async def handle_new_conversation(self, data: Dict[str, Any]) -> None:
