@@ -1942,48 +1942,8 @@
         const exportDbBtn = document.getElementById('campaign-export-db-btn');
         if (exportDbBtn) exportDbBtn.disabled = !ChatState.campaignFetchedRamps.length;
 
-        if (!data.success || !data.ramps || data.ramps.length === 0) {
-            // Nothing to merge — render whatever the user may have already staged
-            updateStagingTable();
-            return;
-        }
-
-        // Build lookup of rows the user added while loading was in progress
-        // Key: "forecastId|monthKey|rampName"
-        const existingKeys = new Set(
-            (ChatState.campaignStagingRows || []).map(r =>
-                `${r.forecast_id}|${r.month_key}|${r.ramp_name}`
-            )
-        );
-
-        // Merge: append fetched rows that don't collide with user-added rows
-        const fetched = data.ramps.map(r => ({
-            forecast_id:  r.forecast_id,
-            main_lob:     r.main_lob,
-            state:        r.state,
-            case_type:    r.case_type,
-            month_key:    r.month_key,
-            month_label:  r.month_label || r.month_key,
-            ramp_name:    r.ramp_name,
-            weeks:        (r.weeks || []).map(w => ({
-                label:        w.week_label,
-                startDate:    w.start_date,
-                endDate:      w.end_date,
-                workingDays:  w.working_days,
-                rampPercent:  w.ramp_percent,
-                rampEmployees: w.employee_count,
-            })),
-        }));
-
-        const merged = [...(ChatState.campaignStagingRows || [])];
-        for (const row of fetched) {
-            const key = `${row.forecast_id}|${row.month_key}|${row.ramp_name}`;
-            if (!existingKeys.has(key)) {
-                merged.push(row);
-            }
-        }
-
-        ChatState.campaignStagingRows = merged;
+        // Staging is a pure delta — never auto-populate from DB ramps.
+        // Whatever the user staged before the load completed stays as-is.
         updateStagingTable();
     }
 
@@ -1992,6 +1952,7 @@
         ChatState.campaignStagingRows        = [];
         ChatState.campaignModalData          = null;
         ChatState.campaignEditingIndex       = null;
+        ChatState.campaignEditingDbRamp      = null;
         ChatState.campaignRampsLoading       = false;
         ChatState.campaignFetchedRamps       = [];
         ChatState.campaignDbRampsActiveMonth = null;
@@ -2032,42 +1993,72 @@
         const summaryEl = document.getElementById('campaign-stage-summary');
         const rows      = ChatState.campaignStagingRows;
 
+        // Keep staging badge in sync
+        const countBadge = document.getElementById('campaign-staging-count');
+        if (countBadge) countBadge.textContent = rows ? rows.length : 0;
+
         if (!rows || rows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding:20px;">No ramps staged yet — click "+ Add New Ramp" to begin.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted" style="padding:20px;">
+                No staged changes yet. Use the DB Ramps tab to edit or delete existing ramps,
+                or click &ldquo;+ Add New Ramp&rdquo; to add a new one.</td></tr>`;
             if (summaryEl) summaryEl.textContent = '';
             return;
         }
 
+        const _badge = (action) => {
+            if (action === 'add')    return '<span class="badge bg-success"  style="font-size:0.7em;">NEW</span>';
+            if (action === 'edit')   return '<span class="badge bg-primary"  style="font-size:0.7em;">EDIT</span>';
+            if (action === 'delete') return '<span class="badge bg-danger"   style="font-size:0.7em;">DELETE</span>';
+            return '';
+        };
+
+        const _actions = (action, idx) => {
+            if (action === 'delete') {
+                return `<button class="btn btn-sm btn-outline-secondary campaign-restore-btn" data-idx="${idx}">Restore</button>`;
+            }
+            return `<button class="btn btn-sm btn-outline-secondary campaign-edit-row-btn" data-idx="${idx}">Edit</button>
+                    <button class="btn btn-sm btn-outline-warning campaign-remove-btn" data-idx="${idx}" style="margin-left:4px;">Remove</button>`;
+        };
+
         tbody.innerHTML = rows.map((row, idx) => `
-            <tr>
+            <tr class="${row.action === 'delete' ? 'table-danger' : ''}">
+                <td>${_badge(row.action || 'add')}</td>
                 <td>${row.forecast_id}</td>
                 <td>${escapeHtml(row.main_lob)}</td>
                 <td>${escapeHtml(row.state)}</td>
                 <td>${escapeHtml(row.case_type)}</td>
                 <td>${escapeHtml(row.month_label)}</td>
                 <td>${escapeHtml(row.ramp_name)}</td>
-                <td style="font-size:0.85em;">${buildRowSummary(row)}</td>
-                <td>
-                    <button class="btn btn-sm btn-outline-secondary campaign-edit-row-btn" data-idx="${idx}">Edit</button>
-                    <button class="btn btn-sm btn-outline-danger campaign-del-row-btn" data-idx="${idx}" style="margin-left:4px;">Del</button>
-                </td>
+                <td style="font-size:0.85em;">${row.action === 'delete' ? '—' : buildRowSummary(row)}</td>
+                <td>${_actions(row.action, idx)}</td>
             </tr>`).join('');
 
+        // Edit staging row
         tbody.querySelectorAll('.campaign-edit-row-btn').forEach(btn => {
             btn.addEventListener('click', function() {
-                openEditRampSubModal(parseInt(this.getAttribute('data-idx'), 10));
+                openEditStagingRow(parseInt(this.getAttribute('data-idx'), 10));
             });
         });
-        tbody.querySelectorAll('.campaign-del-row-btn').forEach(btn => {
+        // Remove staging row (undo add/edit — no DB change)
+        tbody.querySelectorAll('.campaign-remove-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 ChatState.campaignStagingRows.splice(parseInt(this.getAttribute('data-idx'), 10), 1);
                 updateStagingTable();
+                _refreshDbRampsButtonStates();
+            });
+        });
+        // Restore: remove the delete marker
+        tbody.querySelectorAll('.campaign-restore-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                ChatState.campaignStagingRows.splice(parseInt(this.getAttribute('data-idx'), 10), 1);
+                updateStagingTable();
+                _refreshDbRampsButtonStates();
             });
         });
 
         if (summaryEl) {
             const uniqueLobs = new Set(rows.map(r => r.forecast_id));
-            summaryEl.textContent = `Total staged: ${rows.length} ramp${rows.length !== 1 ? 's' : ''} across ${uniqueLobs.size} forecast row${uniqueLobs.size !== 1 ? 's' : ''}`;
+            summaryEl.textContent = `Total staged: ${rows.length} change${rows.length !== 1 ? 's' : ''} across ${uniqueLobs.size} forecast row${uniqueLobs.size !== 1 ? 's' : ''}`;
         }
     }
 
@@ -2143,6 +2134,109 @@
         ChatState.campaignSubModalWeeks  = {};
         ChatState.campaignSubActiveMonth = null;
         ChatState.campaignEditingIndex   = null;
+        ChatState.campaignEditingDbRamp  = null;  // FIX #7: reset so next Add opens cleanly
+        // FIX #2: restore ramp name field editability for next Add
+        const rampNameInput = document.getElementById('add-sub-ramp-name');
+        if (rampNameInput) rampNameInput.readOnly = false;
+    }
+
+    function openEditRampFromDb(dbRamp) {
+        // FIX #1: if ramp is already marked for deletion, remove that marker first —
+        // editing supersedes deleting for the same ramp.
+        const key = `${dbRamp.forecast_id}|${dbRamp.month_key}|${dbRamp.ramp_name}`;
+        const existingIdx = (ChatState.campaignStagingRows || []).findIndex(r =>
+            `${r.forecast_id}|${r.month_key}|${r.ramp_name}` === key
+        );
+        if (existingIdx >= 0 && ChatState.campaignStagingRows[existingIdx].action === 'delete') {
+            ChatState.campaignStagingRows.splice(existingIdx, 1);
+            updateStagingTable();
+        }
+
+        ChatState.campaignEditingDbRamp = dbRamp;
+        ChatState.campaignEditingIndex  = null;
+
+        document.getElementById('add-sub-modal-title').textContent =
+            `Edit Ramp — ${escapeHtml(dbRamp.main_lob)} | ${escapeHtml(dbRamp.state)} | ${escapeHtml(dbRamp.case_type)} — ${escapeHtml(dbRamp.month_label)}`;
+        document.getElementById('add-sub-row-selector').style.display  = 'none';
+        document.getElementById('add-sub-month-selector').style.display = 'none';
+
+        // FIX #2: ramp name is read-only in edit mode — prevents orphaned DB ramps
+        const rampNameInput = document.getElementById('add-sub-ramp-name');
+        rampNameInput.value    = dbRamp.ramp_name;
+        rampNameInput.readOnly = true;
+
+        const camelWeeks = (dbRamp.weeks || []).map(w => ({
+            label:         w.week_label,
+            startDate:     w.start_date,
+            endDate:       w.end_date,
+            workingDays:   w.working_days,
+            rampPercent:   w.ramp_percent,
+            rampEmployees: w.employee_count,
+        }));
+        ChatState.campaignSubModalWeeks  = { [dbRamp.month_key]: camelWeeks };
+        ChatState.campaignSubActiveMonth = dbRamp.month_key;
+
+        document.getElementById('add-sub-month-tabs').innerHTML =
+            `<button class="btn btn-sm btn-primary campaign-month-tab" data-month="${dbRamp.month_key}">${escapeHtml(dbRamp.month_label)}</button>`;
+        renderSubModalWeekTable(dbRamp.month_key);
+        document.getElementById('add-sub-confirm-btn').textContent = 'Save Edit →';
+        clearSubModalError();
+        document.getElementById('ramp-add-sub-modal').style.display = 'flex';
+    }
+
+    function openEditStagingRow(idx) {
+        const row = ChatState.campaignStagingRows[idx];
+        if (!row) return;
+
+        ChatState.campaignEditingIndex  = idx;
+        ChatState.campaignEditingDbRamp = null;
+        ChatState.campaignSubModalWeeks = { [row.month_key]: (row.weeks || []).map(w => ({ ...w })) };
+        ChatState.campaignSubActiveMonth = row.month_key;
+
+        document.getElementById('add-sub-modal-title').textContent =
+            `Edit Ramp — ${escapeHtml(row.main_lob)} | ${escapeHtml(row.state)} | ${escapeHtml(row.case_type)} — ${escapeHtml(row.month_label)}`;
+        document.getElementById('add-sub-row-selector').style.display  = 'none';
+        document.getElementById('add-sub-month-selector').style.display = 'none';
+
+        // FIX #2: ramp name read-only in edit mode
+        const rampNameInput = document.getElementById('add-sub-ramp-name');
+        rampNameInput.value    = row.ramp_name;
+        rampNameInput.readOnly = true;
+
+        document.getElementById('add-sub-month-tabs').innerHTML =
+            `<button class="btn btn-sm btn-primary campaign-month-tab" data-month="${row.month_key}">${escapeHtml(row.month_label)}</button>`;
+        renderSubModalWeekTable(row.month_key);
+        document.getElementById('add-sub-confirm-btn').textContent = 'Save Edit →';
+        clearSubModalError();
+        document.getElementById('ramp-add-sub-modal').style.display = 'flex';
+    }
+
+    function deleteRampFromDb(dbRamp) {
+        const key = `${dbRamp.forecast_id}|${dbRamp.month_key}|${dbRamp.ramp_name}`;
+        const alreadyStaged = (ChatState.campaignStagingRows || []).some(r =>
+            `${r.forecast_id}|${r.month_key}|${r.ramp_name}` === key
+        );
+        if (alreadyStaged) return; // FIX #3 idempotent: no duplicate entry
+
+        ChatState.campaignStagingRows.push({
+            forecast_id:        dbRamp.forecast_id,
+            main_lob:           dbRamp.main_lob,
+            state:              dbRamp.state,
+            case_type:          dbRamp.case_type,
+            month_key:          dbRamp.month_key,
+            month_label:        dbRamp.month_label,
+            ramp_name:          dbRamp.ramp_name,
+            weeks:              [],
+            totalRampEmployees: 0,
+            action:             'delete',
+        });
+        updateStagingTable();
+        _refreshDbRampsButtonStates(); // FIX #3: DB table now shows "Pending Delete"
+    }
+
+    function _refreshDbRampsButtonStates() {
+        // Re-run current filter to re-render DB Ramps table with updated pending indicators
+        applyDbRampFilters();
     }
 
     function clearSubModalError() {
@@ -2291,31 +2385,55 @@
 
     function handleAddSubConfirm() {
         clearSubModalError();
-
-        // Save current tab input values
         if (ChatState.campaignSubActiveMonth) saveSubModalCurrentTab();
 
-        const isEdit  = ChatState.campaignEditingIndex !== null;
-        const rampTag = document.getElementById('add-sub-ramp-name').value.trim();
+        const isDbEdit      = ChatState.campaignEditingDbRamp !== null;
+        const isStagingEdit = !isDbEdit && ChatState.campaignEditingIndex !== null;
 
-        if (isEdit) {
-            const idx = ChatState.campaignEditingIndex;
-            const row = ChatState.campaignStagingRows[idx];
+        if (isDbEdit) {
+            // Branch 1: Edit from DB Ramps — locked to one month, ramp name read-only
+            const dbRamp  = ChatState.campaignEditingDbRamp;
+            const weeks   = ChatState.campaignSubModalWeeks[dbRamp.month_key] || [];
+            if (weeks.length === 0) { showSubModalError('No week data found.'); return; }
+            const total = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
+            const key   = `${dbRamp.forecast_id}|${dbRamp.month_key}|${dbRamp.ramp_name}`;
+            const existingIdx = (ChatState.campaignStagingRows || []).findIndex(r =>
+                `${r.forecast_id}|${r.month_key}|${r.ramp_name}` === key
+            );
+            const staged = {
+                forecast_id:        dbRamp.forecast_id,
+                main_lob:           dbRamp.main_lob,
+                state:              dbRamp.state,
+                case_type:          dbRamp.case_type,
+                month_key:          dbRamp.month_key,
+                month_label:        dbRamp.month_label,
+                ramp_name:          dbRamp.ramp_name,  // preserved — read-only in modal
+                weeks:              weeks.map(w => ({ ...w })),
+                totalRampEmployees: total,
+                action:             'edit',
+            };
+            if (existingIdx >= 0) {
+                ChatState.campaignStagingRows[existingIdx] = staged;
+            } else {
+                ChatState.campaignStagingRows.push(staged);
+            }
+
+        } else if (isStagingEdit) {
+            // Branch 2: Edit existing staging row — preserve original action
+            const idx  = ChatState.campaignEditingIndex;
+            const row  = ChatState.campaignStagingRows[idx];
             const weeks = ChatState.campaignSubModalWeeks[row.month_key] || [];
             if (weeks.length === 0) { showSubModalError('No week data found.'); return; }
-            const totalRampEmployees = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
-            const existingUid = (row.ramp_name || '').split('-').pop() || generateRampId();
-            const editedName = rampTag
-                ? `${rampTag}-${row.month_key}-${row.forecast_id}-${existingUid}`
-                : `Ramp-${row.month_key}-${row.forecast_id}-${existingUid}`;
+            const total = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
             ChatState.campaignStagingRows[idx] = {
                 ...row,
-                ramp_tag:           rampTag || 'Ramp',
-                ramp_name:          editedName,
                 weeks:              weeks.map(w => ({ ...w })),
-                totalRampEmployees: totalRampEmployees,
+                totalRampEmployees: total,
+                // preserve original action ('add' stays 'add', 'edit' stays 'edit')
             };
+
         } else {
+            // Branch 3: Add new ramp — all months selectable
             const forecastId = parseInt(document.getElementById('add-sub-row-select').value, 10);
             if (!forecastId) { showSubModalError('Please select a forecast row.'); return; }
 
@@ -2326,7 +2444,7 @@
             const lobInfo = lobs.find(l => l.forecast_id === forecastId);
             if (!lobInfo) { showSubModalError('Selected forecast row not found.'); return; }
 
-            // Build month → label map
+            const rampTag = document.getElementById('add-sub-ramp-name').value.trim();
             const monthLabelMap = {};
             ((ChatState.campaignModalData || {}).months || []).forEach(m => {
                 monthLabelMap[monthLabelToKey(m)] = m;
@@ -2334,8 +2452,8 @@
 
             selectedMonths.forEach(mk => {
                 const weeks = ChatState.campaignSubModalWeeks[mk] || [];
-                const totalRampEmployees = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
-                const uid = generateRampId();
+                const total = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
+                const uid   = generateRampId();
                 const generatedName = rampTag
                     ? `${rampTag}-${mk}-${lobInfo.forecast_id}-${uid}`
                     : `Ramp-${mk}-${lobInfo.forecast_id}-${uid}`;
@@ -2349,13 +2467,15 @@
                     ramp_tag:           rampTag || 'Ramp',
                     ramp_name:          generatedName,
                     weeks:              weeks.map(w => ({ ...w })),
-                    totalRampEmployees: totalRampEmployees,
+                    totalRampEmployees: total,
+                    action:             'add',
                 });
             });
         }
 
         closeAddRampSubModal();
         updateStagingTable();
+        _refreshDbRampsButtonStates();
     }
 
     // ── Campaign tab switching ────────────────────────────────────────────────
@@ -2441,27 +2561,48 @@
         if (!tbody) return;
 
         if (!ramps || ramps.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding:16px;">No ramps found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding:16px;">No ramps found.</td></tr>`;
             if (summaryEl) summaryEl.textContent = '';
             return;
         }
 
-        tbody.innerHTML = ramps.map(r => {
+        tbody.innerHTML = ramps.map((r, i) => {
             const weeks   = r.weeks || [];
             const weekCnt = weeks.length;
             const peakEmp = weeks.length
                 ? Math.max(...weeks.map(w => w.employee_count || w.rampEmployees || 0))
                 : 0;
-            return `<tr>
+
+            const key     = `${r.forecast_id}|${r.month_key}|${r.ramp_name}`;
+            const pending = (ChatState.campaignStagingRows || []).find(s =>
+                `${s.forecast_id}|${s.month_key}|${s.ramp_name}` === key
+            );
+            const pendingBadge = pending
+                ? `<span class="badge bg-${pending.action === 'delete' ? 'danger' : 'primary'} ms-1" style="font-size:0.65em;">${pending.action === 'delete' ? 'Pending Delete' : 'Pending Edit'}</span>`
+                : '';
+
+            const hasPending = !!pending;
+            const editBtn  = `<button class="btn btn-xs btn-outline-secondary dbramps-edit-btn" data-idx="${i}" ${hasPending ? 'disabled' : ''}>Edit</button>`;
+            const delBtn   = `<button class="btn btn-xs btn-outline-danger dbramps-del-btn" data-idx="${i}" style="margin-left:4px;" ${hasPending ? 'disabled' : ''}>Delete</button>`;
+
+            return `<tr class="${pending?.action === 'delete' ? 'table-danger' : (pending ? 'table-info' : '')}">
                 <td>${r.forecast_id}</td>
-                <td>${escapeHtml(r.main_lob || '')}</td>
+                <td>${escapeHtml(r.main_lob || '')}${pendingBadge}</td>
                 <td>${escapeHtml(r.state    || '')}</td>
                 <td>${escapeHtml(r.case_type || '')}</td>
                 <td>${escapeHtml(r.ramp_name || '')}</td>
                 <td class="text-center">${weekCnt}</td>
                 <td class="text-center">${peakEmp}</td>
+                <td style="white-space:nowrap;">${editBtn}${delBtn}</td>
             </tr>`;
         }).join('');
+
+        tbody.querySelectorAll('.dbramps-edit-btn:not([disabled])').forEach(btn => {
+            btn.addEventListener('click', () => openEditRampFromDb(ramps[+btn.dataset.idx]));
+        });
+        tbody.querySelectorAll('.dbramps-del-btn:not([disabled])').forEach(btn => {
+            btn.addEventListener('click', () => deleteRampFromDb(ramps[+btn.dataset.idx]));
+        });
 
         if (summaryEl) {
             summaryEl.textContent = `Showing ${ramps.length} ramp${ramps.length !== 1 ? 's' : ''}`;
@@ -2520,8 +2661,9 @@
     function submitCampaign() {
         const rows = ChatState.campaignStagingRows;
         if (!rows || rows.length === 0) {
+            switchCampaignTab('staging');  // FIX #6: always show staging tab with the error
             const errEl = document.getElementById('campaign-stage-error');
-            errEl.textContent = 'No ramps staged. Add at least one ramp before submitting.';
+            errEl.textContent = 'No staged changes. Add, edit, or delete ramps before submitting.';
             errEl.style.display = 'block';
             return;
         }
@@ -2547,12 +2689,17 @@
         const totalCap    = data.total_cap_delta || 0;
 
         document.getElementById('campaign-preview-tbody').innerHTML = previewRows.map(row => {
+            const isDelete = row.action === 'delete';
             const fteDelta = row.fte_delta;
             const capDelta = row.cap_delta;
-            const fteStr = (typeof fteDelta === 'number') ? (fteDelta >= 0 ? '+' + fteDelta : '' + fteDelta) : '—';
-            const capStr = (typeof capDelta === 'number') ? (capDelta >= 0 ? '+' + capDelta.toLocaleString() : capDelta.toLocaleString()) : '—';
-            const errClass = row.error ? 'text-danger' : '';
-            const status   = row.error ? 'Error: ' + escapeHtml(row.error) : 'OK';
+            const fteStr = isDelete ? '—' : (typeof fteDelta === 'number') ? (fteDelta >= 0 ? '+' + fteDelta : '' + fteDelta) : '—';
+            const capStr = isDelete ? '—' : (typeof capDelta === 'number') ? (capDelta >= 0 ? '+' + capDelta.toLocaleString() : capDelta.toLocaleString()) : '—';
+            const errClass = row.error ? 'text-danger' : (isDelete ? 'table-danger' : '');
+            const status   = row.error
+                ? 'Error: ' + escapeHtml(row.error)
+                : isDelete
+                    ? '<span class="text-danger fw-bold">REMOVE</span>'
+                    : 'OK';
             return `<tr class="${errClass}">
                 <td>${row.forecast_id}</td>
                 <td>${escapeHtml(row.main_lob || '')} / ${escapeHtml(row.case_type || '')}</td>

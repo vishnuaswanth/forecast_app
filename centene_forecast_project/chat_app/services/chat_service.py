@@ -1088,9 +1088,13 @@ class ChatService:
                 "total_cap_delta": 0,
             }
 
-        # Basic validation
+        # Separate delete rows from add/edit rows — deletes skip bulk-preview
+        delete_rows = [r for r in campaign_rows if r.get('action') == 'delete']
+        upsert_rows = [r for r in campaign_rows if r.get('action') != 'delete']
+
+        # Basic validation (only upsert rows need weeks)
         errors = []
-        for i, row in enumerate(campaign_rows):
+        for i, row in enumerate(upsert_rows):
             if not row.get('forecast_id'):
                 errors.append(f"Row {i+1}: missing forecast_id")
             if not row.get('month_key'):
@@ -1109,9 +1113,26 @@ class ChatService:
         # Store campaign data in context for apply step
         await context_manager.update_entities(conversation_id, pending_campaign_data=campaign_rows)
 
-        # Group rows by (forecast_id, month_key) → list of ramp payloads
+        # Build preview_rows: delete rows get REMOVE status directly (no API call)
+        preview_rows = []
+        for row in delete_rows:
+            preview_rows.append({
+                'forecast_id': int(row.get('forecast_id', 0)),
+                'main_lob':    row.get('main_lob', ''),
+                'state':       row.get('state', ''),
+                'case_type':   row.get('case_type', ''),
+                'month_key':   row.get('month_key', ''),
+                'month_label': row.get('month_label', row.get('month_key', '')),
+                'ramp_name':   row.get('ramp_name', ''),
+                'fte_delta':   None,
+                'cap_delta':   None,
+                'action':      'delete',
+                'error':       None,
+            })
+
+        # Group upsert rows by (forecast_id, month_key) → list of ramp payloads
         groups = defaultdict(list)
-        for row in campaign_rows:
+        for row in upsert_rows:
             key = (int(row['forecast_id']), row['month_key'])
             weeks = row['weeks']
             total = row.get('totalRampEmployees') or sum(w.get('rampEmployees', 0) for w in weeks)
@@ -1121,7 +1142,7 @@ class ChatService:
                 'totalRampEmployees': int(total),
             })
 
-        # Call bulk-preview for each combo in parallel
+        # Call bulk-preview for each upsert combo in parallel
         async def _safe_preview(forecast_id, month_key, ramps):
             try:
                 return await call_bulk_preview_ramp(forecast_id, month_key, {"ramps": ramps})
@@ -1133,13 +1154,12 @@ class ChatService:
             _safe_preview(fid, mk, ramps) for (fid, mk), ramps in group_items
         ])
 
-        # Build flat preview_rows list (one entry per original campaign row)
-        preview_rows = []
+        # Build flat preview_rows list for upsert rows
         for idx, ((forecast_id, month_key), ramps) in enumerate(group_items):
             result = results[idx]
             for ramp in ramps:
                 orig = next(
-                    (r for r in campaign_rows
+                    (r for r in upsert_rows
                      if int(r['forecast_id']) == forecast_id
                      and r['month_key'] == month_key
                      and r.get('ramp_name') == ramp['ramp_name']),
@@ -1156,6 +1176,7 @@ class ChatService:
                         'ramp_name': ramp['ramp_name'],
                         'fte_delta': None,
                         'cap_delta': None,
+                        'action': orig.get('action', 'edit'),
                         'error': str(result),
                     })
                 else:
@@ -1175,6 +1196,7 @@ class ChatService:
                         'ramp_name': ramp['ramp_name'],
                         'fte_delta': diff.get('fte_available', 0),
                         'cap_delta': diff.get('capacity', 0),
+                        'action': orig.get('action', 'edit'),
                         'error': None,
                     })
 
@@ -1220,7 +1242,7 @@ class ChatService:
         import asyncio
         from collections import defaultdict
         from chat_app.utils.context_manager import get_context_manager
-        from chat_app.services.tools.forecast_tools import call_bulk_apply_ramp
+        from chat_app.services.tools.forecast_tools import call_bulk_apply_ramp, call_delete_ramp
 
         context_manager = get_context_manager()
         ctx = await context_manager.get_context(conversation_id)
@@ -1234,67 +1256,117 @@ class ChatService:
                 "failed": [],
             }
 
-        # Group by (forecast_id, month_key)
-        groups = defaultdict(list)
-        for row in campaign_rows:
+        # Separate delete rows from upsert rows
+        delete_rows = [r for r in campaign_rows if r.get('action') == 'delete']
+        upsert_rows = [r for r in campaign_rows if r.get('action') != 'delete']
+
+        # Group upsert rows by (forecast_id, month_key)
+        upsert_groups: dict = defaultdict(list)
+        for row in upsert_rows:
             key = (int(row['forecast_id']), row['month_key'])
             weeks = row['weeks']
             total = row.get('totalRampEmployees') or sum(w.get('rampEmployees', 0) for w in weeks)
-            groups[key].append({
+            upsert_groups[key].append({
                 'ramp_name': row.get('ramp_name', f'Ramp-{row["month_key"]}'),
                 'weeks': weeks,
                 'totalRampEmployees': int(total),
             })
 
-        # Apply in parallel
-        async def _safe_apply(forecast_id, month_key, ramps):
-            try:
-                return await call_bulk_apply_ramp(forecast_id, month_key, {"ramps": ramps})
-            except Exception as e:
-                return e
+        # Group delete rows by (forecast_id, month_key) as well for serialization
+        delete_groups: dict = defaultdict(list)
+        for row in delete_rows:
+            key = (int(row['forecast_id']), row['month_key'])
+            delete_groups[key].append(row.get('ramp_name', ''))
 
-        group_items = list(groups.items())
-        results = await asyncio.gather(*[
-            _safe_apply(fid, mk, ramps) for (fid, mk), ramps in group_items
+        # Per (forecast_id, month_key): run deletes first, then upserts — prevents race condition
+        # on the same ForecastModel row. Groups for different rows run in parallel.
+        async def _apply_group(forecast_id, month_key):
+            """Run deletes then upserts for a single (forecast_id, month_key) group."""
+            results_list = []
+            # Step 1: deletes
+            for ramp_name in delete_groups.get((forecast_id, month_key), []):
+                try:
+                    result = await call_delete_ramp(forecast_id, month_key, ramp_name)
+                    results_list.append(('delete', ramp_name, result, None))
+                except Exception as e:
+                    results_list.append(('delete', ramp_name, None, e))
+            # Step 2: upserts
+            ramps = upsert_groups.get((forecast_id, month_key), [])
+            if ramps:
+                try:
+                    result = await call_bulk_apply_ramp(forecast_id, month_key, {"ramps": ramps})
+                    results_list.append(('upsert', None, result, None))
+                except Exception as e:
+                    results_list.append(('upsert', None, None, e))
+            return forecast_id, month_key, results_list
+
+        # Collect all unique (forecast_id, month_key) pairs across both groups
+        all_keys = set(upsert_groups.keys()) | set(delete_groups.keys())
+        group_results = await asyncio.gather(*[
+            _apply_group(fid, mk) for fid, mk in all_keys
         ])
 
         # Build per-row result lists
         applied = []
-        failed = []
+        failed  = []
 
-        for idx, ((forecast_id, month_key), ramps) in enumerate(group_items):
-            result = results[idx]
-            ramps_failed_names: set = set()
-
-            if not isinstance(result, Exception):
-                ramps_failed_names = set(result.get('ramps_failed', []))
-
-            for ramp in ramps:
-                orig = next(
-                    (r for r in campaign_rows
-                     if int(r['forecast_id']) == forecast_id
-                     and r['month_key'] == month_key
-                     and r.get('ramp_name') == ramp['ramp_name']),
-                    {}
-                )
-                entry = {
-                    'forecast_id': forecast_id,
-                    'main_lob': orig.get('main_lob', ''),
-                    'state': orig.get('state', ''),
-                    'case_type': orig.get('case_type', ''),
-                    'month_key': month_key,
-                    'month_label': orig.get('month_label', month_key),
-                    'ramp_name': ramp['ramp_name'],
-                }
-
-                if isinstance(result, Exception):
-                    entry['error'] = str(result)
-                    failed.append(entry)
-                elif ramp['ramp_name'] in ramps_failed_names:
-                    entry['error'] = 'Apply failed on server'
-                    failed.append(entry)
+        for forecast_id, month_key, results_list in group_results:
+            for action_type, ramp_name, result, exc in results_list:
+                if action_type == 'delete':
+                    orig = next(
+                        (r for r in delete_rows
+                         if int(r['forecast_id']) == forecast_id
+                         and r['month_key'] == month_key
+                         and r.get('ramp_name') == ramp_name),
+                        {}
+                    )
+                    entry = {
+                        'forecast_id': forecast_id,
+                        'main_lob':    orig.get('main_lob', ''),
+                        'state':       orig.get('state', ''),
+                        'case_type':   orig.get('case_type', ''),
+                        'month_key':   month_key,
+                        'month_label': orig.get('month_label', month_key),
+                        'ramp_name':   ramp_name,
+                        'action':      'delete',
+                    }
+                    if exc:
+                        entry['error'] = str(exc)
+                        failed.append(entry)
+                    else:
+                        applied.append(entry)
                 else:
-                    applied.append(entry)
+                    # upsert group result
+                    ramps = upsert_groups.get((forecast_id, month_key), [])
+                    ramps_failed_names: set = set()
+                    if result and not exc:
+                        ramps_failed_names = set(result.get('ramps_failed', []))
+                    for ramp in ramps:
+                        orig = next(
+                            (r for r in upsert_rows
+                             if int(r['forecast_id']) == forecast_id
+                             and r['month_key'] == month_key
+                             and r.get('ramp_name') == ramp['ramp_name']),
+                            {}
+                        )
+                        entry = {
+                            'forecast_id': forecast_id,
+                            'main_lob':    orig.get('main_lob', ''),
+                            'state':       orig.get('state', ''),
+                            'case_type':   orig.get('case_type', ''),
+                            'month_key':   month_key,
+                            'month_label': orig.get('month_label', month_key),
+                            'ramp_name':   ramp['ramp_name'],
+                            'action':      orig.get('action', 'edit'),
+                        }
+                        if exc:
+                            entry['error'] = str(exc)
+                            failed.append(entry)
+                        elif ramp['ramp_name'] in ramps_failed_names:
+                            entry['error'] = 'Apply failed on server'
+                            failed.append(entry)
+                        else:
+                            applied.append(entry)
 
         # Clear campaign state on completion
         fresh_ctx = await context_manager.get_context(conversation_id)

@@ -496,6 +496,34 @@ class ChatAPIClient:
             logger.error(f"[Chat API] Failed to bulk apply ramp: {str(e)}", exc_info=True)
             raise
 
+    def delete(self, endpoint: str):
+        """HTTP DELETE to FastAPI backend."""
+        url = f"{self.base_url}{endpoint}"
+        try:
+            response = self.client.delete(url)
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            logger.error(f"[Chat API] DELETE {endpoint} failed: {str(e)}", exc_info=True)
+            raise
+
+    def delete_ramp(self, forecast_id: int, month_key: str, ramp_name: str) -> Dict:
+        """
+        Delete a named ramp for a forecast row and month.
+
+        DELETE /api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/{ramp_name}
+        """
+        import urllib.parse
+        safe_name = urllib.parse.quote(ramp_name, safe='')
+        endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/{safe_name}"
+        try:
+            data = self.delete(endpoint).json()
+            logger.info(f"[Chat API] Ramp deleted: {ramp_name} for forecast {forecast_id}, month {month_key}")
+            return data
+        except Exception as e:
+            logger.error(f"[Chat API] Failed to delete ramp: {str(e)}", exc_info=True)
+            raise
+
     def get_ramps_for_report(self, year: int, month: str) -> Dict:
         """
         Fetch all existing ramp data for a report period.

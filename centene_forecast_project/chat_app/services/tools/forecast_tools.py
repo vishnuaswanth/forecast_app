@@ -684,6 +684,47 @@ async def call_bulk_apply_ramp(forecast_id: int, month_key: str, payload: dict) 
         raise classify_httpx_error(e, endpoint)
 
 
+async def call_delete_ramp(forecast_id: int, month_key: str, ramp_name: str) -> dict:
+    """
+    Delete a named ramp for a forecast row and month.
+
+    Args:
+        forecast_id: Forecast record ID
+        month_key: Month key in 'YYYY-MM' format
+        ramp_name: Name of the ramp to delete
+
+    Raises:
+        APIConnectionError, APITimeoutError, APIResponseError
+    """
+    import asyncio
+    import urllib.parse
+    safe_name = urllib.parse.quote(ramp_name, safe='')
+    endpoint = f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/{safe_name}"
+    try:
+        client = get_chat_api_client()
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(
+            None,
+            lambda: client.delete_ramp(forecast_id, month_key, ramp_name)
+        )
+        logger.info(f"[Forecast Tools] Ramp deleted: {ramp_name} for forecast {forecast_id}, month {month_key}")
+        return data
+    except httpx.ConnectError as e:
+        raise APIConnectionError(message=f"Cannot connect to API: {str(e)}", details={"endpoint": endpoint})
+    except httpx.TimeoutException as e:
+        raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
+    except httpx.HTTPStatusError as e:
+        raise APIResponseError(
+            message=f"API error: {str(e)}",
+            status_code=e.response.status_code,
+            response_body=e.response.text[:500] if e.response.text else None,
+            details={"endpoint": endpoint}
+        )
+    except Exception as e:
+        logger.error(f"[Forecast Tools] Failed to delete ramp: {str(e)}", exc_info=True)
+        raise classify_httpx_error(e, endpoint)
+
+
 async def call_get_ramps_for_report(year: int, month: str) -> dict:
     """
     Fetch all existing ramp data for a report period in one bulk call.
