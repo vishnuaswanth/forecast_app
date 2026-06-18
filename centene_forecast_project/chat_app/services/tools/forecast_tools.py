@@ -35,6 +35,47 @@ from chat_app.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+def _extract_api_error_detail(response: httpx.Response) -> str:
+    """
+    Extract a human-readable error message from a FastAPI error response body.
+
+    Handles two formats:
+      - FastAPI/Pydantic 422 RequestValidationError:
+          {"detail": [{"msg": "Value error, ...", "loc": [...], ...}, ...]}
+      - Our custom HTTPException 400/500:
+          {"detail": {"success": False, "error": "..."}}
+      - Plain string detail:
+          {"detail": "error message"}
+    """
+    try:
+        body = response.json()
+        detail = body.get("detail", "")
+
+        if isinstance(detail, list):
+            # Pydantic v2 validation errors — extract msg fields
+            msgs = []
+            for d in detail:
+                if isinstance(d, dict):
+                    msg = d.get("msg", "")
+                    # Pydantic v2 prefixes with "Value error, " — strip it
+                    if msg.startswith("Value error, "):
+                        msg = msg[len("Value error, "):]
+                    if msg:
+                        msgs.append(msg)
+            return "; ".join(msgs) if msgs else f"Request validation failed (HTTP {response.status_code})"
+
+        elif isinstance(detail, dict):
+            return detail.get("error", f"API error (HTTP {response.status_code})")
+
+        elif isinstance(detail, str) and detail:
+            return detail
+
+    except Exception:
+        pass
+
+    return f"API error (HTTP {response.status_code})"
+
+
 async def fetch_available_reports() -> dict:
     """
     Fetch available forecast reports from API.
@@ -503,7 +544,7 @@ async def call_preview_ramp(forecast_id: int, month_key: str, ramp_payload: dict
         raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
     except httpx.HTTPStatusError as e:
         raise APIResponseError(
-            message=f"API error: {str(e)}",
+            message=_extract_api_error_detail(e.response),
             status_code=e.response.status_code,
             response_body=e.response.text[:500] if e.response.text else None,
             details={"endpoint": endpoint}
@@ -547,7 +588,7 @@ async def call_apply_ramp(forecast_id: int, month_key: str, ramp_payload: dict) 
         raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
     except httpx.HTTPStatusError as e:
         raise APIResponseError(
-            message=f"API error: {str(e)}",
+            message=_extract_api_error_detail(e.response),
             status_code=e.response.status_code,
             response_body=e.response.text[:500] if e.response.text else None,
             details={"endpoint": endpoint}
@@ -590,7 +631,7 @@ async def call_get_applied_ramp(forecast_id: int, month_key: str) -> dict:
         raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
     except httpx.HTTPStatusError as e:
         raise APIResponseError(
-            message=f"API error: {str(e)}",
+            message=_extract_api_error_detail(e.response),
             status_code=e.response.status_code,
             response_body=e.response.text[:500] if e.response.text else None,
             details={"endpoint": endpoint}
@@ -632,7 +673,7 @@ async def call_bulk_preview_ramp(forecast_id: int, month_key: str, payload: dict
         raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
     except httpx.HTTPStatusError as e:
         raise APIResponseError(
-            message=f"API error: {str(e)}",
+            message=_extract_api_error_detail(e.response),
             status_code=e.response.status_code,
             response_body=e.response.text[:500] if e.response.text else None,
             details={"endpoint": endpoint}
@@ -674,7 +715,7 @@ async def call_bulk_apply_ramp(forecast_id: int, month_key: str, payload: dict) 
         raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
     except httpx.HTTPStatusError as e:
         raise APIResponseError(
-            message=f"API error: {str(e)}",
+            message=_extract_api_error_detail(e.response),
             status_code=e.response.status_code,
             response_body=e.response.text[:500] if e.response.text else None,
             details={"endpoint": endpoint}
@@ -715,7 +756,7 @@ async def call_delete_ramp(forecast_id: int, month_key: str, ramp_name: str) -> 
         raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
     except httpx.HTTPStatusError as e:
         raise APIResponseError(
-            message=f"API error: {str(e)}",
+            message=_extract_api_error_detail(e.response),
             status_code=e.response.status_code,
             response_body=e.response.text[:500] if e.response.text else None,
             details={"endpoint": endpoint}
@@ -756,7 +797,7 @@ async def call_get_ramps_for_report(year: int, month: str) -> dict:
         raise APITimeoutError(message=f"API request timed out: {str(e)}", details={"endpoint": endpoint})
     except httpx.HTTPStatusError as e:
         raise APIResponseError(
-            message=f"API error: {str(e)}",
+            message=_extract_api_error_detail(e.response),
             status_code=e.response.status_code,
             response_body=e.response.text[:500] if e.response.text else None,
             details={"endpoint": endpoint}

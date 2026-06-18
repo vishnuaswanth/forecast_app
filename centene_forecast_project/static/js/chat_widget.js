@@ -2378,9 +2378,31 @@
                         const pct       = w.rampPercent !== undefined ? w.rampPercent : (w.ramp_percent || 100);
                         const emp       = w.rampEmployees !== undefined ? w.rampEmployees : (w.employee_count || 0);
 
-                        const monFri  = _countMonFri(w.startDate || w.start_date, w.endDate || w.end_date);
-                        const maxDays = monFri !== null ? monFri + 2 : 7;
+                        const sDate   = w.startDate || w.start_date || '';
+                        const eDate   = w.endDate   || w.end_date   || '';
+                        const monFri  = _countMonFri(sDate, eDate);
+
+                        // DST-safe span: force UTC parsing to avoid off-by-one on clock-change days
+                        const spanDays = (sDate && eDate)
+                            ? Math.round((new Date(eDate + 'T00:00:00Z') - new Date(sDate + 'T00:00:00Z')) / 86400000) + 1
+                            : 7;
+
+                        const maxDays = monFri !== null ? Math.min(spanDays, monFri + 2) : spanDays;
                         const isOver  = monFri !== null && days > monFri;
+
+                        // Branched tooltip — no "0 extra days" shown for partial weeks
+                        let warnMsg = '';
+                        if (isOver) {
+                            if (spanDays <= monFri + 2) {
+                                const reason = (monFri === spanDays)
+                                    ? `no weekend days fall within this ${spanDays}-day period`
+                                    : `week spans only ${spanDays} days`;
+                                warnMsg = `Exceeds Mon-Fri count (${monFri}). Max: ${maxDays} — ${reason} (${sDate} to ${eDate}).`;
+                            } else {
+                                warnMsg = `Exceeds Mon-Fri count (${monFri}). Max: ${maxDays} (${monFri} Mon-Fri + 2 weekend days).`;
+                            }
+                        }
+
                         const tipId   = `sub-days-tip-${idx}`;
 
                         return `<tr class="sub-week-row">
@@ -2391,8 +2413,10 @@
                                        class="form-control form-control-sm sub-week-days${isOver ? ' border-warning' : ''}"
                                        style="width:70px;display:inline-block;"
                                        min="1" max="${maxDays}" value="${days}" data-idx="${idx}"
-                                       data-mon-fri="${monFri ?? ''}" data-max="${maxDays}" data-tip-id="${tipId}">
+                                       data-mon-fri="${monFri ?? ''}" data-max="${maxDays}"
+                                       data-span-days="${spanDays}" data-tip-id="${tipId}">
                                 <span class="sub-week-info-icon" data-tip-id="${tipId}"
+                                      data-warn-msg="${escapeHtml(warnMsg)}"
                                       style="cursor:pointer;margin-left:4px;color:#856404;${isOver ? '' : 'display:none;'}">&#9432;</span>
                                 <div id="${tipId}" class="sub-week-days-tip"
                                      style="display:none;position:absolute;top:100%;left:0;z-index:1000;
@@ -2416,17 +2440,13 @@
             if (!isNaN(val)) content.querySelectorAll('.sub-week-emp').forEach(inp => inp.value = val);
         });
 
-        // Set tooltip text content (via textContent — avoids HTML-entity escaping issues)
+        // Set tooltip text content — read pre-computed warnMsg from data-warn-msg attribute
         content.querySelectorAll('.sub-week-info-icon').forEach(icon => {
             const tipId  = icon.dataset.tipId;
             const tip    = document.getElementById(tipId);
             if (!tip) return;
-            const inp    = content.querySelector(`.sub-week-days[data-tip-id="${tipId}"]`);
-            const monFri = inp ? parseInt(inp.dataset.monFri, 10) : NaN;
-            const maxD   = inp ? parseInt(inp.dataset.max, 10) : 7;
-            tip.textContent = !isNaN(monFri)
-                ? `Exceeds Mon–Fri count (${monFri} day${monFri !== 1 ? 's' : ''}). Max allowed: ${maxD}.`
-                : '';
+            // data-warn-msg was set during row rendering (already branched correctly)
+            tip.textContent = icon.dataset.warnMsg || '';
 
             icon.addEventListener('click', e => {
                 e.stopPropagation();
@@ -2468,15 +2488,27 @@
                     this.value = maxD;
                 }
 
-                // Toggle yellow border + info icon
-                const isOver = !isNaN(monFri) && val > monFri;
+                // Toggle yellow border + info icon with branched message
+                const isOver   = !isNaN(monFri) && val > monFri;
+                const spanDays = parseInt(this.dataset.spanDays, 10) || 7;
                 this.classList.toggle('border-warning', isOver);
                 if (icon) icon.style.display = isOver ? '' : 'none';
                 if (tip) {
                     if (!isOver) {
                         tip.style.display = 'none';
                     } else if (!isNaN(monFri)) {
-                        tip.textContent = `Exceeds Mon–Fri count (${monFri} day${monFri !== 1 ? 's' : ''}). Max allowed: ${maxD}.`;
+                        let liveMsg;
+                        if (spanDays <= monFri + 2) {
+                            const reason = (monFri === spanDays)
+                                ? `no weekend days fall within this ${spanDays}-day period`
+                                : `week spans only ${spanDays} days`;
+                            liveMsg = `Exceeds Mon-Fri count (${monFri}). Max: ${maxD} — ${reason}.`;
+                        } else {
+                            liveMsg = `Exceeds Mon-Fri count (${monFri}). Max: ${maxD} (${monFri} Mon-Fri + 2 weekend days).`;
+                        }
+                        tip.textContent = liveMsg;
+                        // Keep data-warn-msg in sync so re-renders stay consistent
+                        if (icon) icon.dataset.warnMsg = liveMsg;
                     }
                 }
             });
