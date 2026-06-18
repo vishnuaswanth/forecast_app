@@ -62,6 +62,59 @@ class ChatService:
     def __init__(self):
         self.llm_service = get_llm_service()
 
+    async def _try_refresh_forecast(self, conversation_id: str):
+        """
+        After a ramp apply, re-fetch forecast with the same params from context and
+        return a combined HTML string (label + table) to append to the success card.
+        Returns None silently if context params are missing or the fetch fails.
+        """
+        from chat_app.utils.context_manager import get_context_manager
+        from chat_app.services.tools.forecast_tools import fetch_forecast_data
+        from chat_app.services.tools.validation import ForecastQueryParams
+        from chat_app.services.tools.ui_tools import generate_forecast_table_html
+
+        context_manager = get_context_manager()
+        ctx = await context_manager.get_context(conversation_id)
+
+        if not ctx.forecast_report_month or not ctx.forecast_report_year:
+            return None
+
+        try:
+            params = ForecastQueryParams(
+                month=ctx.forecast_report_month,
+                year=ctx.forecast_report_year,
+                platforms=ctx.active_platforms or None,
+                markets=ctx.active_markets or None,
+                localities=ctx.active_localities or None,
+                main_lobs=ctx.active_main_lobs or None,
+                states=ctx.active_states or None,
+                case_types=ctx.active_case_types or None,
+            )
+            data = await fetch_forecast_data(params, enable_validation=False)
+            records = data.get('records', [])
+            months = data.get('months', {})
+
+            ctx.clear_forecast_data()
+            ctx.last_forecast_data = data
+            ctx.forecast_months = months
+            await context_manager.save_context(ctx)
+
+            if not records:
+                return None
+
+            table_html = generate_forecast_table_html(
+                records, months,
+                show_full=(len(records) <= 5),
+                max_preview=5,
+            )
+            return (
+                '<div class="forecast-refresh-label" style="margin-top:12px;font-weight:600;">'
+                'Updated forecast after ramp apply:</div>'
+                + table_html
+            )
+        except Exception:
+            return None
+
     async def process_message(
         self,
         user_text: str,
@@ -752,6 +805,11 @@ class ChatService:
 
         main_lob = row_data.get('main_lob', 'N/A')
         ui = generate_ramp_result_ui(True, f"Ramp applied successfully for {main_lob} — {month_key}")
+
+        refresh_html = await self._try_refresh_forecast(conversation_id)
+        if refresh_html:
+            ui = ui + refresh_html
+
         return {
             "success": True,
             "message": f"Ramp applied for {main_lob} — {month_key}",
@@ -985,6 +1043,11 @@ class ChatService:
         ramps_failed = response.get('ramps_failed', [])
 
         ui = generate_bulk_ramp_result_ui(ramps_applied, ramps_failed, month_label)
+
+        refresh_html = await self._try_refresh_forecast(conversation_id)
+        if refresh_html:
+            ui = ui + refresh_html
+
         return {
             "success": len(ramps_failed) == 0,
             "message": f"Bulk ramp apply complete for {month_label}",
@@ -1372,6 +1435,7 @@ class ChatService:
         fresh_ctx = await context_manager.get_context(conversation_id)
         fresh_ctx.pending_campaign_data = None
         fresh_ctx.pending_campaign_preview = None
+        fresh_ctx.clear_forecast_data()
         await context_manager.save_context(fresh_ctx)
 
         # Re-fetch updated ramps for successfully applied (forecast_id, month_key) pairs

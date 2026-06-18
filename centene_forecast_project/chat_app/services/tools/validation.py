@@ -468,6 +468,12 @@ class ConversationContext(BaseModel):
         self.pending_campaign_data = None
         self.pending_campaign_preview = None
 
+    def clear_forecast_data(self):
+        """Invalidate cached forecast snapshot so the next request fetches fresh results."""
+        self.last_forecast_data = None
+        self.selected_forecast_row = None
+        self.selected_row_key = None
+
     def sync_legacy_fields(self):
         """
         Sync new fields with legacy fields for backward compatibility.
