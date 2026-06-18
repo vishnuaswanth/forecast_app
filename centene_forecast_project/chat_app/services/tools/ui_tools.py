@@ -1940,14 +1940,12 @@ def generate_campaign_ramp_summary_ui(updated_ramps: list) -> str:
         month_label = html_module.escape(str(entry.get('month_label', entry.get('month_key', ''))))
         ramps = entry.get('ramps', [])
         ramp_names = ', '.join(html_module.escape(r.get('ramp_name', '')) for r in ramps) if ramps else '—'
-        week_count = sum(len(r.get('weeks', [])) for r in ramps)
         rows_html += f'''
         <tr>
             <td>{fid}</td>
             <td>{lob} / {case_type}</td>
             <td>{month_label}</td>
             <td>{ramp_names}</td>
-            <td class="text-center">{week_count}</td>
         </tr>'''
 
     return f'''
@@ -1964,7 +1962,6 @@ def generate_campaign_ramp_summary_ui(updated_ramps: list) -> str:
                             <th>LOB / Case Type</th>
                             <th>Month</th>
                             <th>Ramp Names</th>
-                            <th class="text-center">Weeks</th>
                         </tr>
                     </thead>
                     <tbody>{rows_html}</tbody>
