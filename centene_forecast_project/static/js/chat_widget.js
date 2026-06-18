@@ -30,11 +30,15 @@
         bulkRampForecastId: null,
         bulkRampMonthKey: null,
         // ── Campaign Manager state ────────────────────────────────────────
-        campaignModalData: null,      // { months, lobs, monthWeeks, reportLabel }
-        campaignStagingRows: [],       // [{forecast_id, main_lob, state, case_type, month_key, month_label, ramp_name, weeks}]
-        campaignSubModalWeeks: {},     // { "2025-04": [{...week with rampPercent/rampEmployees}] }
-        campaignSubActiveMonth: null,  // active tab month key in sub-modal
-        campaignEditingIndex: null,    // staging row index being edited (null = add new)
+        campaignModalData: null,         // { months, lobs, monthWeeks, reportLabel }
+        campaignStagingRows: [],          // [{forecast_id, main_lob, state, case_type, month_key, month_label, ramp_name, weeks}]
+        campaignSubModalWeeks: {},        // { "2025-04": [{...week with rampPercent/rampEmployees}] }
+        campaignSubActiveMonth: null,     // active tab month key in sub-modal
+        campaignEditingIndex: null,       // staging row index being edited (null = add new)
+        campaignEditingDbRamp: null,      // DB ramp object being edited (null = not a DB edit)
+        campaignRampsLoading: false,      // true while load_campaign_ramps WS response is pending
+        campaignFetchedRamps: [],         // ramps returned from backend for DB Ramps tab
+        campaignDbRampsActiveMonth: null, // active month tab key in DB Ramps tab
     };
 
     // ========================================================================
@@ -2066,6 +2070,7 @@
 
     function openAddRampSubModal() {
         ChatState.campaignEditingIndex  = null;
+        ChatState.campaignEditingDbRamp = null;
         ChatState.campaignSubModalWeeks = {};
         ChatState.campaignSubActiveMonth = null;
 
