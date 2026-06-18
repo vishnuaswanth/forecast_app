@@ -2325,13 +2325,27 @@
         if (!mk || !ChatState.campaignSubModalWeeks[mk]) return;
 
         document.getElementById('add-sub-weeks-content').querySelectorAll('.sub-week-row').forEach((row, idx) => {
-            const pctInput = row.querySelector('.sub-week-pct');
-            const empInput = row.querySelector('.sub-week-emp');
+            const pctInput  = row.querySelector('.sub-week-pct');
+            const empInput  = row.querySelector('.sub-week-emp');
+            const daysInput = row.querySelector('.sub-week-days');
             if (ChatState.campaignSubModalWeeks[mk][idx]) {
-                ChatState.campaignSubModalWeeks[mk][idx].rampPercent   = parseFloat(pctInput ? pctInput.value : 100) || 0;
-                ChatState.campaignSubModalWeeks[mk][idx].rampEmployees = parseInt(empInput ? empInput.value : 0, 10) || 0;
+                ChatState.campaignSubModalWeeks[mk][idx].rampPercent   = parseFloat(pctInput  ? pctInput.value  : 100) || 0;
+                ChatState.campaignSubModalWeeks[mk][idx].rampEmployees = parseInt(empInput   ? empInput.value   : 0,   10) || 0;
+                ChatState.campaignSubModalWeeks[mk][idx].workingDays   = Math.max(1, parseInt(daysInput ? daysInput.value : 1, 10) || 1);
             }
         });
+    }
+
+    function _countMonFri(startDate, endDate) {
+        if (!startDate || !endDate) return null;
+        let count = 0;
+        const d   = new Date(startDate);
+        const end = new Date(endDate);
+        while (d <= end) {
+            if (d.getDay() >= 1 && d.getDay() <= 5) count++;
+            d.setDate(d.getDate() + 1);
+        }
+        return count;
     }
 
     function renderSubModalWeekTable(monthKey) {
@@ -2359,13 +2373,33 @@
                     ${weeks.map((w, idx) => {
                         const label     = escapeHtml(w.label || ('Week ' + (idx + 1)));
                         const dateRange = w.startDate ? `${w.startDate} – ${w.endDate}` : '';
-                        const days      = w.workingDays !== undefined ? w.workingDays : (w.working_days || 0);
+                        const rawDays   = w.workingDays !== undefined ? w.workingDays : (w.working_days || 1);
+                        const days      = Math.max(1, rawDays); // fix: never let 0 through
                         const pct       = w.rampPercent !== undefined ? w.rampPercent : (w.ramp_percent || 100);
                         const emp       = w.rampEmployees !== undefined ? w.rampEmployees : (w.employee_count || 0);
+
+                        const monFri  = _countMonFri(w.startDate || w.start_date, w.endDate || w.end_date);
+                        const maxDays = monFri !== null ? monFri + 2 : 7;
+                        const isOver  = monFri !== null && days > monFri;
+                        const tipId   = `sub-days-tip-${idx}`;
+
                         return `<tr class="sub-week-row">
                             <td>${label}</td>
                             <td style="font-size:0.85em;">${dateRange}</td>
-                            <td class="text-center">${days}</td>
+                            <td style="position:relative;white-space:nowrap;">
+                                <input type="number"
+                                       class="form-control form-control-sm sub-week-days${isOver ? ' border-warning' : ''}"
+                                       style="width:70px;display:inline-block;"
+                                       min="1" max="${maxDays}" value="${days}" data-idx="${idx}"
+                                       data-mon-fri="${monFri ?? ''}" data-max="${maxDays}" data-tip-id="${tipId}">
+                                <span class="sub-week-info-icon" data-tip-id="${tipId}"
+                                      style="cursor:pointer;margin-left:4px;color:#856404;${isOver ? '' : 'display:none;'}">&#9432;</span>
+                                <div id="${tipId}" class="sub-week-days-tip"
+                                     style="display:none;position:absolute;top:100%;left:0;z-index:1000;
+                                            background:#fff8dc;border:1px solid #ffc107;border-radius:4px;
+                                            padding:6px 10px;font-size:0.8em;min-width:200px;
+                                            box-shadow:0 2px 6px rgba(0,0,0,.15);"></div>
+                            </td>
                             <td><input type="number" class="form-control form-control-sm sub-week-pct" style="width:80px;" min="0" max="100" step="0.1" value="${pct}" data-idx="${idx}"></td>
                             <td><input type="number" class="form-control form-control-sm sub-week-emp" style="width:80px;" min="0" value="${emp}" data-idx="${idx}"></td>
                         </tr>`;
@@ -2380,6 +2414,72 @@
         document.getElementById('sub-bulk-emp-apply').addEventListener('click', function() {
             const val = parseInt(document.getElementById('sub-bulk-emp').value, 10);
             if (!isNaN(val)) content.querySelectorAll('.sub-week-emp').forEach(inp => inp.value = val);
+        });
+
+        // Set tooltip text content (via textContent — avoids HTML-entity escaping issues)
+        content.querySelectorAll('.sub-week-info-icon').forEach(icon => {
+            const tipId  = icon.dataset.tipId;
+            const tip    = document.getElementById(tipId);
+            if (!tip) return;
+            const inp    = content.querySelector(`.sub-week-days[data-tip-id="${tipId}"]`);
+            const monFri = inp ? parseInt(inp.dataset.monFri, 10) : NaN;
+            const maxD   = inp ? parseInt(inp.dataset.max, 10) : 7;
+            tip.textContent = !isNaN(monFri)
+                ? `Exceeds Mon–Fri count (${monFri} day${monFri !== 1 ? 's' : ''}). Max allowed: ${maxD}.`
+                : '';
+
+            icon.addEventListener('click', e => {
+                e.stopPropagation();
+                const isOpen = tip.style.display !== 'none';
+                content.querySelectorAll('.sub-week-days-tip').forEach(t => t.style.display = 'none');
+                tip.style.display = isOpen ? 'none' : '';
+            });
+        });
+
+        // Live validation on each working-days input
+        content.querySelectorAll('.sub-week-days').forEach(inp => {
+            inp.addEventListener('input', function() {
+                let val = parseInt(this.value, 10);
+                const monFri = parseInt(this.dataset.monFri, 10);
+                const maxD   = parseInt(this.dataset.max, 10);
+                const tipId  = this.dataset.tipId;
+                const tip    = document.getElementById(tipId);
+                const icon   = content.querySelector(`.sub-week-info-icon[data-tip-id="${tipId}"]`);
+
+                // Guard NaN / empty
+                if (isNaN(val) || this.value === '') { val = 1; }
+
+                // Enforce minimum = 1
+                if (val < 1) {
+                    val = 1;
+                    this.value = 1;
+                    if (tip) {
+                        tip.textContent = 'Minimum 1 day. Set Ramp % to 0 to exclude this week from capacity calculations.';
+                        tip.style.display = '';
+                    }
+                    if (icon) icon.style.display = '';
+                    this.classList.remove('border-warning');
+                    return;
+                }
+
+                // Clamp to max
+                if (!isNaN(maxD) && val > maxD) {
+                    val = maxD;
+                    this.value = maxD;
+                }
+
+                // Toggle yellow border + info icon
+                const isOver = !isNaN(monFri) && val > monFri;
+                this.classList.toggle('border-warning', isOver);
+                if (icon) icon.style.display = isOver ? '' : 'none';
+                if (tip) {
+                    if (!isOver) {
+                        tip.style.display = 'none';
+                    } else if (!isNaN(monFri)) {
+                        tip.textContent = `Exceeds Mon–Fri count (${monFri} day${monFri !== 1 ? 's' : ''}). Max allowed: ${maxD}.`;
+                    }
+                }
+            });
         });
     }
 
@@ -2884,6 +2984,10 @@
         if (addSubModal) {
             addSubModal.addEventListener('click', e => {
                 if (e.target === addSubModal) closeAddRampSubModal();
+                // Close any open working-days tooltips when clicking outside their icon
+                if (!e.target.closest('.sub-week-info-icon')) {
+                    document.querySelectorAll('.sub-week-days-tip').forEach(t => t.style.display = 'none');
+                }
             });
         }
 
