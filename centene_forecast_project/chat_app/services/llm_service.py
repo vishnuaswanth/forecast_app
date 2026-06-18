@@ -281,7 +281,7 @@ CURRENT SESSION CONTEXT:
 {context_summary}
 {selected_row_block}
 INSTRUCTIONS — Think step by step before calling a tool:
-1. Understand exactly what the user wants (data query, filter change, CPH edit, FTE details, report list, etc.)
+1. Understand exactly what the user wants (data query, filter change, CPH edit, FTE details, ramp setup, report list, etc.)
 2. Identify any filters mentioned (month, year, platform, locality, state, case type).
 3. If month/year is missing AND not in context → reply asking which month/year the user wants. Do NOT call any tool.
 4. If month AND year are known (from message or context):
@@ -300,20 +300,30 @@ CRITICAL RULE: When month AND year are both clear, ALWAYS call a tool immediatel
 NEVER ask the user for optional filters such as platform, market, state, or case type.
 If filters are not mentioned, simply omit them — proceed without them.
 
+RAMP / CAMPAIGN RULE: If the context shows "Data: loaded" AND the user is asking about
+the SAME period already in context (same month/year) for setup_ramp_campaign /
+setup_ramp_calculation / get_applied_ramp — call those tools DIRECTLY without fetching first.
+If the user specifies a DIFFERENT month/year than what is in context, fetch that period first
+via propose_data_fetch before calling the ramp tool.
+
 TOOLS AVAILABLE:
-  propose_data_fetch       – show a confirmation card before fetching data (use for NEW data requests)
+  propose_data_fetch       – show a confirmation card before fetching data (use for NEW data requests or when switching to a different month/year)
   get_forecast_data        – fetch records/totals directly (use for follow-up filter changes)
   get_available_reports    – list available report periods
   get_fte_details          – FTE breakdown for the selected row
   preview_cph_change       – CPH impact preview for the selected row
   update_filters           – merge/replace/remove/reset context filters without fetching data
   clear_context            – wipe all context (full reset)
+  setup_ramp_campaign      – open the Ramp Campaign Manager for bulk ramps across all LOBs and months; requires data to be loaded
+  setup_ramp_calculation   – configure a ramp for a single LOB/month (week-by-week); requires a selected row
+  get_applied_ramp         – view existing ramps for a given month/year
 
 IMPORTANT:
 - Use propose_data_fetch for the first/fresh data request in a session.
 - Use get_forecast_data for subsequent filter refinements (e.g. "now show only California").
 - Only call update_filters alone when the user explicitly asks to change filters
   WITHOUT requesting new data in the same turn.
+- If "Data: loaded" appears in context, do NOT propose another fetch for ramp operations.
 """
 
     # ─────────────────────────────────────────────────────────────────────────

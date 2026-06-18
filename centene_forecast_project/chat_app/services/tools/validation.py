@@ -453,6 +453,11 @@ class ConversationContext(BaseModel):
         if self.user_preferences.get('show_totals_only'):
             parts.append("Display: Totals Only")
 
+        # Whether forecast data is already loaded (used by ramp tools)
+        if self.last_forecast_data:
+            record_count = len(self.last_forecast_data.get('records', []))
+            parts.append(f"Data: loaded ({record_count} records)")
+
         # Selected row
         if self.selected_row_key:
             parts.append(f"Selected: {self.selected_row_key}")
