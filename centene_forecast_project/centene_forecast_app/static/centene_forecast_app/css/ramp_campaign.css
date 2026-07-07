@@ -1,0 +1,41 @@
+.rc-page .card { box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+/* Panel below the tab headers — remove top border since tabs handle it */
+.rc-panel { border-top: none; }
+
+/* DB month sub-tab buttons */
+.rc-month-tab {
+    font-size: .8rem;
+    padding: .2rem .65rem;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid #dee2e6;
+    background: #f8f9fa;
+    color: #495057;
+    transition: background .15s, color .15s;
+}
+.rc-month-tab.active {
+    background: #0d6efd;
+    color: #fff;
+    border-color: #0d6efd;
+}
+
+/* Action badges in staging table */
+.rc-badge-add    { background: #198754; }
+.rc-badge-edit   { background: #0d6efd; }
+.rc-badge-delete { background: #dc3545; }
+
+/* Week input table */
+.rc-week-table th, .rc-week-table td {
+    font-size: .78rem;
+    padding: .25rem .4rem;
+    vertical-align: middle;
+}
+.rc-week-table input[type=number] { width: 75px; }
+
+/* Preview delta colouring */
+.rc-delta-pos { color: #198754; font-weight: 600; }
+.rc-delta-neg { color: #dc3545; font-weight: 600; }
+
+/* Disabled state for staging toolbar while locked */
+.rc-locked { opacity: .5; pointer-events: none; }

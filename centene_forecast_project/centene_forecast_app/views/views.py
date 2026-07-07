@@ -801,4 +801,189 @@ def check_progress(request):
 
 def logout_view(request):
     logout(request)
+
+
+# ------------------------------------------------------------------ #
+# Ramp Campaign Manager views                                         #
+# ------------------------------------------------------------------ #
+
+import io as _io
+import json as _json
+import openpyxl
+from openpyxl.styles import Font
+from django.http import HttpResponse
+from django.views.decorators.http import require_http_methods
+from centene_forecast_app.services import ramp_campaign_service
+
+_RC_ACTION_LABEL = {"add": "added", "edit": "edit", "delete": "delete"}
+
+_RC_DB_HEADERS = [
+    "Forecast ID", "Main LOB", "State", "Case Type",
+    "Forecast Month", "Ramp Name", "CPH",
+    "Week Label", "Start Date", "End Date",
+    "Working Days", "Ramp %", "Employees", "Week Capacity",
+]
+
+_RC_UI_HEADERS = [
+    "Forecast ID", "Main LOB", "State", "Case Type",
+    "Forecast Month", "Ramp Name", "CPH", "Actions Taken",
+    "Week Label", "Start Date", "End Date",
+    "Working Days", "Ramp %", "Employees", "Week Capacity",
+]
+
+
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
+@require_http_methods(["GET"])
+def ramp_campaign_view(request):
+    return render(request, "centene_forecast_app/ramp_campaign.html", {"title": "Ramp Campaign"})
+
+
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
+@require_http_methods(["POST"])
+def ramp_campaign_init_api(request):
+    try:
+        body = _json.loads(request.body)
+    except (ValueError, _json.JSONDecodeError):
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    year = body.get("year")
+    month_name = body.get("month_name", "")
+    if not year or not month_name:
+        return JsonResponse({"success": False, "message": "year and month_name are required"}, status=400)
+
+    try:
+        result = ramp_campaign_service.get_campaign_init_data(int(year), month_name)
+        return JsonResponse(result)
+    except Exception as e:
+        logger.exception("[RampCampaign] init error: %s", e)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
+@require_http_methods(["POST"])
+def ramp_campaign_load_ramps(request):
+    try:
+        body = _json.loads(request.body)
+    except (ValueError, _json.JSONDecodeError):
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    year = body.get("year")
+    month_name = body.get("month_name", "")
+    if not year or not month_name:
+        return JsonResponse({"success": False, "message": "year and month_name are required"}, status=400)
+
+    try:
+        result = ramp_campaign_service.load_ramps(int(year), month_name)
+        return JsonResponse(result)
+    except Exception as e:
+        logger.exception("[RampCampaign] load_ramps error: %s", e)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
+@require_http_methods(["POST"])
+def ramp_campaign_preview(request):
+    try:
+        body = _json.loads(request.body)
+    except (ValueError, _json.JSONDecodeError):
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    campaign_rows = body.get("campaign_rows", [])
+    try:
+        result = ramp_campaign_service.preview_campaign(campaign_rows, request.user)
+        return JsonResponse(result)
+    except Exception as e:
+        logger.exception("[RampCampaign] preview error: %s", e)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
+@require_http_methods(["POST"])
+def ramp_campaign_apply(request):
+    try:
+        body = _json.loads(request.body)
+    except (ValueError, _json.JSONDecodeError):
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    campaign_rows = body.get("campaign_rows", [])
+    try:
+        result = ramp_campaign_service.apply_campaign(campaign_rows, request.user)
+        return JsonResponse(result)
+    except Exception as e:
+        logger.exception("[RampCampaign] apply error: %s", e)
+        return JsonResponse({"success": False, "message": str(e)}, status=500)
+
+
+@login_required
+@permission_required(get_permission_name("view"), raise_exception=True)
+@require_http_methods(["POST"])
+def ramp_campaign_download_excel(request):
+    try:
+        body = _json.loads(request.body)
+    except (ValueError, _json.JSONDecodeError):
+        return JsonResponse({"success": False, "message": "Invalid JSON"}, status=400)
+
+    mode = body.get("mode", "db")
+    ramps = body.get("ramps", [])
+    rep_month = body.get("report_month", "")
+    rep_year = body.get("report_year", "")
+
+    is_ui = (mode == "ui")
+    headers = _RC_UI_HEADERS if is_ui else _RC_DB_HEADERS
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ramp Data"
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+
+    for r in ramps:
+        action = r.get("action", "")
+        is_delete = (action == "delete")
+        base_db = [
+            r.get("forecast_id", ""),
+            r.get("main_lob", ""),
+            r.get("state", ""),
+            r.get("case_type", ""),
+            r.get("month_label", ""),
+            r.get("ramp_name", ""),
+            r.get("target_cph", ""),
+        ]
+        if is_ui:
+            base = base_db + [_RC_ACTION_LABEL.get(action, "")]
+        else:
+            base = base_db
+
+        if is_delete:
+            ws.append(base + [""] * (len(headers) - len(base)))
+        else:
+            for w in r.get("weeks", []):
+                ws.append(base + [
+                    w.get("week_label") or w.get("label", ""),
+                    w.get("start_date") or w.get("startDate", ""),
+                    w.get("end_date") or w.get("endDate", ""),
+                    w.get("working_days") or w.get("workingDays", ""),
+                    w.get("ramp_percent") or w.get("rampPercent", ""),
+                    w.get("employee_count") or w.get("rampEmployees", ""),
+                    w.get("capacity", ""),
+                ])
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    label = "ui" if is_ui else "db"
+    filename = f"ramp_data_{label}_{rep_month}_{rep_year}.xlsx"
+    response = HttpResponse(
+        buf.read(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
     return redirect("forecast_app:login")

@@ -2,6 +2,7 @@
 import logging
 from io import BytesIO
 from typing import Dict, List, Optional
+from urllib.parse import quote
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -2116,6 +2117,46 @@ class APIClient:
             )
         except Exception as e:
             logger.warning(f"[Target CPH Config] Failed to clear cache: {e}")
+
+    # ------------------------------------------------------------------ #
+    # Ramp Campaign API methods                                           #
+    # ------------------------------------------------------------------ #
+
+    def get_ramps_for_report(self, year: int, month_name: str) -> dict:
+        """GET /api/v1/ramps/report/{year}/{month_name}"""
+        return self._make_request("GET", f"/api/v1/ramps/report/{year}/{month_name}")
+
+    def get_forecast_records_with_cph(self, year: int, month: int) -> dict:
+        """
+        GET /api/llm/forecast?year=Y&month=M
+        Returns the full response dict including records, months, and configuration.
+        """
+        month_name = self.month_mapper.get(month, "January")
+        return self._make_request("GET", "/api/llm/forecast", params={"year": year, "month": month_name})
+
+    def bulk_preview_ramp(self, forecast_id: int, month_key: str, payload: dict) -> dict:
+        """POST /api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-preview"""
+        return self._make_request(
+            "POST",
+            f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-preview",
+            data=payload,
+        )
+
+    def bulk_apply_ramp(self, forecast_id: int, month_key: str, payload: dict) -> dict:
+        """POST /api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-apply"""
+        return self._make_request(
+            "POST",
+            f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/bulk-apply",
+            data=payload,
+        )
+
+    def delete_ramp(self, forecast_id: int, month_key: str, ramp_name: str) -> dict:
+        """DELETE /api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/{ramp_name}"""
+        encoded_name = quote(ramp_name, safe="")
+        return self._make_request(
+            "DELETE",
+            f"/api/v1/forecasts/{forecast_id}/months/{month_key}/ramp/{encoded_name}",
+        )
 
     def close(self):
         """Close the session and cleanup resources."""

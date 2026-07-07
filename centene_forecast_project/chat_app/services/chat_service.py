@@ -1112,6 +1112,30 @@ class ChatService:
         for r in ramps:
             r["month_label"] = month_key_to_label.get(r["month_key"], r["month_key"])
 
+        # Enrich with target_cph (joined from forecast records) and per-week capacity
+        from chat_app.services.tools.forecast_tools import fetch_forecast_data
+        try:
+            fd = await fetch_forecast_data({"year": report_year, "month": report_month})
+            cph_map = {
+                str(rec["id"]): float(rec.get("target_cph", 0))
+                for rec in fd.get("records", [])
+            }
+        except Exception:
+            cph_map = {}
+
+        report_config = ctx.report_configuration or {}
+        first_month_cfg = next(iter(report_config.values()), {}) if report_config else {}
+        work_hours = float(first_month_cfg.get("work_hours", 8.0))
+        shrinkage  = float(first_month_cfg.get("shrinkage", 0.15))
+
+        for r in ramps:
+            target_cph = cph_map.get(str(r.get("forecast_id", "")), 0.0)
+            r["target_cph"] = target_cph
+            for w in r.get("weeks", []):
+                emp = w.get("employee_count", 0) or 0
+                wd  = w.get("working_days", 0) or 0
+                w["capacity"] = round(emp * target_cph * work_hours * (1 - shrinkage) * wd)
+
         logger.info(
             f"[Chat Service] Loaded {len(ramps)} campaign ramps for {report_month} {report_year}"
         )

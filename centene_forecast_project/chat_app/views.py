@@ -14,16 +14,16 @@ _ACTION_LABEL = {"add": "added", "edit": "edit", "delete": "delete"}
 
 _DB_HEADERS = [
     "Forecast ID", "Main LOB", "State", "Case Type",
-    "Forecast Month", "Ramp Name",
+    "Forecast Month", "Ramp Name", "CPH",
     "Week Label", "Start Date", "End Date",
-    "Working Days", "Ramp %", "Employees",
+    "Working Days", "Ramp %", "Employees", "Week Capacity",
 ]
 
 _UI_HEADERS = [
     "Forecast ID", "Main LOB", "State", "Case Type",
-    "Forecast Month", "Ramp Name", "Actions Taken",
+    "Forecast Month", "Ramp Name", "CPH", "Actions Taken",
     "Week Label", "Start Date", "End Date",
-    "Working Days", "Ramp %", "Employees",
+    "Working Days", "Ramp %", "Employees", "Week Capacity",
 ]
 
 
@@ -77,6 +77,7 @@ def download_ramp_excel(request):
             r.get("case_type", ""),
             r.get("month_label", ""),
             r.get("ramp_name", ""),
+            r.get("target_cph", ""),
         ]
 
         if is_ui:
@@ -97,6 +98,7 @@ def download_ramp_excel(request):
                     w.get("working_days")  or w.get("workingDays", ""),
                     w.get("ramp_percent")  or w.get("rampPercent", ""),
                     w.get("employee_count") or w.get("rampEmployees", ""),
+                    w.get("capacity", ""),
                 ])
 
     buf = io.BytesIO()

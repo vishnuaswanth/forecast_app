@@ -97,4 +97,12 @@ urlpatterns = [
     path("api/configuration/target-cph/distinct/case-types/", configuration_view.target_cph_distinct_case_types_api, name="target_cph_distinct_case_types"),
 
     path('logout/', views.logout_view, name='logout'),
+
+    # Ramp Campaign Manager
+    path('ramp-campaign/',                views.ramp_campaign_view,             name='ramp_campaign'),
+    path('ramp-campaign/init/',           views.ramp_campaign_init_api,         name='ramp_campaign_init'),
+    path('ramp-campaign/load-ramps/',     views.ramp_campaign_load_ramps,       name='ramp_campaign_load_ramps'),
+    path('ramp-campaign/preview/',        views.ramp_campaign_preview,          name='ramp_campaign_preview'),
+    path('ramp-campaign/apply/',          views.ramp_campaign_apply,            name='ramp_campaign_apply'),
+    path('ramp-campaign/download-excel/', views.ramp_campaign_download_excel,   name='ramp_campaign_download_excel'),
 ]

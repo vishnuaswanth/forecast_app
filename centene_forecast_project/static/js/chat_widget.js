@@ -2698,17 +2698,18 @@
         if (!tbody) return;
 
         if (!ramps || ramps.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding:16px;">No ramps found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted" style="padding:16px;">No ramps found.</td></tr>`;
             if (summaryEl) summaryEl.textContent = '';
             return;
         }
 
         tbody.innerHTML = ramps.map((r, i) => {
-            const weeks   = r.weeks || [];
-            const weekCnt = weeks.length;
-            const peakEmp = weeks.length
+            const weeks         = r.weeks || [];
+            const weekCnt       = weeks.length;
+            const peakEmp       = weeks.length
                 ? Math.max(...weeks.map(w => w.employee_count || w.rampEmployees || 0))
                 : 0;
+            const totalCapacity = weeks.reduce((sum, w) => sum + (w.capacity || 0), 0);
 
             const key     = `${r.forecast_id}|${r.month_key}|${r.ramp_name}`;
             const pending = (ChatState.campaignStagingRows || []).find(s =>
@@ -2728,8 +2729,10 @@
                 <td>${escapeHtml(r.state    || '')}</td>
                 <td>${escapeHtml(r.case_type || '')}</td>
                 <td>${escapeHtml(r.ramp_name || '')}</td>
+                <td class="text-end">${(r.target_cph || 0).toFixed(1)}</td>
                 <td class="text-center">${weekCnt}</td>
                 <td class="text-center">${peakEmp}</td>
+                <td class="text-end">${totalCapacity.toLocaleString()}</td>
                 <td style="white-space:nowrap;">${editBtn}${delBtn}</td>
             </tr>`;
         }).join('');
