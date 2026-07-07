@@ -84,7 +84,7 @@
             const years = data.years || data.data || [];
             const sel = document.getElementById("rc-year-select");
             sel.innerHTML = `<option value="">-- Select Year --</option>` +
-                years.map(y => `<option value="${y}">${y}</option>`).join("");
+                years.map(y => `<option value="${y.value || y}">${y.display || y}</option>`).join("");
         } catch (e) {
             console.error("[RC] loadYears error", e);
         }
@@ -100,9 +100,9 @@
         if (!year) return;
         try {
             const data = await fetch(`${URLS.filterMonths}?year=${year}`).then(r => r.json());
-            const months = data.months || data.data || [];
+            const months = data.options || data.months || [];
             mSel.innerHTML = `<option value="">-- Select Month --</option>` +
-                months.map(m => `<option value="${m}">${m}</option>`).join("");
+                months.map(m => `<option value="${m.display || m}">${m.display || m}</option>`).join("");
             mSel.disabled = false;
         } catch (e) {
             console.error("[RC] onYearChange months error", e);

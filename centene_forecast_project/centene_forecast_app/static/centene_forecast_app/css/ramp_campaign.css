@@ -1,7 +1,58 @@
-.rc-page .card { box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+/* ── Filter / report selector card ─────────────────────────────── */
+.rc-filter-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.rc-filter-card-body h5 {
+    color: #012970;
+    font-weight: 600;
+    margin-bottom: 18px;
+}
+
+.rc-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+}
+
+/* ── Content cards (staging / DB panels) ───────────────────────── */
+.rc-content-card {
+    background: #fff;
+    border-radius: 0 0 10px 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid #dee2e6;
+}
+
+.rc-content-card .card-body {
+    padding: 22px 25px;
+}
 
 /* Panel below the tab headers — remove top border since tabs handle it */
 .rc-panel { border-top: none; }
+
+/* Nav tabs — match the content card border */
+.rc-page .nav-tabs {
+    border-bottom: none;
+}
+
+.rc-page .nav-tabs .nav-link {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #6c757d;
+    border-color: #dee2e6 #dee2e6 transparent;
+    border-radius: 8px 8px 0 0;
+}
+
+.rc-page .nav-tabs .nav-link.active {
+    color: #012970;
+    background: #fff;
+    border-color: #dee2e6 #dee2e6 #fff;
+}
 
 /* DB month sub-tab buttons */
 .rc-month-tab {
@@ -39,3 +90,18 @@
 
 /* Disabled state for staging toolbar while locked */
 .rc-locked { opacity: .5; pointer-events: none; }
+
+/* Table header styling */
+.rc-content-card .table thead.table-light th {
+    background-color: #f8f9fa;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+/* Toolbar area above staging table */
+.rc-content-card .card-body .d-flex.gap-2.mb-3 {
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
