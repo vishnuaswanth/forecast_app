@@ -10,16 +10,19 @@
         reportYear:       null,
         reportMonth:      null,   // full month name, e.g. "January"
         reportLabel:      "",
-        lobs:             [],     // [{forecast_id, main_lob, state, case_type, target_cph}]
+        lobs:             [],     // [{forecast_id, main_lob, state, case_type, target_cph, locality}]
         months:           {},     // {"2025-04": "Apr-25"}
         monthWeeks:       {},     // {"2025-04": [{label, startDate, endDate, workingDays}]}
-        workHours:        8.0,
-        shrinkage:        0.15,
+        shrinkageConfig:  { Domestic: 0.10, Global: 0.15 },
+        workHoursConfig:  { Domestic: 9.0,  Global: 9.0  },
         stagingRows:      [],     // [{...ramp, action, target_cph, weeks[{capacity}]}]
         dbRamps:          [],
         dbActiveMonthKey: null,
         stagingLocked:    false,
-        editIndex:        null,   // index into stagingRows when editing
+        editIndex:        null,   // index into stagingRows when editing (staging mode)
+        modalMode:        'add',  // 'add' | 'edit-staging' | 'edit-db'
+        editDbRampData:   null,   // full ramp object in DB-edit mode
+        editDbLobIdx:     null,   // State.lobs index in DB-edit (-1 = not found in current lobs)
     };
 
     // ── Helpers ──────────────────────────────────────────────────────────
@@ -60,8 +63,17 @@
     }
 
     function showToast(msg, type = "info") {
-        // Delegate to SweetAlert2 toast (globally available)
         Swal.fire({ toast: true, position: "top-end", icon: type, title: msg, showConfirmButton: false, timer: 3000, timerProgressBar: true });
+    }
+
+    function getEffectiveShrinkage(lobOrRamp) {
+        const key = (lobOrRamp && lobOrRamp.locality === "Global") ? "Global" : "Domestic";
+        return State.shrinkageConfig[key] ?? 0.10;
+    }
+
+    function getEffectiveWorkHours(lobOrRamp) {
+        const key = (lobOrRamp && lobOrRamp.locality === "Global") ? "Global" : "Domestic";
+        return State.workHoursConfig[key] ?? 9.0;
     }
 
     // ── Bootstrap modal handles ──────────────────────────────────────────
@@ -135,15 +147,15 @@
                 return;
             }
 
-            State.lobs        = initData.lobs || [];
-            State.months      = initData.months || {};
-            State.monthWeeks  = initData.month_weeks || {};
-            State.workHours   = initData.work_hours || 8.0;
-            State.shrinkage   = initData.shrinkage || 0.15;
-            State.reportLabel = initData.report_label || `${month} ${year}`;
+            State.lobs             = initData.lobs || [];
+            State.months           = initData.months || {};
+            State.monthWeeks       = initData.month_weeks || {};
+            State.shrinkageConfig  = initData.shrinkage_config  || { Domestic: 0.10, Global: 0.15 };
+            State.workHoursConfig  = initData.work_hours_config || { Domestic: 9.0,  Global: 9.0  };
+            State.reportLabel      = initData.report_label || `${month} ${year}`;
 
-            State.dbRamps = rampsData.ramps || [];
-            State.stagingRows = [];
+            State.dbRamps      = rampsData.ramps || [];
+            State.stagingRows  = [];
             State.stagingLocked = false;
 
             document.getElementById("rc-report-label").textContent = State.reportLabel;
@@ -177,13 +189,12 @@
 
     // ── Staging table ────────────────────────────────────────────────────
     function renderStagingTable() {
-        const tbody  = document.getElementById("rc-staging-body");
-        const emptyRow = document.getElementById("rc-staging-empty");
+        const tbody    = document.getElementById("rc-staging-body");
         const previewBtn = document.getElementById("rc-preview-btn");
         const exportBtn  = document.getElementById("rc-export-staging-btn");
 
         if (!State.stagingRows.length) {
-            tbody.innerHTML = `<tr id="rc-staging-empty"><td colspan="10" class="text-center text-muted py-3">No staged ramps. Click "Add New Ramp" to begin.</td></tr>`;
+            tbody.innerHTML = `<tr id="rc-staging-empty"><td colspan="8" class="text-center text-muted py-3">No staged ramps. Click "Add New Ramp" to begin.</td></tr>`;
             previewBtn.disabled = true;
             exportBtn.disabled = true;
             return;
@@ -193,18 +204,24 @@
         exportBtn.disabled  = false;
 
         tbody.innerHTML = State.stagingRows.map((row, idx) => {
-            const peakEmp  = Math.max(...(row.weeks || []).map(w => w.rampEmployees || 0), 0);
-            const totalCap = (row.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
+            // Delete rows carry stored peak/capacity (weeks: []); compute for add/edit rows.
+            const peakEmp  = row.action === "delete"
+                ? (row.peak_employees || 0)
+                : Math.max(...(row.weeks || []).map(w => w.rampEmployees || 0), 0);
+            const totalCap = row.action === "delete"
+                ? (row.total_capacity || 0)
+                : (row.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
             const disabled = State.stagingLocked ? "disabled" : "";
             return `<tr>
-                <td>${row.main_lob || ""}</td>
-                <td>${row.state || ""}</td>
-                <td>${row.case_type || ""}</td>
+                <td class="rc-lob-cell">
+                    <div class="rc-lob-main">${row.main_lob || "–"}</div>
+                    <div class="rc-lob-sub">${[row.state, row.case_type].filter(Boolean).join(" / ")}</div>
+                </td>
                 <td>${row.month_label || row.month_key || ""}</td>
                 <td>${row.ramp_name || ""}</td>
                 <td class="text-end">${(row.target_cph || 0).toFixed(1)}</td>
                 <td class="text-end">${fmtNum(peakEmp)}</td>
-                <td class="text-end">${fmtNum(totalCap)}</td>
+                <td class="text-end">${fmtNum(Math.round(totalCap))}</td>
                 <td>${actionBadge(row.action)}</td>
                 <td class="text-nowrap">
                     <button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editStaging(${idx})" ${disabled}>Edit</button>
@@ -218,7 +235,6 @@
 
     // ── DB Ramps tab ─────────────────────────────────────────────────────
     function renderDbTab() {
-        // Build month sub-tabs
         const monthKeys = [...new Set(State.dbRamps.map(r => r.month_key))].sort();
         const tabContainer = document.getElementById("rc-db-month-tabs");
         tabContainer.innerHTML = monthKeys.map(mk => {
@@ -249,7 +265,7 @@
         const ramps = monthKey ? State.dbRamps.filter(r => r.month_key === monthKey) : [];
 
         if (!ramps.length) {
-            tbody.innerHTML = `<tr id="rc-db-empty"><td colspan="10" class="text-center text-muted py-3">No ramps found for this month.</td></tr>`;
+            tbody.innerHTML = `<tr id="rc-db-empty"><td colspan="7" class="text-center text-muted py-3">No ramps found for this month.</td></tr>`;
             return;
         }
 
@@ -257,28 +273,83 @@
             const totalCap = (r.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
             const peakEmp  = Math.max(...(r.weeks || []).map(w => w.employee_count || 0), 0);
             return `<tr>
-                <td>${r.forecast_id}</td>
-                <td>${r.main_lob || ""}</td>
-                <td>${r.state || ""}</td>
-                <td>${r.case_type || ""}</td>
+                <td class="rc-lob-cell">
+                    <div class="rc-lob-main">${r.main_lob || "–"}</div>
+                    <div class="rc-lob-sub">${[r.state, r.case_type].filter(Boolean).join(" / ") || "–"}</div>
+                </td>
                 <td>${r.ramp_name || ""}</td>
                 <td class="text-end">${(r.target_cph || 0).toFixed(1)}</td>
                 <td class="text-end">${(r.weeks || []).length}</td>
                 <td class="text-end">${fmtNum(peakEmp)}</td>
-                <td class="text-end">${fmtNum(totalCap)}</td>
+                <td class="text-end">${fmtNum(Math.round(totalCap))}</td>
                 <td class="text-nowrap">
-                    <button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editDbRamp(${JSON.stringify(idx).replace(/"/g,"&quot;")}, '${monthKey}')">Edit</button>
-                    <button class="btn btn-xs btn-outline-danger" onclick="RampCampaign.deleteDbRamp(${JSON.stringify(idx).replace(/"/g,"&quot;")}, '${monthKey}')">Delete</button>
+                    <button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editDbRamp(${idx}, '${monthKey}')">Edit</button>
+                    <button class="btn btn-xs btn-outline-danger" onclick="RampCampaign.deleteDbRamp(${idx}, '${monthKey}')">Delete</button>
                 </td>
             </tr>`;
         }).join("");
     }
 
+    // ── Modal mode management ────────────────────────────────────────────
+    function setModalMode(mode) {
+        State.modalMode = mode;
+        const isDbEdit = mode === 'edit-db';
+
+        document.getElementById("rc-modal-lob").classList.toggle("d-none", isDbEdit);
+        document.getElementById("rc-modal-lob-display").classList.toggle("d-none", !isDbEdit);
+        document.getElementById("rc-modal-month").classList.toggle("d-none", isDbEdit);
+        document.getElementById("rc-modal-month-display").classList.toggle("d-none", !isDbEdit);
+
+        const rn = document.getElementById("rc-modal-ramp-name");
+        rn.toggleAttribute("readonly", isDbEdit);
+        rn.classList.toggle("rc-readonly-field", isDbEdit);
+
+        const title   = document.getElementById("rc-ramp-modal-title");
+        const saveBtn = document.getElementById("rc-modal-save-btn");
+        if (mode === 'add') {
+            title.textContent   = "Add Ramp";
+            saveBtn.textContent = "Add to Staging";
+        } else if (mode === 'edit-staging') {
+            title.textContent   = "Edit Ramp";
+            saveBtn.textContent = "Update Staging";
+        } else {
+            title.textContent   = "Edit Ramp";
+            saveBtn.textContent = "Save Changes";
+        }
+    }
+
+    function populateLobDisplay(ramp) {
+        const sub = [ramp.state, ramp.case_type].filter(Boolean).join(" / ");
+        document.getElementById("rc-modal-lob-display").textContent =
+            ramp.main_lob + (sub ? ` — ${sub}` : "");
+    }
+
+    function populateMonthDisplay(monthKey) {
+        document.getElementById("rc-modal-month-display").textContent =
+            State.months[monthKey] || monthKey;
+    }
+
+    function updateLobInfoCard(lobOrRamp) {
+        const card = document.getElementById("rc-lob-info-card");
+        if (!lobOrRamp) { card.classList.add("d-none"); return; }
+        const locality  = lobOrRamp.locality || "Domestic";
+        const shrinkage = getEffectiveShrinkage(lobOrRamp);
+        const wh        = getEffectiveWorkHours(lobOrRamp);
+        document.getElementById("rc-info-locality").textContent  = locality;
+        document.getElementById("rc-info-locality").className    = `rc-locality-badge ${locality.toLowerCase()}`;
+        document.getElementById("rc-info-shrinkage").textContent = `${(shrinkage * 100).toFixed(0)}%`;
+        document.getElementById("rc-info-cph").textContent       = (lobOrRamp.target_cph || 0).toFixed(1);
+        document.getElementById("rc-info-workhours").textContent = `${wh}h`;
+        card.classList.remove("d-none");
+    }
+
     // ── Add / Edit modal ─────────────────────────────────────────────────
     function openAddModal() {
-        State.editIndex = null;
+        State.editIndex      = null;
+        State.editDbRampData = null;
+        State.editDbLobIdx   = null;
+        setModalMode('add');
 
-        // Destroy + reinit Select2 on LOB (pattern from configuration_view.js)
         const lobSel = $("#rc-modal-lob");
         if (lobSel.data("select2")) lobSel.select2("destroy");
         lobSel.empty().append(`<option value="">-- Select LOB --</option>`);
@@ -287,36 +358,73 @@
         });
         lobSel.select2({ dropdownParent: $("#rc-ramp-modal"), theme: "bootstrap-5" });
 
-        // Month select
+        // Namespaced event prevents stacking on repeated opens
+        lobSel.off("change.lobinfo").on("change.lobinfo", function () {
+            const idx = parseInt($(this).val());
+            updateLobInfoCard(isNaN(idx) ? null : State.lobs[idx]);
+            recomputeModalCapacity();
+        });
+        updateLobInfoCard(null);
+
         const mSel = document.getElementById("rc-modal-month");
         mSel.innerHTML = Object.entries(State.months)
             .map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
 
         document.getElementById("rc-modal-ramp-name").value = "Default";
-        document.getElementById("rc-ramp-modal-title").textContent = "Add Ramp";
-        document.getElementById("rc-modal-save-btn").textContent = "Add to Staging";
 
         renderWeekInputs(mSel.value, null);
         getRampModal().show();
     }
 
     function renderWeekInputs(monthKey, existingWeeks) {
-        const weeks = State.monthWeeks[monthKey] || [];
+        // Defensive fallback: use existingWeeks structure if State.monthWeeks[monthKey] is empty
+        let weeks = State.monthWeeks[monthKey] || [];
+        if (!weeks.length && existingWeeks && existingWeeks.length) {
+            weeks = existingWeeks.map(ew => ({
+                label:       ew.label       || ew.week_label  || "",
+                startDate:   ew.startDate   || ew.start_date  || "",
+                endDate:     ew.endDate     || ew.end_date    || "",
+                workingDays: ew.workingDays || ew.working_days || 0,
+            }));
+        }
+
         const container = document.getElementById("rc-modal-weeks-container");
-        container.innerHTML = `
+
+        const bulkHtml = `
+            <div class="rc-bulk-helpers">
+              <span class="rc-bulk-label">Bulk set:</span>
+              <div class="rc-bulk-group">
+                <span class="text-muted">All Ramp %</span>
+                <input type="number" id="rc-bulk-ramp-pct" class="form-control form-control-sm"
+                       min="0" max="100" step="1" style="width:65px" placeholder="0">
+                <button class="btn btn-xs btn-outline-secondary"
+                        onclick="RampCampaign.applyBulkRampPct()">Apply</button>
+              </div>
+              <div class="rc-bulk-group">
+                <span class="text-muted">All Employees</span>
+                <input type="number" id="rc-bulk-employees" class="form-control form-control-sm"
+                       min="0" step="1" style="width:65px" placeholder="0">
+                <button class="btn btn-xs btn-outline-secondary"
+                        onclick="RampCampaign.applyBulkEmployees()">Apply</button>
+              </div>
+            </div>`;
+
+        container.innerHTML = bulkHtml + `
             <table class="table table-sm table-bordered rc-week-table">
                 <thead class="table-light">
                     <tr><th>Week</th><th>Dates</th><th>Working Days</th><th>Ramp %</th><th>Employees</th><th>Capacity</th></tr>
                 </thead>
                 <tbody id="rc-week-tbody">
                     ${weeks.map((wk, i) => {
-                        const ew = existingWeeks && existingWeeks[i];
-                        const rampPct = ew ? (ew.rampPercent || ew.ramp_percent || "") : "";
-                        const emp     = ew ? (ew.rampEmployees || ew.employee_count || "") : "";
+                        const ew      = existingWeeks && existingWeeks[i];
+                        const rampPct = ew ? (ew.rampPercent  ?? ew.ramp_percent  ?? "") : "";
+                        const emp     = ew ? (ew.rampEmployees ?? ew.employee_count ?? "") : "";
+                        // Preserve user-edited working days from existing weeks
+                        const savedWd = ew ? (ew.workingDays ?? ew.working_days ?? wk.workingDays) : wk.workingDays;
                         return `<tr data-wk-idx="${i}" data-wk-wd="${wk.workingDays}" data-wk-label="${wk.label}" data-wk-start="${wk.startDate}" data-wk-end="${wk.endDate}">
                             <td>${wk.label}</td>
                             <td>${wk.startDate} – ${wk.endDate}</td>
-                            <td class="text-end">${wk.workingDays}</td>
+                            <td><input type="number" class="form-control form-control-sm rc-working-days" min="0" max="31" step="1" value="${savedWd}"></td>
                             <td><input type="number" class="form-control form-control-sm rc-ramp-pct" min="0" max="100" step="1" value="${rampPct}" placeholder="0"></td>
                             <td><input type="number" class="form-control form-control-sm rc-emp" min="0" step="1" value="${emp}" placeholder="0"></td>
                             <td class="text-end rc-cap-cell">0</td>
@@ -325,23 +433,34 @@
                 </tbody>
             </table>`;
 
-        // Recompute on input change
-        container.querySelectorAll(".rc-emp, .rc-ramp-pct").forEach(inp => {
+        container.querySelectorAll(".rc-emp, .rc-ramp-pct, .rc-working-days").forEach(inp => {
             inp.addEventListener("input", recomputeModalCapacity);
         });
         recomputeModalCapacity();
     }
 
     function recomputeModalCapacity() {
-        const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
-        const lob    = isNaN(lobIdx) ? null : State.lobs[lobIdx];
-        const cph    = lob ? lob.target_cph : 0;
-        let totalCap = 0, peakEmp = 0;
+        let cph, shrinkage, wh;
+        if (State.modalMode === 'edit-db') {
+            const ramp = State.editDbRampData || {};
+            cph       = ramp.target_cph || 0;
+            shrinkage = getEffectiveShrinkage(ramp);
+            wh        = getEffectiveWorkHours(ramp);
+        } else {
+            const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
+            const lob    = isNaN(lobIdx) ? null : State.lobs[lobIdx];
+            cph       = lob ? lob.target_cph : 0;
+            shrinkage = getEffectiveShrinkage(lob);
+            wh        = getEffectiveWorkHours(lob);
+        }
 
+        let totalCap = 0, peakEmp = 0;
         document.querySelectorAll("#rc-week-tbody tr").forEach(row => {
-            const emp = parseFloat(row.querySelector(".rc-emp")?.value) || 0;
-            const wd  = parseFloat(row.dataset.wkWd) || 0;
-            const cap = Math.round(emp * cph * State.workHours * (1 - State.shrinkage) * wd);
+            const emp     = parseFloat(row.querySelector(".rc-emp")?.value) || 0;
+            const rampPct = (parseFloat(row.querySelector(".rc-ramp-pct")?.value) || 0) / 100;
+            const wdInp   = row.querySelector(".rc-working-days");
+            const wd      = wdInp ? (parseFloat(wdInp.value) || 0) : (parseFloat(row.dataset.wkWd) || 0);
+            const cap     = Math.round(emp * rampPct * cph * wh * (1 - shrinkage) * wd);
             row.querySelector(".rc-cap-cell").textContent = fmtNum(cap);
             totalCap += cap;
             if (emp > peakEmp) peakEmp = emp;
@@ -352,16 +471,27 @@
     }
 
     function collectModalWeeks(monthKey) {
-        const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
-        const lob    = isNaN(lobIdx) ? null : State.lobs[lobIdx];
-        const cph    = lob ? lob.target_cph : 0;
-        const weeks  = [];
+        let cph, shrinkage, wh;
+        if (State.modalMode === 'edit-db') {
+            const ramp = State.editDbRampData || {};
+            cph       = ramp.target_cph || 0;
+            shrinkage = getEffectiveShrinkage(ramp);
+            wh        = getEffectiveWorkHours(ramp);
+        } else {
+            const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
+            const lob    = isNaN(lobIdx) ? null : State.lobs[lobIdx];
+            cph       = lob ? lob.target_cph : 0;
+            shrinkage = getEffectiveShrinkage(lob);
+            wh        = getEffectiveWorkHours(lob);
+        }
 
+        const weeks = [];
         document.querySelectorAll("#rc-week-tbody tr").forEach(row => {
             const emp     = parseFloat(row.querySelector(".rc-emp")?.value) || 0;
             const rampPct = parseFloat(row.querySelector(".rc-ramp-pct")?.value) || 0;
-            const wd      = parseFloat(row.dataset.wkWd) || 0;
-            const cap     = Math.round(emp * cph * State.workHours * (1 - State.shrinkage) * wd);
+            const wdInp   = row.querySelector(".rc-working-days");
+            const wd      = wdInp ? (parseFloat(wdInp.value) || 0) : (parseFloat(row.dataset.wkWd) || 0);
+            const cap     = Math.round(emp * (rampPct / 100) * cph * wh * (1 - shrinkage) * wd);
             weeks.push({
                 label:          row.dataset.wkLabel,
                 week_label:     row.dataset.wkLabel,
@@ -381,7 +511,13 @@
         return weeks;
     }
 
+    // Dispatcher: routes save button to correct handler based on modal mode
     function saveRampFromModal() {
+        if (State.modalMode === 'edit-db') saveDbRampEdit();
+        else saveStagingRamp();
+    }
+
+    function saveStagingRamp() {
         const lobIdx   = parseInt(document.getElementById("rc-modal-lob").value);
         const monthKey = document.getElementById("rc-modal-month").value;
         const rampName = document.getElementById("rc-modal-ramp-name").value.trim();
@@ -426,33 +562,68 @@
         switchTab("staging");
     }
 
+    function saveDbRampEdit() {
+        const ramp = State.editDbRampData;
+        if (!ramp) return;
+        const monthKey = document.getElementById("rc-modal-month").value;
+        const weeks    = collectModalWeeks(monthKey);
+        if (!weeks.length) {
+            showToast("No weeks data available.", "warning");
+            return;
+        }
+        const totalEmp = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
+        State.stagingRows.push({
+            forecast_id:        ramp.forecast_id,
+            main_lob:           ramp.main_lob,
+            state:              ramp.state,
+            case_type:          ramp.case_type,
+            target_cph:         ramp.target_cph || 0,
+            month_key:          monthKey,
+            month_label:        State.months[monthKey] || monthKey,
+            ramp_name:          ramp.ramp_name,
+            weeks,
+            totalRampEmployees: totalEmp,
+            action:             "edit",
+        });
+        getRampModal().hide();
+        renderStagingTable();
+        updateBadges();
+        switchTab("staging");
+    }
+
     // ── Edit staging row ─────────────────────────────────────────────────
     function editStaging(idx) {
         if (State.stagingLocked) return;
-        State.editIndex = idx;
-        const row = State.stagingRows[idx];
+        State.editIndex      = idx;
+        State.editDbRampData = null;
+        State.editDbLobIdx   = null;
+        setModalMode('edit-staging');
 
+        const row    = State.stagingRows[idx];
         const lobSel = $("#rc-modal-lob");
         if (lobSel.data("select2")) lobSel.select2("destroy");
         lobSel.empty().append(`<option value="">-- Select LOB --</option>`);
-        let selectedLobIdx = "";
         State.lobs.forEach((lob, i) => {
             const opt = new Option(lobLabel(lob), i);
-            if (lob.forecast_id == row.forecast_id && lob.main_lob === row.main_lob) {
-                opt.selected = true;
-                selectedLobIdx = i;
-            }
+            if (lob.forecast_id == row.forecast_id && lob.main_lob === row.main_lob) opt.selected = true;
             lobSel.append(opt);
         });
         lobSel.select2({ dropdownParent: $("#rc-ramp-modal"), theme: "bootstrap-5" });
+
+        lobSel.off("change.lobinfo").on("change.lobinfo", function () {
+            const idx2 = parseInt($(this).val());
+            updateLobInfoCard(isNaN(idx2) ? null : State.lobs[idx2]);
+            recomputeModalCapacity();
+        });
+        const curLobIdx = State.lobs.findIndex(
+            l => l.forecast_id == row.forecast_id && l.main_lob === row.main_lob);
+        updateLobInfoCard(curLobIdx >= 0 ? State.lobs[curLobIdx] : null);
 
         const mSel = document.getElementById("rc-modal-month");
         mSel.innerHTML = Object.entries(State.months)
             .map(([k, v]) => `<option value="${k}" ${k === row.month_key ? "selected" : ""}>${v}</option>`).join("");
 
         document.getElementById("rc-modal-ramp-name").value = row.ramp_name || "Default";
-        document.getElementById("rc-ramp-modal-title").textContent = "Edit Ramp";
-        document.getElementById("rc-modal-save-btn").textContent = "Update Staging";
 
         renderWeekInputs(row.month_key, row.weeks);
         getRampModal().show();
@@ -476,74 +647,53 @@
         });
     }
 
-    // ── Edit DB ramp → push to staging ──────────────────────────────────
+    // ── Edit DB ramp: mode-aware, no onclick override ────────────────────
     function editDbRamp(idx, monthKey) {
         const ramps = State.dbRamps.filter(r => r.month_key === monthKey);
         const ramp  = ramps[idx];
         if (!ramp) return;
 
-        // Find matching LOB index
-        const lobIdx = State.lobs.findIndex(
-            l => l.forecast_id == ramp.forecast_id && l.main_lob === ramp.main_lob
-        );
-
-        const lobSel = $("#rc-modal-lob");
-        if (lobSel.data("select2")) lobSel.select2("destroy");
-        lobSel.empty().append(`<option value="">-- Select LOB --</option>`);
-        State.lobs.forEach((lob, i) => {
-            const opt = new Option(lobLabel(lob), i);
-            if (i === lobIdx) opt.selected = true;
-            lobSel.append(opt);
-        });
-        lobSel.select2({ dropdownParent: $("#rc-ramp-modal"), theme: "bootstrap-5" });
-
-        const mSel = document.getElementById("rc-modal-month");
-        mSel.innerHTML = Object.entries(State.months)
-            .map(([k, v]) => `<option value="${k}" ${k === monthKey ? "selected" : ""}>${v}</option>`).join("");
-
-        document.getElementById("rc-modal-ramp-name").value = ramp.ramp_name || "Default";
-        document.getElementById("rc-ramp-modal-title").textContent = "Edit DB Ramp";
-        document.getElementById("rc-modal-save-btn").textContent = "Add Edit to Staging";
+        State.editDbRampData = ramp;
+        State.editDbLobIdx   = State.lobs.findIndex(
+            l => l.forecast_id == ramp.forecast_id && l.main_lob === ramp.main_lob);
         State.editIndex = null;
 
-        // Override save: push with action='edit' (read month live from modal, not closure)
-        document.getElementById("rc-modal-save-btn").onclick = () => {
-            const selectedMonthKey = document.getElementById("rc-modal-month").value;
-            const weeks    = collectModalWeeks(selectedMonthKey);
-            const totalEmp = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
-            const lob      = State.lobs[lobIdx] || {};
-            State.stagingRows.push({
-                forecast_id:        ramp.forecast_id,
-                main_lob:           ramp.main_lob,
-                state:              ramp.state,
-                case_type:          ramp.case_type,
-                target_cph:         ramp.target_cph || lob.target_cph || 0,
-                month_key:          selectedMonthKey,
-                month_label:        State.months[selectedMonthKey] || selectedMonthKey,
-                ramp_name:          ramp.ramp_name,
-                weeks:              weeks,
-                totalRampEmployees: totalEmp,
-                action:             "edit",
-            });
-            getRampModal().hide();
-            renderStagingTable();
-            updateBadges();
-            switchTab("staging");
-        };
+        // Destroy Select2 BEFORE setModalMode hides the select
+        const lobSel = $("#rc-modal-lob");
+        if (lobSel.data("select2")) lobSel.select2("destroy");
+        lobSel.empty();   // clear stale value; mode-aware reads use State.editDbRampData
+
+        // Populate hidden month select so collectModalWeeks can read monthKey
+        const mSel = document.getElementById("rc-modal-month");
+        mSel.innerHTML = Object.entries(State.months)
+            .map(([k, v]) => `<option value="${k}" ${k === monthKey ? "selected" : ""}>${v}</option>`)
+            .join("");
+
+        document.getElementById("rc-modal-ramp-name").value = ramp.ramp_name || "Default";
+
+        // Switch mode: hides LOB/month selects, shows display divs, sets title/button
+        setModalMode('edit-db');
+        populateLobDisplay(ramp);
+        populateMonthDisplay(monthKey);
+        // ramp.locality is now present from load_ramps enrichment
+        updateLobInfoCard(ramp);
 
         renderWeekInputs(monthKey, ramp.weeks);
         getRampModal().show();
     }
 
-    // ── Delete DB ramp → push delete row to staging ──────────────────────
+    // ── Delete DB ramp: staged with peak/capacity for preview estimates ──
     function deleteDbRamp(idx, monthKey) {
         const ramps = State.dbRamps.filter(r => r.month_key === monthKey);
         const ramp  = ramps[idx];
         if (!ramp) return;
+        const peakEmp  = Math.max(...(ramp.weeks || []).map(w => w.employee_count || 0), 0);
+        const totalCap = (ramp.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
 
         Swal.fire({
             title: `Delete ramp "${ramp.ramp_name}"?`,
-            text: "This will be staged for deletion. Click Preview & Submit to apply.",
+            html: `Estimated impact: <strong>−${fmtNum(peakEmp)} FTE</strong>, <strong>−${fmtNum(Math.round(totalCap))} capacity</strong>.<br>
+                   <small class="text-muted">Stage for deletion then Preview &amp; Submit to apply.</small>`,
             icon: "warning",
             showCancelButton: true,
             confirmButtonText: "Stage Delete",
@@ -551,22 +701,39 @@
         }).then(result => {
             if (result.isConfirmed) {
                 State.stagingRows.push({
-                    forecast_id:  ramp.forecast_id,
-                    main_lob:     ramp.main_lob,
-                    state:        ramp.state,
-                    case_type:    ramp.case_type,
-                    target_cph:   ramp.target_cph || 0,
-                    month_key:    monthKey,
-                    month_label:  State.months[monthKey] || monthKey,
-                    ramp_name:    ramp.ramp_name,
-                    weeks:        [],
-                    action:       "delete",
+                    forecast_id:    ramp.forecast_id,
+                    main_lob:       ramp.main_lob,
+                    state:          ramp.state,
+                    case_type:      ramp.case_type,
+                    target_cph:     ramp.target_cph || 0,
+                    month_key:      monthKey,
+                    month_label:    State.months[monthKey] || monthKey,
+                    ramp_name:      ramp.ramp_name,
+                    weeks:          [],
+                    peak_employees: peakEmp,
+                    total_capacity: Math.round(totalCap),
+                    action:         "delete",
                 });
                 renderStagingTable();
                 updateBadges();
                 switchTab("staging");
             }
         });
+    }
+
+    // ── Bulk helpers ─────────────────────────────────────────────────────
+    function applyBulkRampPct() {
+        const val = document.getElementById("rc-bulk-ramp-pct")?.value;
+        if (val === "" || val == null) return;
+        document.querySelectorAll("#rc-week-tbody .rc-ramp-pct").forEach(i => { i.value = val; });
+        recomputeModalCapacity();
+    }
+
+    function applyBulkEmployees() {
+        const val = document.getElementById("rc-bulk-employees")?.value;
+        if (val === "" || val == null) return;
+        document.querySelectorAll("#rc-week-tbody .rc-emp").forEach(i => { i.value = val; });
+        recomputeModalCapacity();
     }
 
     // ── Preview flow ──────────────────────────────────────────────────────
@@ -625,11 +792,18 @@
         try {
             const result = await apiPost(URLS.apply, { campaign_rows: State.stagingRows });
             if (result.success) {
+                let html = result.message || `${result.applied?.length || 0} ramps applied.`;
+                if (result.total_fte_removed || result.total_cap_removed) {
+                    html += `<br><br><small class="text-danger">
+                        Deleted: <strong>${fmtNum(result.total_fte_removed)} FTE</strong>
+                        and <strong>${fmtNum(result.total_cap_removed)} capacity</strong> removed.
+                    </small>`;
+                }
                 await Swal.fire({
                     icon: "success",
                     title: "Applied!",
-                    text: result.message || `${result.applied?.length || 0} ramps applied.`,
-                    timer: 3000,
+                    html,
+                    timer: 4000,
                     showConfirmButton: false,
                 });
             } else {
@@ -666,7 +840,6 @@
     }
 
     function exportDb() {
-        // Collect visible month's ramps (or all)
         const ramps = State.dbActiveMonthKey
             ? State.dbRamps.filter(r => r.month_key === State.dbActiveMonthKey)
             : State.dbRamps;
@@ -674,10 +847,6 @@
     }
 
     function downloadExcel(mode, ramps) {
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = URLS.downloadExcel;
-
         const data = {
             mode,
             ramps,
@@ -685,13 +854,6 @@
             report_year:  State.reportYear,
         };
 
-        const inp = document.createElement("input");
-        inp.type  = "hidden";
-        inp.name  = "csrfmiddlewaretoken";
-        inp.value = csrfToken();
-        form.appendChild(inp);
-
-        // Use fetch with blob for binary response
         fetch(URLS.downloadExcel, {
             method:  "POST",
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken() },
@@ -717,6 +879,8 @@
         removeStaging,
         editDbRamp,
         deleteDbRamp,
+        applyBulkRampPct,
+        applyBulkEmployees,
     };
 
     // ── Wire up events ────────────────────────────────────────────────────
@@ -734,7 +898,7 @@
             });
         });
 
-        // Select2 init for year/month on the main page
+        // Select2 for year/month on the main page
         $("#rc-year-select").select2({ theme: "bootstrap-5", placeholder: "-- Select Year --", width: "auto" });
         $("#rc-month-select").select2({ theme: "bootstrap-5", placeholder: "-- Select Month --", width: "auto" });
 
@@ -746,23 +910,35 @@
         document.getElementById("rc-export-staging-btn").addEventListener("click", exportStaging);
         document.getElementById("rc-export-db-btn").addEventListener("click", exportDb);
 
-        // Modal month change → re-render week inputs
+        // Modal month change → re-render week inputs (guarded for DB-edit mode)
         document.getElementById("rc-modal-month").addEventListener("change", e => {
-            renderWeekInputs(e.target.value, null);
+            if (State.modalMode !== 'edit-db') renderWeekInputs(e.target.value, null);
         });
 
-        // LOB change → recompute capacity
-        document.getElementById("rc-modal-lob").addEventListener("change", recomputeModalCapacity);
-
-        // Modal save (default — DB-edit flow overrides .onclick; reset on modal close)
+        // Modal save — dispatcher routes based on State.modalMode
         document.getElementById("rc-modal-save-btn").onclick = saveRampFromModal;
 
         // Preview modal buttons
         document.getElementById("rc-confirm-apply-btn").addEventListener("click", confirmApply);
         document.getElementById("rc-preview-cancel-btn").addEventListener("click", unlockStaging);
 
-        // Restore default save handler whenever ramp modal hides (clears DB-edit override)
+        // Full cleanup when ramp modal closes
         document.getElementById("rc-ramp-modal").addEventListener("hidden.bs.modal", () => {
+            State.modalMode      = 'add';
+            State.editIndex      = null;
+            State.editDbRampData = null;
+            State.editDbLobIdx   = null;
+
+            document.getElementById("rc-modal-lob").classList.remove("d-none");
+            document.getElementById("rc-modal-lob-display").classList.add("d-none");
+            document.getElementById("rc-modal-month").classList.remove("d-none");
+            document.getElementById("rc-modal-month-display").classList.add("d-none");
+
+            const rn = document.getElementById("rc-modal-ramp-name");
+            rn.removeAttribute("readonly");
+            rn.classList.remove("rc-readonly-field");
+
+            document.getElementById("rc-lob-info-card").classList.add("d-none");
             document.getElementById("rc-modal-save-btn").onclick = saveRampFromModal;
         });
     });

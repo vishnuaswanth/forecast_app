@@ -1,107 +1,96 @@
-/* ── Filter / report selector card ─────────────────────────────── */
+/* ── Tables ───────────────────────────────────────────────────── */
+#rc-staging-table, #rc-db-table { font-size:.8rem; border-collapse:collapse; }
+#rc-staging-table th, #rc-staging-table td,
+#rc-db-table th,      #rc-db-table td      { padding:.35rem .6rem; vertical-align:middle; border-color:#f0f2f5; }
+#rc-staging-table thead th, #rc-db-table thead th {
+    background:#f8fafc; font-weight:600; color:#4a5568; border-bottom:1px solid #e2e8f0; white-space:nowrap;
+}
+#rc-staging-table tbody tr:hover, #rc-db-table tbody tr:hover { background:#f7f9fc; }
+
+/* ── LOB combined cell ────────────────────────────────────────── */
+.rc-lob-cell .rc-lob-main { font-weight:600; color:#1a202c; line-height:1.3; }
+.rc-lob-cell .rc-lob-sub  { font-size:.72rem; color:#718096; line-height:1.3; }
+
+/* ── btn-xs ───────────────────────────────────────────────────── */
+.btn-xs { padding:.15rem .45rem; font-size:.72rem; line-height:1.4; border-radius:3px; }
+
+/* ── Filter card ──────────────────────────────────────────────── */
 .rc-filter-card {
-    background: #fff;
-    border-radius: 10px;
-    padding: 25px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    background:#fff; border-radius:10px; padding:25px; margin-bottom:20px;
+    box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid rgba(0,0,0,.06);
 }
+.rc-filter-card-body h5 { color:#012970; font-weight:600; margin-bottom:18px; }
+.rc-label { font-size:.85rem; font-weight:600; color:#555; }
 
-.rc-filter-card-body h5 {
-    color: #012970;
-    font-weight: 600;
-    margin-bottom: 18px;
-}
-
-.rc-label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #555;
-}
-
-/* ── Content cards (staging / DB panels) ───────────────────────── */
+/* ── Content cards ────────────────────────────────────────────── */
 .rc-content-card {
-    background: #fff;
-    border-radius: 0 0 10px 10px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    border: 1px solid #dee2e6;
+    background:#fff; border-radius:0 0 10px 10px;
+    box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid #dee2e6;
 }
+.rc-content-card .card-body { padding:22px 25px; }
+.rc-panel { border-top:none; }
 
-.rc-content-card .card-body {
-    padding: 22px 25px;
-}
-
-/* Panel below the tab headers — remove top border since tabs handle it */
-.rc-panel { border-top: none; }
-
-/* Nav tabs — match the content card border */
-.rc-page .nav-tabs {
-    border-bottom: none;
-}
-
+/* ── Nav tabs ─────────────────────────────────────────────────── */
+.rc-page .nav-tabs { border-bottom:none; }
 .rc-page .nav-tabs .nav-link {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #6c757d;
-    border-color: #dee2e6 #dee2e6 transparent;
-    border-radius: 8px 8px 0 0;
+    font-size:.875rem; font-weight:600; color:#6c757d;
+    border-radius:8px 8px 0 0; border-color:#dee2e6 #dee2e6 transparent;
 }
+.rc-page .nav-tabs .nav-link.active { color:#012970; background:#fff; border-color:#dee2e6 #dee2e6 #fff; }
 
-.rc-page .nav-tabs .nav-link.active {
-    color: #012970;
-    background: #fff;
-    border-color: #dee2e6 #dee2e6 #fff;
-}
-
-/* DB month sub-tab buttons */
+/* ── DB month sub-tabs ────────────────────────────────────────── */
 .rc-month-tab {
-    font-size: .8rem;
-    padding: .2rem .65rem;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid #dee2e6;
-    background: #f8f9fa;
-    color: #495057;
-    transition: background .15s, color .15s;
+    font-size:.8rem; padding:.2rem .65rem; border-radius:4px; cursor:pointer;
+    border:1px solid #dee2e6; background:#f8f9fa; color:#495057; transition:background .15s,color .15s;
 }
-.rc-month-tab.active {
-    background: #0d6efd;
-    color: #fff;
-    border-color: #0d6efd;
-}
+.rc-month-tab.active { background:#0d6efd; color:#fff; border-color:#0d6efd; }
 
-/* Action badges in staging table */
-.rc-badge-add    { background: #198754; }
-.rc-badge-edit   { background: #0d6efd; }
-.rc-badge-delete { background: #dc3545; }
+/* ── Action badges ────────────────────────────────────────────── */
+.rc-badge-add    { background:#198754; color:#fff; }
+.rc-badge-edit   { background:#0d6efd; color:#fff; }
+.rc-badge-delete { background:#dc3545; color:#fff; }
 
-/* Week input table */
-.rc-week-table th, .rc-week-table td {
-    font-size: .78rem;
-    padding: .25rem .4rem;
-    vertical-align: middle;
-}
-.rc-week-table input[type=number] { width: 75px; }
+/* ── Week input table ─────────────────────────────────────────── */
+.rc-week-table th, .rc-week-table td { font-size:.78rem; padding:.25rem .4rem; vertical-align:middle; }
+.rc-week-table input[type=number] { width:70px; }
 
-/* Preview delta colouring */
-.rc-delta-pos { color: #198754; font-weight: 600; }
-.rc-delta-neg { color: #dc3545; font-weight: 600; }
-
-/* Disabled state for staging toolbar while locked */
-.rc-locked { opacity: .5; pointer-events: none; }
-
-/* Table header styling */
-.rc-content-card .table thead.table-light th {
-    background-color: #f8f9fa;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #495057;
-    border-bottom: 2px solid #dee2e6;
+/* ── Modal field labels ───────────────────────────────────────── */
+.rc-modal-label  { font-size:.82rem; font-weight:600; color:#555; }
+.rc-meta-display {
+    font-weight:600; font-size:.875rem; color:#1a202c;
+    padding:6px 4px; border-bottom:2px solid #e2e8f0; min-height:2.1rem;
 }
 
-/* Toolbar area above staging table */
-.rc-content-card .card-body .d-flex.gap-2.mb-3 {
-    padding-bottom: 12px;
-    border-bottom: 1px solid #f0f0f0;
+/* ── Readonly ramp name ───────────────────────────────────────── */
+#rc-modal-ramp-name.rc-readonly-field { background:#f8fafc; border-color:#e2e8f0; color:#718096; cursor:default; }
+
+/* ── LOB info card ────────────────────────────────────────────── */
+.rc-lob-info-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; }
+.rc-lob-info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.rc-info-label    { display:block; font-size:.7rem; color:#718096; font-weight:500; margin-bottom:2px; }
+.rc-info-value    { font-size:.875rem; font-weight:600; color:#1a202c; }
+.rc-locality-badge { font-size:.72rem; font-weight:600; padding:2px 9px; border-radius:10px; display:inline-block; }
+.rc-locality-badge.global   { background:#ebf8ff; color:#2b6cb0; }
+.rc-locality-badge.domestic { background:#f0fff4; color:#276749; }
+
+/* ── Bulk helpers ─────────────────────────────────────────────── */
+.rc-bulk-helpers {
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    padding:6px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px;
+    margin-bottom:10px; font-size:.78rem;
 }
+.rc-bulk-group  { display:flex; align-items:center; gap:5px; }
+.rc-bulk-label  { font-weight:600; color:#4a5568; margin-right:4px; }
+
+/* ── Capacity summary & formula ───────────────────────────────── */
+.rc-cap-summary  { background:#f8fafc; border-radius:6px; padding:8px 14px; font-size:.82rem; }
+.rc-formula-bar  { background:#fffbeb; border:1px solid #fef08a; border-radius:6px; padding:6px 12px; font-size:.78rem; }
+.rc-formula-label { font-weight:600; color:#92400e; margin-right:8px; }
+.rc-formula-text  { color:#78350f; background:transparent; border:none; }
+
+/* ── Preview delta colours ────────────────────────────────────── */
+.rc-delta-pos { color:#198754; font-weight:600; }
+.rc-delta-neg { color:#dc3545; font-weight:600; }
+
+/* ── Disabled/locked ──────────────────────────────────────────── */
+.rc-locked { opacity:.5; pointer-events:none; }

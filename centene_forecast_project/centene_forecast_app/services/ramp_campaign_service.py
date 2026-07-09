@@ -66,6 +66,14 @@ def calculate_weeks(year: int, month: int) -> List[Dict]:
 # Service functions                                                    #
 # ------------------------------------------------------------------ #
 
+
+def _find_cfg(d, key):
+    """Case-insensitive lookup into WorkType config dict (e.g. 'Domestic', 'Global')."""
+    for k in d:
+        if k.lower() == key.lower():
+            return d[k]
+    return {}
+
 def load_ramps(year: int, month_name: str) -> dict:
     """
     Load all existing ramps for a report period, enriched with CPH and per-week capacity.
@@ -93,27 +101,36 @@ def load_ramps(year: int, month_name: str) -> dict:
 
     # Fetch forecast records for CPH + configuration
     fd = client.get_forecast_records_with_cph(year, month_int)
-    cph_map = {}
-    work_hours = 8.0
-    shrinkage = 0.15
-    if not fd.get("error"):
-        records = fd.get("records", [])
-        cph_map = {str(rec["id"]): float(rec.get("target_cph", 0)) for rec in records}
-        # configuration: {month_label: {platform_type: {work_hours, shrinkage, ...}}}
-        config = fd.get("configuration", {})
-        first_month_cfg = next(iter(config.values()), {}) if config else {}
-        first_platform_cfg = next(iter(first_month_cfg.values()), {}) if first_month_cfg else {}
-        work_hours = float(first_platform_cfg.get("work_hours", 8.0))
-        shrinkage = float(first_platform_cfg.get("shrinkage", 0.15))
+    records      = fd.get("records", []) if not fd.get("error") else []
+    cph_map      = {str(rec["id"]): float(rec.get("target_cph", 0)) for rec in records}
+    locality_map = {str(rec["id"]): rec.get("locality", "Domestic") for rec in records}
 
-    # Enrich ramps
+    config          = fd.get("configuration", {}) if not fd.get("error") else {}
+    first_month_cfg = next(iter(config.values()), {}) if config else {}
+    shrinkage_cfg   = {
+        "Domestic": float(_find_cfg(first_month_cfg, "Domestic").get("shrinkage",  0.10)),
+        "Global":   float(_find_cfg(first_month_cfg, "Global").get("shrinkage",  0.15)),
+    }
+    work_hours_cfg  = {
+        "Domestic": float(_find_cfg(first_month_cfg, "Domestic").get("work_hours", 9.0)),
+        "Global":   float(_find_cfg(first_month_cfg, "Global").get("work_hours",  9.0)),
+    }
+
+    # Enrich ramps with locality + corrected capacity formula (includes ramp_percent)
     for r in ramps:
-        target_cph = cph_map.get(str(r.get("forecast_id", "")), 0.0)
+        fid        = str(r.get("forecast_id", ""))
+        target_cph = cph_map.get(fid, 0.0)
+        locality   = locality_map.get(fid, "Domestic")
+        sh         = shrinkage_cfg[locality]
+        wh         = work_hours_cfg[locality]
         r["target_cph"] = target_cph
+        r["locality"]   = locality
         for w in r.get("weeks", []):
-            emp = w.get("employee_count", 0) or 0
-            wd = w.get("working_days", 0) or 0
-            w["capacity"] = round(emp * target_cph * work_hours * (1 - shrinkage) * wd)
+            emp      = w.get("employee_count", 0) or 0
+            wd       = w.get("working_days",   0) or 0
+            _rp      = w.get("ramp_percent")
+            ramp_pct = (_rp if _rp is not None else 100) / 100
+            w["capacity"] = round(emp * ramp_pct * target_cph * wh * (1 - sh) * wd)
 
     logger.info(f"[RampCampaignService] Loaded {len(ramps)} ramps for {month_name} {year}")
     return {"success": True, "ramps": ramps}
@@ -149,14 +166,15 @@ def get_campaign_init_data(year: int, month_name: str) -> dict:
     if not records:
         return {"success": False, "message": "No forecast data found for the selected report."}
 
-    # Build LOB list
+    # Build LOB list (includes locality for per-locality shrinkage/work_hours in frontend)
     lobs = [
         {
             "forecast_id": rec["id"],
-            "main_lob": rec.get("main_lob", ""),
-            "state": rec.get("state", ""),
-            "case_type": rec.get("case_type", ""),
-            "target_cph": float(rec.get("target_cph", 0)),
+            "main_lob":    rec.get("main_lob", ""),
+            "state":       rec.get("state", ""),
+            "case_type":   rec.get("case_type", ""),
+            "target_cph":  float(rec.get("target_cph", 0)),
+            "locality":    rec.get("locality", "Domestic"),
         }
         for rec in records
     ]
@@ -182,25 +200,30 @@ def get_campaign_init_data(year: int, month_name: str) -> dict:
         except Exception:
             month_weeks[month_key] = []
 
-    # Work hours and shrinkage from configuration
-    # configuration: {month_label: {platform_type: {work_hours, shrinkage, ...}}}
-    config = fd.get("configuration", {})
+    # Shrinkage and work_hours from configuration, per WorkType (Domestic/Global)
+    # configuration: {month_label: {WorkType: {work_hours, shrinkage, ...}}}
+    config          = fd.get("configuration", {})
     first_month_cfg = next(iter(config.values()), {}) if config else {}
-    first_platform_cfg = next(iter(first_month_cfg.values()), {}) if first_month_cfg else {}
-    work_hours = float(first_platform_cfg.get("work_hours", 8.0))
-    shrinkage = float(first_platform_cfg.get("shrinkage", 0.15))
+    shrinkage_config  = {
+        "Domestic": float(_find_cfg(first_month_cfg, "Domestic").get("shrinkage",  0.10)),
+        "Global":   float(_find_cfg(first_month_cfg, "Global").get("shrinkage",  0.15)),
+    }
+    work_hours_config = {
+        "Domestic": float(_find_cfg(first_month_cfg, "Domestic").get("work_hours", 9.0)),
+        "Global":   float(_find_cfg(first_month_cfg, "Global").get("work_hours",  9.0)),
+    }
 
     logger.info(
         f"[RampCampaignService] Init data: {len(lobs)} LOBs, {len(months)} months for {month_name} {year}"
     )
     return {
-        "success": True,
-        "lobs": lobs,
-        "months": months,
-        "month_weeks": month_weeks,
-        "report_label": f"{month_name} {year}",
-        "work_hours": work_hours,
-        "shrinkage": shrinkage,
+        "success":           True,
+        "lobs":              lobs,
+        "months":            months,
+        "month_weeks":       month_weeks,
+        "report_label":      f"{month_name} {year}",
+        "shrinkage_config":  shrinkage_config,
+        "work_hours_config": work_hours_config,
     }
 
 
@@ -247,21 +270,23 @@ def preview_campaign(campaign_rows: list, user=None) -> dict:
             "total_cap_delta": 0,
         }
 
-    # Build flat preview for delete rows
+    # Build flat preview for delete rows (use stored peak/capacity as estimated impact)
     preview_rows = []
     for row in delete_rows:
+        peak_emp  = row.get("peak_employees") or 0
+        total_cap = row.get("total_capacity") or 0
         preview_rows.append({
             "forecast_id": int(row.get("forecast_id", 0)),
-            "main_lob": row.get("main_lob", ""),
-            "state": row.get("state", ""),
-            "case_type": row.get("case_type", ""),
-            "month_key": row.get("month_key", ""),
+            "main_lob":    row.get("main_lob", ""),
+            "state":       row.get("state", ""),
+            "case_type":   row.get("case_type", ""),
+            "month_key":   row.get("month_key", ""),
             "month_label": row.get("month_label", row.get("month_key", "")),
-            "ramp_name": row.get("ramp_name", ""),
-            "fte_delta": None,
-            "cap_delta": None,
-            "action": "delete",
-            "error": None,
+            "ramp_name":   row.get("ramp_name", ""),
+            "fte_delta":   -peak_emp,
+            "cap_delta":   -total_cap,
+            "action":      "delete",
+            "error":       None,
         })
 
     # Group upsert rows by (forecast_id, month_key)
@@ -451,6 +476,8 @@ def apply_campaign(campaign_rows: list, user=None) -> dict:
                     entry["error"] = result["error"]
                     failed.append(entry)
                 else:
+                    entry["fte_removed"]      = result.get("fte_removed", 0) if result else 0
+                    entry["capacity_removed"] = result.get("capacity_removed", 0) if result else 0
                     applied.append(entry)
             else:
                 ramps = upsert_groups.get((forecast_id, month_key), [])
@@ -484,13 +511,17 @@ def apply_campaign(campaign_rows: list, user=None) -> dict:
                     else:
                         applied.append(entry)
 
+    total_fte_removed = sum(e.get("fte_removed", 0) for e in applied if e.get("action") == "delete")
+    total_cap_removed = sum(e.get("capacity_removed", 0) for e in applied if e.get("action") == "delete")
     logger.info(
         f"[RampCampaignService] Apply complete: {len(applied)} applied, {len(failed)} failed"
     )
     return {
-        "success": len(failed) == 0,
-        "message": f"Applied {len(applied)} ramps."
-                   + (f" {len(failed)} failed." if failed else ""),
-        "applied": applied,
-        "failed": failed,
+        "success":           len(failed) == 0,
+        "message":           f"Applied {len(applied)} ramps."
+                             + (f" {len(failed)} failed." if failed else ""),
+        "applied":           applied,
+        "failed":            failed,
+        "total_fte_removed": total_fte_removed,
+        "total_cap_removed": round(total_cap_removed, 2),
     }
