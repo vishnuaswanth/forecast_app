@@ -15,6 +15,14 @@ from centene_forecast_app.repository import get_api_client
 
 logger = logging.getLogger("django")
 
+# Fields accepted by FastAPI's RampWeek model (extra="forbid").
+# collectModalWeeks() emits both camelCase and snake_case — strip extras before sending.
+_RAMP_WEEK_FIELDS = {"label", "startDate", "endDate", "workingDays", "rampPercent", "rampEmployees"}
+
+
+def _clean_week(w: dict) -> dict:
+    return {k: w[k] for k in _RAMP_WEEK_FIELDS if k in w}
+
 
 # ------------------------------------------------------------------ #
 # Local copy of week calculator (no chat_app dependency)              #
@@ -297,7 +305,7 @@ def preview_campaign(campaign_rows: list, user=None) -> dict:
         total = row.get("totalRampEmployees") or sum(w.get("rampEmployees", 0) for w in weeks)
         groups[key].append({
             "ramp_name": row.get("ramp_name", f"Ramp-{row['month_key']}"),
-            "weeks": weeks,
+            "weeks": [_clean_week(w) for w in weeks],
             "totalRampEmployees": int(total),
         })
 
@@ -412,7 +420,7 @@ def apply_campaign(campaign_rows: list, user=None) -> dict:
         total = row.get("totalRampEmployees") or sum(w.get("rampEmployees", 0) for w in weeks)
         upsert_groups[key].append({
             "ramp_name": row.get("ramp_name", f"Ramp-{row['month_key']}"),
-            "weeks": weeks,
+            "weeks": [_clean_week(w) for w in weeks],
             "totalRampEmployees": int(total),
         })
 

@@ -23,6 +23,11 @@
         modalMode:        'add',  // 'add' | 'edit-staging' | 'edit-db'
         editDbRampData:   null,   // full ramp object in DB-edit mode
         editDbLobIdx:     null,   // State.lobs index in DB-edit (-1 = not found in current lobs)
+        // Multi-month cache (add mode)
+        monthWeekCache:      {},   // { "2025-04": [{rampPct, rampEmployees, workingDays}, ...] }
+        modalActiveMonthKey: null, // month key currently rendered in the week table
+        // Table filters
+        filters: { staging: "", db: "" },
     };
 
     // ── Helpers ──────────────────────────────────────────────────────────
@@ -74,6 +79,28 @@
     function getEffectiveWorkHours(lobOrRamp) {
         const key = (lobOrRamp && lobOrRamp.locality === "Global") ? "Global" : "Domestic";
         return State.workHoursConfig[key] ?? 9.0;
+    }
+
+    // ── Filter helpers ───────────────────────────────────────────────────
+    function matchesFilter(row, text) {
+        if (!text) return true;
+        const t = text.toLowerCase();
+        return [row.main_lob, row.state, row.case_type, row.ramp_name]
+            .some(f => (f || "").toLowerCase().includes(t));
+    }
+
+    // ── Unique ramp name generation ─────────────────────────────────────
+    // Format: userText_formattedMonth_uuidFragment. Guarantees every newly
+    // created ramp gets a globally-unique name that can never collide with
+    // an existing DB ramp — FastAPI upserts/deletes by exact ramp_name match,
+    // so a collision would silently double-count capacity (see saveStagingRamp).
+    function _shortUid() {
+        return Math.random().toString(16).slice(2, 10);
+    }
+
+    function buildUniqueRampName(rampName, monthKey) {
+        const monthLabel = (State.months[monthKey] || monthKey).replace(/[^A-Za-z0-9]+/g, "");
+        return `${rampName}_${monthLabel}_${_shortUid()}`;
     }
 
     // ── Bootstrap modal handles ──────────────────────────────────────────
@@ -157,9 +184,16 @@
             State.dbRamps      = rampsData.ramps || [];
             State.stagingRows  = [];
             State.stagingLocked = false;
+            State.filters      = { staging: "", db: "" };
 
             document.getElementById("rc-report-label").textContent = State.reportLabel;
             document.getElementById("rc-main").classList.remove("d-none");
+
+            // Clear any existing filter input values
+            const sf = document.getElementById("rc-staging-filter");
+            const df = document.getElementById("rc-db-filter");
+            if (sf) sf.value = "";
+            if (df) df.value = "";
 
             renderStagingTable();
             renderDbTab();
@@ -203,8 +237,17 @@
         previewBtn.disabled = State.stagingLocked;
         exportBtn.disabled  = false;
 
-        tbody.innerHTML = State.stagingRows.map((row, idx) => {
-            // Delete rows carry stored peak/capacity (weeks: []); compute for add/edit rows.
+        // Apply filter, preserving real indices for edit/remove
+        const indexed = State.stagingRows
+            .map((row, idx) => ({ row, idx }))
+            .filter(({ row }) => matchesFilter(row, State.filters.staging));
+
+        if (!indexed.length) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted py-3">No rows match the current filter.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = indexed.map(({ row, idx }) => {
             const peakEmp  = row.action === "delete"
                 ? (row.peak_employees || 0)
                 : Math.max(...(row.weeks || []).map(w => w.rampEmployees || 0), 0);
@@ -262,14 +305,24 @@
 
     function renderDbRampsForMonth(monthKey) {
         const tbody = document.getElementById("rc-db-body");
-        const ramps = monthKey ? State.dbRamps.filter(r => r.month_key === monthKey) : [];
+        const allRamps = monthKey ? State.dbRamps.filter(r => r.month_key === monthKey) : [];
 
-        if (!ramps.length) {
+        if (!allRamps.length) {
             tbody.innerHTML = `<tr id="rc-db-empty"><td colspan="7" class="text-center text-muted py-3">No ramps found for this month.</td></tr>`;
             return;
         }
 
-        tbody.innerHTML = ramps.map((r, idx) => {
+        // Apply filter; use real index into allRamps for onclick handlers
+        const filtered = allRamps
+            .map((r, realIdx) => ({ r, realIdx }))
+            .filter(({ r }) => matchesFilter(r, State.filters.db));
+
+        if (!filtered.length) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted py-3">No rows match the current filter.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(({ r, realIdx }) => {
             const totalCap = (r.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
             const peakEmp  = Math.max(...(r.weeks || []).map(w => w.employee_count || 0), 0);
             return `<tr>
@@ -283,8 +336,8 @@
                 <td class="text-end">${fmtNum(peakEmp)}</td>
                 <td class="text-end">${fmtNum(Math.round(totalCap))}</td>
                 <td class="text-nowrap">
-                    <button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editDbRamp(${idx}, '${monthKey}')">Edit</button>
-                    <button class="btn btn-xs btn-outline-danger" onclick="RampCampaign.deleteDbRamp(${idx}, '${monthKey}')">Delete</button>
+                    <button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editDbRamp(${realIdx}, '${monthKey}')">Edit</button>
+                    <button class="btn btn-xs btn-outline-danger" onclick="RampCampaign.deleteDbRamp(${realIdx}, '${monthKey}')">Delete</button>
                 </td>
             </tr>`;
         }).join("");
@@ -343,11 +396,53 @@
         card.classList.remove("d-none");
     }
 
+    // ── Multi-month cache helpers ─────────────────────────────────────────
+    function saveCurrentMonthToCache(monthKey) {
+        if (!monthKey) return;
+        const rows = [];
+        document.querySelectorAll("#rc-week-tbody tr").forEach(row => {
+            rows.push({
+                rampPct:       row.querySelector(".rc-ramp-pct")?.value ?? "",
+                rampEmployees: row.querySelector(".rc-emp")?.value ?? "",
+                workingDays:   row.querySelector(".rc-working-days")?.value ?? "",
+            });
+        });
+        if (rows.length) State.monthWeekCache[monthKey] = rows;
+        updateMonthDropdownIndicators();
+    }
+
+    function restoreCacheToWeekInputs(monthKey) {
+        const cached = State.monthWeekCache[monthKey];
+        if (!cached) return;
+        const trs = document.querySelectorAll("#rc-week-tbody tr");
+        cached.forEach((c, i) => {
+            if (i >= trs.length) return;
+            const tr = trs[i];
+            if (c.rampPct       !== "") tr.querySelector(".rc-ramp-pct").value = c.rampPct;
+            if (c.rampEmployees !== "") tr.querySelector(".rc-emp").value = c.rampEmployees;
+            if (c.workingDays   !== "") tr.querySelector(".rc-working-days").value = c.workingDays;
+        });
+        recomputeModalCapacity();
+    }
+
+    function updateMonthDropdownIndicators() {
+        const mSel = document.getElementById("rc-modal-month");
+        if (!mSel) return;
+        Array.from(mSel.options).forEach(opt => {
+            const mk = opt.value;
+            const hasData = (State.monthWeekCache[mk] || [])
+                .some(r => r.rampPct !== "" || r.rampEmployees !== "");
+            const baseLabel = State.months[mk] || mk;
+            opt.text = hasData ? `${baseLabel} ✓` : baseLabel;
+        });
+    }
+
     // ── Add / Edit modal ─────────────────────────────────────────────────
     function openAddModal() {
         State.editIndex      = null;
         State.editDbRampData = null;
         State.editDbLobIdx   = null;
+        State.monthWeekCache = {};
         setModalMode('add');
 
         const lobSel = $("#rc-modal-lob");
@@ -362,6 +457,11 @@
         lobSel.off("change.lobinfo").on("change.lobinfo", function () {
             const idx = parseInt($(this).val());
             updateLobInfoCard(isNaN(idx) ? null : State.lobs[idx]);
+            // Cached week inputs are tied to the previously-selected LOB's
+            // context; clear them so a LOB switch can't silently attribute
+            // entered ramp %/employee values to the wrong LOB.
+            State.monthWeekCache = {};
+            updateMonthDropdownIndicators();
             recomputeModalCapacity();
         });
         updateLobInfoCard(null);
@@ -372,6 +472,7 @@
 
         document.getElementById("rc-modal-ramp-name").value = "Default";
 
+        State.modalActiveMonthKey = mSel.value;
         renderWeekInputs(mSel.value, null);
         getRampModal().show();
     }
@@ -517,44 +618,105 @@
         else saveStagingRamp();
     }
 
+    // ── Multi-month staging save ─────────────────────────────────────────
     function saveStagingRamp() {
         const lobIdx   = parseInt(document.getElementById("rc-modal-lob").value);
-        const monthKey = document.getElementById("rc-modal-month").value;
         const rampName = document.getElementById("rc-modal-ramp-name").value.trim();
 
-        if (isNaN(lobIdx) || !monthKey || !rampName) {
+        if (isNaN(lobIdx) || !rampName) {
             showToast("Please fill in all required fields.", "warning");
             return;
         }
 
-        const lob   = State.lobs[lobIdx];
-        const weeks = collectModalWeeks(monthKey);
+        // Flush current month's inputs into cache
+        saveCurrentMonthToCache(State.modalActiveMonthKey);
 
-        if (!weeks.length) {
-            showToast("No weeks data available for the selected month.", "warning");
+        const lob = State.lobs[lobIdx];
+        const monthsToStage = Object.keys(State.monthWeekCache);
+
+        if (!monthsToStage.length) {
+            showToast("No week data entered.", "warning");
             return;
         }
 
-        const totalEmp = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
-        const row = {
-            forecast_id:         lob.forecast_id,
-            main_lob:            lob.main_lob,
-            state:               lob.state,
-            case_type:           lob.case_type,
-            target_cph:          lob.target_cph,
-            month_key:           monthKey,
-            month_label:         State.months[monthKey] || monthKey,
-            ramp_name:           rampName,
-            weeks:               weeks,
-            totalRampEmployees:  totalEmp,
-            action:              State.editIndex !== null ? "edit" : "add",
-        };
+        // When editing an already-staged row, its original month/name must be
+        // preserved exactly — renaming it would leave the real DB ramp (if any)
+        // untouched and double-count capacity, since FastAPI upserts/deletes by
+        // exact ramp_name match. Only genuinely new months get a fresh unique name.
+        const editingRow       = State.editIndex !== null ? State.stagingRows[State.editIndex] : null;
+        const originalMonthKey = editingRow ? editingRow.month_key : null;
+        const originalRampName = editingRow ? editingRow.ramp_name : null;
 
-        if (State.editIndex !== null) {
-            State.stagingRows[State.editIndex] = row;
-        } else {
-            State.stagingRows.push(row);
+        const newRows = [];
+
+        for (const mk of monthsToStage) {
+            const cachedInputs = State.monthWeekCache[mk] || [];
+            const wkDefs = State.monthWeeks[mk] || [];
+            if (!wkDefs.length) continue;
+
+            // Reconstruct weeks from cache
+            const cph = lob.target_cph;
+            const sh  = getEffectiveShrinkage(lob);
+            const wh  = getEffectiveWorkHours(lob);
+            const weeks = wkDefs.map((wk, i) => {
+                const ci      = cachedInputs[i] || {};
+                const emp     = parseFloat(ci.rampEmployees) || 0;
+                const rampPct = parseFloat(ci.rampPct) || 0;
+                const wd      = ci.workingDays !== undefined && ci.workingDays !== ""
+                    ? parseFloat(ci.workingDays)
+                    : wk.workingDays;
+                const cap = Math.round(emp * (rampPct / 100) * cph * wh * (1 - sh) * wd);
+                return {
+                    label:          wk.label,
+                    week_label:     wk.label,
+                    startDate:      wk.startDate,
+                    start_date:     wk.startDate,
+                    endDate:        wk.endDate,
+                    end_date:       wk.endDate,
+                    workingDays:    wd,
+                    working_days:   wd,
+                    rampPercent:    rampPct,
+                    ramp_percent:   rampPct,
+                    rampEmployees:  emp,
+                    employee_count: emp,
+                    capacity:       cap,
+                };
+            });
+
+            const isOriginalMonth = mk === originalMonthKey;
+            const uniqueName = isOriginalMonth ? originalRampName : buildUniqueRampName(rampName, mk);
+
+            newRows.push({
+                row: {
+                    forecast_id:        lob.forecast_id,
+                    main_lob:           lob.main_lob,
+                    state:              lob.state,
+                    case_type:          lob.case_type,
+                    target_cph:         lob.target_cph,
+                    month_key:          mk,
+                    month_label:        State.months[mk] || mk,
+                    ramp_name:          uniqueName,
+                    weeks,
+                    totalRampEmployees: weeks.reduce((s, w) => s + w.rampEmployees, 0),
+                    action:             isOriginalMonth ? "edit" : "add",
+                },
+                isOriginalMonth,
+            });
         }
+
+        if (!newRows.length) {
+            showToast("No valid week definitions found.", "warning");
+            return;
+        }
+
+        // Apply: replace the originally-edited row in place, push all other months as new
+        newRows.forEach(({ row, isOriginalMonth }) => {
+            if (isOriginalMonth && State.editIndex !== null) {
+                State.stagingRows[State.editIndex] = row;
+            } else {
+                State.stagingRows.push(row);
+            }
+        });
 
         getRampModal().hide();
         renderStagingTable();
@@ -597,6 +759,7 @@
         State.editIndex      = idx;
         State.editDbRampData = null;
         State.editDbLobIdx   = null;
+        State.monthWeekCache = {};
         setModalMode('edit-staging');
 
         const row    = State.stagingRows[idx];
@@ -613,6 +776,8 @@
         lobSel.off("change.lobinfo").on("change.lobinfo", function () {
             const idx2 = parseInt($(this).val());
             updateLobInfoCard(isNaN(idx2) ? null : State.lobs[idx2]);
+            State.monthWeekCache = {};
+            updateMonthDropdownIndicators();
             recomputeModalCapacity();
         });
         const curLobIdx = State.lobs.findIndex(
@@ -625,6 +790,7 @@
 
         document.getElementById("rc-modal-ramp-name").value = row.ramp_name || "Default";
 
+        State.modalActiveMonthKey = row.month_key;
         renderWeekInputs(row.month_key, row.weeks);
         getRampModal().show();
     }
@@ -657,6 +823,7 @@
         State.editDbLobIdx   = State.lobs.findIndex(
             l => l.forecast_id == ramp.forecast_id && l.main_lob === ramp.main_lob);
         State.editIndex = null;
+        State.monthWeekCache = {};
 
         // Destroy Select2 BEFORE setModalMode hides the select
         const lobSel = $("#rc-modal-lob");
@@ -678,6 +845,7 @@
         // ramp.locality is now present from load_ramps enrichment
         updateLobInfoCard(ramp);
 
+        State.modalActiveMonthKey = monthKey;
         renderWeekInputs(monthKey, ramp.weeks);
         getRampModal().show();
     }
@@ -881,6 +1049,18 @@
         deleteDbRamp,
         applyBulkRampPct,
         applyBulkEmployees,
+        clearStagingFilter() {
+            State.filters.staging = "";
+            const el = document.getElementById("rc-staging-filter");
+            if (el) el.value = "";
+            renderStagingTable();
+        },
+        clearDbFilter() {
+            State.filters.db = "";
+            const el = document.getElementById("rc-db-filter");
+            if (el) el.value = "";
+            renderDbRampsForMonth(State.dbActiveMonthKey);
+        },
     };
 
     // ── Wire up events ────────────────────────────────────────────────────
@@ -910,9 +1090,13 @@
         document.getElementById("rc-export-staging-btn").addEventListener("click", exportStaging);
         document.getElementById("rc-export-db-btn").addEventListener("click", exportDb);
 
-        // Modal month change → re-render week inputs (guarded for DB-edit mode)
+        // Modal month change — save current month to cache, then switch
         document.getElementById("rc-modal-month").addEventListener("change", e => {
-            if (State.modalMode !== 'edit-db') renderWeekInputs(e.target.value, null);
+            if (State.modalMode === 'edit-db') return;
+            saveCurrentMonthToCache(State.modalActiveMonthKey);
+            State.modalActiveMonthKey = e.target.value;
+            renderWeekInputs(e.target.value, null);
+            restoreCacheToWeekInputs(e.target.value);
         });
 
         // Modal save — dispatcher routes based on State.modalMode
@@ -922,12 +1106,24 @@
         document.getElementById("rc-confirm-apply-btn").addEventListener("click", confirmApply);
         document.getElementById("rc-preview-cancel-btn").addEventListener("click", unlockStaging);
 
+        // Filter inputs
+        document.getElementById("rc-staging-filter").addEventListener("input", e => {
+            State.filters.staging = e.target.value;
+            renderStagingTable();
+        });
+        document.getElementById("rc-db-filter").addEventListener("input", e => {
+            State.filters.db = e.target.value;
+            renderDbRampsForMonth(State.dbActiveMonthKey);
+        });
+
         // Full cleanup when ramp modal closes
         document.getElementById("rc-ramp-modal").addEventListener("hidden.bs.modal", () => {
-            State.modalMode      = 'add';
-            State.editIndex      = null;
-            State.editDbRampData = null;
-            State.editDbLobIdx   = null;
+            State.modalMode          = 'add';
+            State.editIndex          = null;
+            State.editDbRampData     = null;
+            State.editDbLobIdx       = null;
+            State.monthWeekCache     = {};
+            State.modalActiveMonthKey = null;
 
             document.getElementById("rc-modal-lob").classList.remove("d-none");
             document.getElementById("rc-modal-lob-display").classList.add("d-none");
