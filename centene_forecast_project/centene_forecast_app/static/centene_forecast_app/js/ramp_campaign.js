@@ -24,6 +24,7 @@
         modalMode:        'add',  // 'add' | 'edit-staging' | 'edit-db'
         editDbRampData:   null,   // full ramp object in DB-edit mode
         editDbLobIdx:     null,   // State.lobs index in DB-edit (-1 = not found in current lobs)
+        editStagingLobIdx: null,  // State.lobs index in edit-staging mode (LOB locked, not read from the select)
         // Multi-month cache (add mode)
         monthWeekCache:      {},   // { "2025-04": [{rampPct, rampEmployees, workingDays}, ...] }
         monthIsFte:          {},   // { "2025-04": true|false } — per-month "Is FTE" toggle
@@ -135,6 +136,21 @@
         return State.workHoursConfig[key] ?? 9.0;
     }
 
+    // Resolves the LOB (or DB ramp) object relevant to the modal's current
+    // mode/state. "add" reads from the live LOB select; "edit-staging" and
+    // "edit-db" have that select locked/hidden, so they resolve from state
+    // instead (State.editStagingLobIdx / State.editDbRampData).
+    function getActiveLobOrRamp() {
+        if (State.modalMode === 'edit-db') {
+            return State.editDbRampData || null;
+        }
+        if (State.modalMode === 'edit-staging') {
+            return State.editStagingLobIdx >= 0 ? State.lobs[State.editStagingLobIdx] : null;
+        }
+        const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
+        return isNaN(lobIdx) ? null : State.lobs[lobIdx];
+    }
+
     // ── Filter helpers ───────────────────────────────────────────────────
     function matchesFilter(row, text) {
         if (!text) return true;
@@ -213,6 +229,18 @@
     }
 
     // ── Load report ──────────────────────────────────────────────────────
+    // Fetches campaignInit + loadRamps for a given report period. Used both by
+    // the initial "Load Report" flow and to refresh State.lobs/dbRamps after a
+    // successful apply (so the LOB info card's Forecast/Current Capacity reflect
+    // the just-applied numbers instead of stale pre-apply values).
+    async function fetchReportData(year, month) {
+        const [initData, rampsData] = await Promise.all([
+            apiPost(URLS.campaignInit, { year: parseInt(year), month_name: month }),
+            apiPost(URLS.loadRamps,    { year: parseInt(year), month_name: month }),
+        ]);
+        return { initData, rampsData };
+    }
+
     async function loadReport() {
         const year  = State.reportYear;
         const month = State.reportMonth;
@@ -223,10 +251,7 @@
         loadBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Loading…`;
 
         try {
-            const [initData, rampsData] = await Promise.all([
-                apiPost(URLS.campaignInit,  { year: parseInt(year), month_name: month }),
-                apiPost(URLS.loadRamps,     { year: parseInt(year), month_name: month }),
-            ]);
+            const { initData, rampsData } = await fetchReportData(year, month);
 
             if (!initData.success) {
                 showToast(initData.message || "Failed to load report", "error");
@@ -416,16 +441,20 @@
     // ── Modal mode management ────────────────────────────────────────────
     function setModalMode(mode) {
         State.modalMode = mode;
-        const isDbEdit = mode === 'edit-db';
+        // LOB / Month / Ramp Name are locked whenever editing an existing ramp
+        // (either an already-staged row or a real DB ramp) — only week-level
+        // fields (working days, ramp %, employees) may change. Only "add" mode
+        // allows picking/changing LOB, month(s), and ramp name.
+        const isLocked = mode === 'edit-db' || mode === 'edit-staging';
 
-        document.getElementById("rc-modal-lob").classList.toggle("d-none", isDbEdit);
-        document.getElementById("rc-modal-lob-display").classList.toggle("d-none", !isDbEdit);
-        document.getElementById("rc-modal-month").classList.toggle("d-none", isDbEdit);
-        document.getElementById("rc-modal-month-display").classList.toggle("d-none", !isDbEdit);
+        document.getElementById("rc-modal-lob").classList.toggle("d-none", isLocked);
+        document.getElementById("rc-modal-lob-display").classList.toggle("d-none", !isLocked);
+        document.getElementById("rc-modal-month").classList.toggle("d-none", isLocked);
+        document.getElementById("rc-modal-month-display").classList.toggle("d-none", !isLocked);
 
         const rn = document.getElementById("rc-modal-ramp-name");
-        rn.toggleAttribute("readonly", isDbEdit);
-        rn.classList.toggle("rc-readonly-field", isDbEdit);
+        rn.toggleAttribute("readonly", isLocked);
+        rn.classList.toggle("rc-readonly-field", isLocked);
 
         const title   = document.getElementById("rc-ramp-modal-title");
         const saveBtn = document.getElementById("rc-modal-save-btn");
@@ -507,8 +536,10 @@
             mvSource   = (State.editDbLobIdx >= 0) ? State.lobs[State.editDbLobIdx] : null;
             ownOldCapacity = (ramp.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
         } else {
-            const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
-            if (isNaN(lobIdx)) { el.classList.add("d-none"); return; }
+            const lobIdx = (State.modalMode === 'edit-staging')
+                ? State.editStagingLobIdx
+                : parseInt(document.getElementById("rc-modal-lob").value);
+            if (isNaN(lobIdx) || lobIdx < 0 || !State.lobs[lobIdx]) { el.classList.add("d-none"); return; }
             mvSource   = State.lobs[lobIdx];
             forecastId = mvSource.forecast_id;
             monthKey   = State.modalActiveMonthKey;
@@ -589,11 +620,12 @@
 
     // ── Add / Edit modal ─────────────────────────────────────────────────
     function openAddModal() {
-        State.editIndex      = null;
-        State.editDbRampData = null;
-        State.editDbLobIdx   = null;
-        State.monthWeekCache = {};
-        State.monthIsFte     = {};
+        State.editIndex        = null;
+        State.editDbRampData   = null;
+        State.editDbLobIdx     = null;
+        State.editStagingLobIdx = null;
+        State.monthWeekCache   = {};
+        State.monthIsFte       = {};
         setModalMode('add');
 
         const lobSel = $("#rc-modal-lob");
@@ -721,19 +753,10 @@
     }
 
     function recomputeModalCapacity() {
-        let cph, shrinkage, wh;
-        if (State.modalMode === 'edit-db') {
-            const ramp = State.editDbRampData || {};
-            cph       = ramp.target_cph || 0;
-            shrinkage = getEffectiveShrinkage(ramp);
-            wh        = getEffectiveWorkHours(ramp);
-        } else {
-            const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
-            const lob    = isNaN(lobIdx) ? null : State.lobs[lobIdx];
-            cph       = lob ? lob.target_cph : 0;
-            shrinkage = getEffectiveShrinkage(lob);
-            wh        = getEffectiveWorkHours(lob);
-        }
+        const lob = getActiveLobOrRamp();
+        const cph       = lob ? lob.target_cph || 0 : 0;
+        const shrinkage = getEffectiveShrinkage(lob);
+        const wh        = getEffectiveWorkHours(lob);
 
         let totalCap = 0, peakEmp = 0;
         document.querySelectorAll("#rc-week-tbody tr").forEach(row => {
@@ -753,19 +776,10 @@
     }
 
     function collectModalWeeks(monthKey) {
-        let cph, shrinkage, wh;
-        if (State.modalMode === 'edit-db') {
-            const ramp = State.editDbRampData || {};
-            cph       = ramp.target_cph || 0;
-            shrinkage = getEffectiveShrinkage(ramp);
-            wh        = getEffectiveWorkHours(ramp);
-        } else {
-            const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
-            const lob    = isNaN(lobIdx) ? null : State.lobs[lobIdx];
-            cph       = lob ? lob.target_cph : 0;
-            shrinkage = getEffectiveShrinkage(lob);
-            wh        = getEffectiveWorkHours(lob);
-        }
+        const lob = getActiveLobOrRamp();
+        const cph       = lob ? lob.target_cph || 0 : 0;
+        const shrinkage = getEffectiveShrinkage(lob);
+        const wh        = getEffectiveWorkHours(lob);
 
         const weeks = [];
         document.querySelectorAll("#rc-week-tbody tr").forEach(row => {
@@ -808,10 +822,10 @@
 
     // ── Multi-month staging save ─────────────────────────────────────────
     function saveStagingRamp() {
-        const lobIdx   = parseInt(document.getElementById("rc-modal-lob").value);
+        const lob      = getActiveLobOrRamp();
         const rampName = document.getElementById("rc-modal-ramp-name").value.trim();
 
-        if (isNaN(lobIdx) || !rampName) {
+        if (!lob || !rampName) {
             showToast("Please fill in all required fields.", "warning");
             return false;
         }
@@ -819,7 +833,6 @@
         // Flush current month's inputs into cache
         saveCurrentMonthToCache(State.modalActiveMonthKey);
 
-        const lob = State.lobs[lobIdx];
         const monthsToStage = Object.keys(State.monthWeekCache);
 
         if (!monthsToStage.length) {
@@ -981,37 +994,29 @@
         State.editDbLobIdx   = null;
         State.monthWeekCache = {};
         State.monthIsFte     = {};
-        setModalMode('edit-staging');
 
-        const row    = State.stagingRows[idx];
-        const lobSel = $("#rc-modal-lob");
-        if (lobSel.data("select2")) lobSel.select2("destroy");
-        lobSel.empty().append(`<option value="">-- Select LOB --</option>`);
-        State.lobs.forEach((lob, i) => {
-            const opt = new Option(lobLabel(lob), i);
-            if (lob.forecast_id == row.forecast_id && lob.main_lob === row.main_lob) opt.selected = true;
-            lobSel.append(opt);
-        });
-        lobSel.select2({ dropdownParent: $("#rc-ramp-modal"), theme: "bootstrap-5" });
-
-        lobSel.off("change.lobinfo").on("change.lobinfo", function () {
-            const idx2 = parseInt($(this).val());
-            updateLobInfoCard(isNaN(idx2) ? null : State.lobs[idx2]);
-            State.monthWeekCache = {};
-            State.monthIsFte     = {};
-            updateMonthDropdownIndicators();
-            recomputeModalCapacity();
-        });
+        const row = State.stagingRows[idx];
         const curLobIdx = State.lobs.findIndex(
             l => l.forecast_id == row.forecast_id && l.main_lob === row.main_lob);
-        State.modalActiveMonthKey = row.month_key;
-        updateLobInfoCard(curLobIdx >= 0 ? State.lobs[curLobIdx] : null);
+        State.editStagingLobIdx = curLobIdx;
+
+        // LOB / Month / Ramp Name are locked while editing an already-staged
+        // row — only week-level fields (working days, ramp %, employees) may
+        // change. Destroy Select2 BEFORE setModalMode hides the select.
+        const lobSel = $("#rc-modal-lob");
+        if (lobSel.data("select2")) lobSel.select2("destroy");
+        lobSel.empty();   // mode-aware reads use State.editStagingLobIdx, not this select
 
         const mSel = document.getElementById("rc-modal-month");
-        mSel.innerHTML = Object.entries(State.months)
-            .map(([k, v]) => `<option value="${k}" ${k === row.month_key ? "selected" : ""}>${v}</option>`).join("");
+        mSel.innerHTML = `<option value="${row.month_key}" selected>${State.months[row.month_key] || row.month_key}</option>`;
 
         document.getElementById("rc-modal-ramp-name").value = row.ramp_name || "Default";
+
+        setModalMode('edit-staging');
+        populateLobDisplay(row);
+        populateMonthDisplay(row.month_key);
+        State.modalActiveMonthKey = row.month_key;
+        updateLobInfoCard(curLobIdx >= 0 ? State.lobs[curLobIdx] : null);
 
         renderWeekInputs(row.month_key, row.weeks);
         getRampModal().show();
@@ -1046,6 +1051,7 @@
         State.editDbLobIdx   = State.lobs.findIndex(
             l => l.forecast_id == ramp.forecast_id && l.main_lob === ramp.main_lob);
         State.editIndex = null;
+        State.editStagingLobIdx = null;
         State.monthWeekCache = {};
         State.monthIsFte     = {};
 
@@ -1228,10 +1234,13 @@
                 });
             }
 
-            // Reload DB ramps
-            const rampsData = await apiPost(URLS.loadRamps, {
-                year: parseInt(State.reportYear), month_name: State.reportMonth,
-            });
+            // Reload DB ramps + LOB data (forecast/capacity) so both the DB Ramps
+            // tab and the next-opened Add/Edit modal's info card reflect what was
+            // just applied, instead of stale pre-apply values.
+            const { initData, rampsData } = await fetchReportData(State.reportYear, State.reportMonth);
+            if (initData.success) {
+                State.lobs = initData.lobs || State.lobs;
+            }
             State.dbRamps = rampsData.ramps || [];
 
             // Clear staging
@@ -1338,7 +1347,9 @@
 
         // Modal month change — save current month to cache, then switch
         document.getElementById("rc-modal-month").addEventListener("change", e => {
-            if (State.modalMode === 'edit-db') return;
+            // Month is locked (select hidden) in edit-db and edit-staging modes —
+            // this only ever fires for "add" mode's live, interactive select.
+            if (State.modalMode === 'edit-db' || State.modalMode === 'edit-staging') return;
             saveCurrentMonthToCache(State.modalActiveMonthKey);
             State.modalActiveMonthKey = e.target.value;
             renderWeekInputs(e.target.value, null);
@@ -1373,6 +1384,7 @@
             State.editIndex          = null;
             State.editDbRampData     = null;
             State.editDbLobIdx       = null;
+            State.editStagingLobIdx  = null;
             State.monthWeekCache     = {};
             State.monthIsFte         = {};
             State.modalActiveMonthKey = null;
