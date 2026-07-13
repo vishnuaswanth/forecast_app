@@ -155,6 +155,7 @@ def get_campaign_init_data(year: int, month_name: str) -> dict:
             "success": True,
             "lobs": [{forecast_id, main_lob, state, case_type, target_cph}],
             "months": {"2025-04": "Apr-25"},
+            "months_full": {"2025-04": "April 2025"},
             "month_weeks": {"2025-04": [...]},
             "report_label": "January 2025",
             "work_hours": 8.0,
@@ -180,12 +181,15 @@ def get_campaign_init_data(year: int, month_name: str) -> dict:
     # each record's per-month forecast/capacity from label-keyed to "YYYY-MM"-keyed)
     months_raw = fd.get("months", {})
     months: dict = {}
+    months_full: dict = {}
     for _key, label in months_raw.items():
         try:
             abbr, yr_short = label.split("-")
             mo = list(calendar.month_abbr).index(abbr)
             yr = 2000 + int(yr_short)
-            months[f"{yr:04d}-{mo:02d}"] = label
+            month_key = f"{yr:04d}-{mo:02d}"
+            months[month_key] = label
+            months_full[month_key] = f"{calendar.month_name[mo]} {yr}"
         except Exception:
             pass
 
@@ -239,6 +243,7 @@ def get_campaign_init_data(year: int, month_name: str) -> dict:
         "success":           True,
         "lobs":              lobs,
         "months":            months,
+        "months_full":       months_full,
         "month_weeks":       month_weeks,
         "report_label":      f"{month_name} {year}",
         "shrinkage_config":  shrinkage_config,

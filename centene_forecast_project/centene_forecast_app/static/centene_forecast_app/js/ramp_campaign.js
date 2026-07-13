@@ -12,6 +12,7 @@
         reportLabel:      "",
         lobs:             [],     // [{forecast_id, main_lob, state, case_type, target_cph, locality}]
         months:           {},     // {"2025-04": "Apr-25"}
+        monthsFull:       {},     // {"2025-04": "April 2025"} — server-computed full labels
         monthWeeks:       {},     // {"2025-04": [{label, startDate, endDate, workingDays}]}
         shrinkageConfig:  { Domestic: 0.10, Global: 0.15 },
         workHoursConfig:  { Domestic: 9.0,  Global: 9.0  },
@@ -49,6 +50,21 @@
 
     function fmtNum(n) {
         return n == null ? "–" : Number(n).toLocaleString();
+    }
+
+    const MONTH_NAMES_FULL = ["January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"];
+
+    // "2026-06" -> "June 2026"; falls back to State.months label then raw key.
+    // Uses a fixed name array rather than toLocaleString to stay locale-safe.
+    function formatMonthLong(monthKey) {
+        if (State.monthsFull[monthKey]) return State.monthsFull[monthKey];
+        // Fallback for a monthKey not present in the current report's months_full
+        // (e.g. a stale/cross-report DB ramp) — derive it locally.
+        const [y, m] = (monthKey || "").split("-");
+        const idx = parseInt(m, 10) - 1;
+        if (!y || isNaN(idx) || idx < 0 || idx > 11) return State.months[monthKey] || monthKey || "";
+        return `${MONTH_NAMES_FULL[idx]} ${y}`;
     }
 
     function fmtDelta(n) {
@@ -219,6 +235,7 @@
 
             State.lobs             = initData.lobs || [];
             State.months           = initData.months || {};
+            State.monthsFull       = initData.months_full || {};
             State.monthWeeks       = initData.month_weeks || {};
             State.shrinkageConfig  = initData.shrinkage_config  || { Domestic: 0.10, Global: 0.15 };
             State.workHoursConfig  = initData.work_hours_config || { Domestic: 9.0,  Global: 9.0  };
@@ -435,11 +452,15 @@
             State.months[monthKey] || monthKey;
     }
 
-    function updateLobInfoCard(lobOrRamp) {
+    // skipBreakdownRefresh: pass true when the caller already refreshed the
+    // capacity breakdown against current state (e.g. right after
+    // restoreCacheToWeekInputs()) and nothing here would change its result —
+    // avoids a redundant re-scan of stagingRows/week inputs.
+    function updateLobInfoCard(lobOrRamp, skipBreakdownRefresh) {
         const card = document.getElementById("rc-lob-info-card");
         if (!lobOrRamp) {
             card.classList.add("d-none");
-            refreshCapacityBreakdown();
+            if (!skipBreakdownRefresh) refreshCapacityBreakdown();
             return;
         }
         const locality  = lobOrRamp.locality || "Domestic";
@@ -458,11 +479,14 @@
             : (State.editDbLobIdx >= 0 ? State.lobs[State.editDbLobIdx] : null);
         const monthKey = State.modalActiveMonthKey;
         const mv = (mvSource && monthKey && mvSource.month_values && mvSource.month_values[monthKey]) || {};
+        const monthLabel = formatMonthLong(monthKey);
+        document.getElementById("rc-info-forecast-label").textContent    = `Forecast (${monthLabel})`;
+        document.getElementById("rc-info-current-cap-label").textContent = `Current Capacity (${monthLabel})`;
         document.getElementById("rc-info-forecast").textContent    = fmtNum(Math.round(mv.forecast || 0));
         document.getElementById("rc-info-current-cap").textContent = fmtNum(Math.round(mv.capacity || 0));
 
         card.classList.remove("d-none");
-        refreshCapacityBreakdown();
+        if (!skipBreakdownRefresh) refreshCapacityBreakdown();
     }
 
     // Live "projected capacity" breakdown for the modal: base DB capacity plus
@@ -1319,6 +1343,11 @@
             State.modalActiveMonthKey = e.target.value;
             renderWeekInputs(e.target.value, null);
             restoreCacheToWeekInputs(e.target.value);
+            // Refresh LOB info card (forecast/capacity numbers + month labels) for
+            // the new month. restoreCacheToWeekInputs() above already refreshed the
+            // capacity breakdown against current state, so skip doing it a 3rd time.
+            const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
+            updateLobInfoCard(isNaN(lobIdx) ? null : State.lobs[lobIdx], true);
         });
 
         // Modal save — dispatcher routes based on State.modalMode
