@@ -25,6 +25,7 @@
         editDbLobIdx:     null,   // State.lobs index in DB-edit (-1 = not found in current lobs)
         // Multi-month cache (add mode)
         monthWeekCache:      {},   // { "2025-04": [{rampPct, rampEmployees, workingDays}, ...] }
+        monthIsFte:          {},   // { "2025-04": true|false } — per-month "Is FTE" toggle
         modalActiveMonthKey: null, // month key currently rendered in the week table
         // Table filters
         filters: { staging: "", db: "" },
@@ -61,6 +62,43 @@
         const map = { add: ["rc-badge-add", "add"], edit: ["rc-badge-edit", "edit"], delete: ["rc-badge-delete", "delete"] };
         const [cls, label] = map[action] || ["bg-secondary", action || "–"];
         return `<span class="badge ${cls}">${label}</span>`;
+    }
+
+    // Returns the staged action ("edit" | "delete") for a real DB ramp, or null.
+    // "add" rows are excluded — they always carry a freshly-generated unique
+    // ramp_name (via buildUniqueRampName) that can never collide with a DB row.
+    function findStagedAction(forecastId, monthKey, rampName) {
+        const match = State.stagingRows.find(row =>
+            row.action !== "add" &&
+            row.forecast_id == forecastId &&   // loose equality: matches editStaging/editDbRamp convention
+            row.month_key === monthKey &&
+            row.ramp_name === rampName
+        );
+        return match ? match.action : null;
+    }
+
+    // Sums the net capacity delta all OTHER staged rows contribute to a given
+    // (forecast_id, month_key), mirroring bulk_apply_ramp/bulk_preview_ramp:
+    //   add    -> +sum(weeks.capacity)                (nothing to net out yet)
+    //   delete -> -total_capacity                      (old capacity being removed)
+    //   edit   -> +sum(weeks.capacity) - old_capacity   (base already counts old_capacity)
+    // excludeIdx: staging row index to skip (the row currently open live in the
+    // modal, so it isn't double-counted once it's actually pushed on save).
+    function computeStagedDelta(forecastId, monthKey, excludeIdx) {
+        let delta = 0;
+        State.stagingRows.forEach((row, idx) => {
+            if (idx === excludeIdx) return;
+            if (row.forecast_id != forecastId || row.month_key !== monthKey) return;
+            if (row.action === "add") {
+                delta += (row.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
+            } else if (row.action === "delete") {
+                delta -= (row.total_capacity || 0);
+            } else if (row.action === "edit") {
+                const newCap = (row.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
+                delta += newCap - (row.old_capacity || 0);
+            }
+        });
+        return delta;
     }
 
     function lobLabel(lob) {
@@ -105,6 +143,11 @@
 
     // ── Bootstrap modal handles ──────────────────────────────────────────
     let rampModal = null, previewModal = null;
+    // Raw (unformatted) live modal capacity total — refreshCapacityBreakdown()
+    // reads this directly instead of re-parsing fmtNum()'s locale-formatted
+    // DOM text, which silently mis-parses on locales using "." as a thousands
+    // separator (e.g. "1.234" would otherwise be read back as 1.234, not 1234).
+    let modalLiveTotalCap = 0;
 
     function getRampModal() {
         if (!rampModal) rampModal = new bootstrap.Modal(document.getElementById("rc-ramp-modal"));
@@ -255,6 +298,11 @@
                 ? (row.total_capacity || 0)
                 : (row.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
             const disabled = State.stagingLocked ? "disabled" : "";
+            // Delete-staged rows carry no editable week data (weeks: []) — editing
+            // one would silently convert the deletion into a zero-value edit
+            // instead of actually removing the ramp. Remove-and-re-add instead.
+            const editBtn = row.action === "delete" ? "" :
+                `<button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editStaging(${idx})" ${disabled}>Edit</button>`;
             return `<tr>
                 <td class="rc-lob-cell">
                     <div class="rc-lob-main">${row.main_lob || "–"}</div>
@@ -267,7 +315,7 @@
                 <td class="text-end">${fmtNum(Math.round(totalCap))}</td>
                 <td>${actionBadge(row.action)}</td>
                 <td class="text-nowrap">
-                    <button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editStaging(${idx})" ${disabled}>Edit</button>
+                    ${editBtn}
                     <button class="btn btn-xs btn-outline-danger" onclick="RampCampaign.removeStaging(${idx})" ${disabled}>Remove</button>
                 </td>
             </tr>`;
@@ -325,7 +373,15 @@
         tbody.innerHTML = filtered.map(({ r, realIdx }) => {
             const totalCap = (r.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
             const peakEmp  = Math.max(...(r.weeks || []).map(w => w.employee_count || 0), 0);
-            return `<tr>
+
+            const stagedAction = findStagedAction(r.forecast_id, r.month_key, r.ramp_name);
+            const rowClass     = stagedAction ? ' class="rc-staged-row"' : '';
+            const actionsCell  = stagedAction
+                ? `<span class="badge rc-badge-${stagedAction}">Staged for ${stagedAction === "edit" ? "Edit" : "Delete"}</span>`
+                : `<button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editDbRamp(${realIdx}, '${monthKey}')">Edit</button>
+                   <button class="btn btn-xs btn-outline-danger" onclick="RampCampaign.deleteDbRamp(${realIdx}, '${monthKey}')">Delete</button>`;
+
+            return `<tr${rowClass}>
                 <td class="rc-lob-cell">
                     <div class="rc-lob-main">${r.main_lob || "–"}</div>
                     <div class="rc-lob-sub">${[r.state, r.case_type].filter(Boolean).join(" / ") || "–"}</div>
@@ -335,10 +391,7 @@
                 <td class="text-end">${(r.weeks || []).length}</td>
                 <td class="text-end">${fmtNum(peakEmp)}</td>
                 <td class="text-end">${fmtNum(Math.round(totalCap))}</td>
-                <td class="text-nowrap">
-                    <button class="btn btn-xs btn-outline-primary me-1" onclick="RampCampaign.editDbRamp(${realIdx}, '${monthKey}')">Edit</button>
-                    <button class="btn btn-xs btn-outline-danger" onclick="RampCampaign.deleteDbRamp(${realIdx}, '${monthKey}')">Delete</button>
-                </td>
+                <td class="text-nowrap">${actionsCell}</td>
             </tr>`;
         }).join("");
     }
@@ -384,7 +437,11 @@
 
     function updateLobInfoCard(lobOrRamp) {
         const card = document.getElementById("rc-lob-info-card");
-        if (!lobOrRamp) { card.classList.add("d-none"); return; }
+        if (!lobOrRamp) {
+            card.classList.add("d-none");
+            refreshCapacityBreakdown();
+            return;
+        }
         const locality  = lobOrRamp.locality || "Domestic";
         const shrinkage = getEffectiveShrinkage(lobOrRamp);
         const wh        = getEffectiveWorkHours(lobOrRamp);
@@ -393,7 +450,75 @@
         document.getElementById("rc-info-shrinkage").textContent = `${(shrinkage * 100).toFixed(0)}%`;
         document.getElementById("rc-info-cph").textContent       = (lobOrRamp.target_cph || 0).toFixed(1);
         document.getElementById("rc-info-workhours").textContent = `${wh}h`;
+
+        // Forecast / Current Capacity — sourced from month_values (present directly
+        // on State.lobs[] entries; DB-ramp objects don't carry it, so in edit-db
+        // mode resolve via State.editDbLobIdx instead).
+        const mvSource = lobOrRamp.month_values ? lobOrRamp
+            : (State.editDbLobIdx >= 0 ? State.lobs[State.editDbLobIdx] : null);
+        const monthKey = State.modalActiveMonthKey;
+        const mv = (mvSource && monthKey && mvSource.month_values && mvSource.month_values[monthKey]) || {};
+        document.getElementById("rc-info-forecast").textContent    = fmtNum(Math.round(mv.forecast || 0));
+        document.getElementById("rc-info-current-cap").textContent = fmtNum(Math.round(mv.capacity || 0));
+
         card.classList.remove("d-none");
+        refreshCapacityBreakdown();
+    }
+
+    // Live "projected capacity" breakdown for the modal: base DB capacity plus
+    // the net capacity delta from every staged row for this (forecast_id,
+    // month_key), plus the live in-progress modal row itself. Mirrors
+    // bulk_apply_ramp/bulk_preview_ramp's new-minus-old delta math exactly so
+    // this can't misrepresent what applying the campaign will actually do.
+    function refreshCapacityBreakdown() {
+        const el = document.getElementById("rc-cap-breakdown");
+        if (!el) return;
+        let forecastId, monthKey, mvSource, excludeIdx = null, ownOldCapacity = 0;
+
+        if (State.modalMode === 'edit-db') {
+            const ramp = State.editDbRampData;
+            if (!ramp) { el.classList.add("d-none"); return; }
+            forecastId = ramp.forecast_id;
+            monthKey   = State.modalActiveMonthKey;
+            mvSource   = (State.editDbLobIdx >= 0) ? State.lobs[State.editDbLobIdx] : null;
+            ownOldCapacity = (ramp.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
+        } else {
+            const lobIdx = parseInt(document.getElementById("rc-modal-lob").value);
+            if (isNaN(lobIdx)) { el.classList.add("d-none"); return; }
+            mvSource   = State.lobs[lobIdx];
+            forecastId = mvSource.forecast_id;
+            monthKey   = State.modalActiveMonthKey;
+            if (State.modalMode === 'edit-staging' && State.editIndex !== null) {
+                excludeIdx = State.editIndex;
+                const editingRow = State.stagingRows[State.editIndex];
+                // Only net out the old DB baseline if the row being replaced IS the
+                // active month AND was itself a real edit — otherwise (a different,
+                // freshly-added month in a multi-month session) there's no baseline.
+                if (editingRow && editingRow.action === 'edit' && editingRow.month_key === monthKey) {
+                    ownOldCapacity = editingRow.old_capacity || 0;
+                }
+            }
+        }
+
+        if (!monthKey || !mvSource) { el.classList.add("d-none"); return; }
+
+        const mv      = (mvSource.month_values && mvSource.month_values[monthKey]) || {};
+        const baseCap = mv.capacity || 0;
+
+        const otherDelta = computeStagedDelta(forecastId, monthKey, excludeIdx);
+
+        const liveDelta = modalLiveTotalCap - ownOldCapacity;
+
+        const totalDelta = otherDelta + liveDelta;
+        const projected  = baseCap + totalDelta;
+
+        document.getElementById("rc-breakdown-projected").textContent = fmtNum(Math.round(projected));
+        document.getElementById("rc-breakdown-base").textContent      = fmtNum(Math.round(baseCap));
+        const deltaSpan = document.getElementById("rc-breakdown-delta");
+        deltaSpan.textContent = `${totalDelta >= 0 ? "+" : ""}${fmtNum(Math.round(totalDelta))}`;
+        deltaSpan.className   = totalDelta >= 0 ? "rc-delta-pos" : "rc-delta-neg";
+
+        el.classList.remove("d-none");
     }
 
     // ── Multi-month cache helpers ─────────────────────────────────────────
@@ -423,6 +548,7 @@
             if (c.workingDays   !== "") tr.querySelector(".rc-working-days").value = c.workingDays;
         });
         recomputeModalCapacity();
+        refreshCapacityBreakdown();
     }
 
     function updateMonthDropdownIndicators() {
@@ -443,6 +569,7 @@
         State.editDbRampData = null;
         State.editDbLobIdx   = null;
         State.monthWeekCache = {};
+        State.monthIsFte     = {};
         setModalMode('add');
 
         const lobSel = $("#rc-modal-lob");
@@ -461,6 +588,7 @@
             // context; clear them so a LOB switch can't silently attribute
             // entered ramp %/employee values to the wrong LOB.
             State.monthWeekCache = {};
+            State.monthIsFte     = {};
             updateMonthDropdownIndicators();
             recomputeModalCapacity();
         });
@@ -498,7 +626,7 @@
                 <span class="text-muted">All Ramp %</span>
                 <input type="number" id="rc-bulk-ramp-pct" class="form-control form-control-sm"
                        min="0" max="100" step="1" style="width:65px" placeholder="0">
-                <button class="btn btn-xs btn-outline-secondary"
+                <button class="btn btn-xs btn-outline-secondary" id="rc-bulk-ramp-pct-btn"
                         onclick="RampCampaign.applyBulkRampPct()">Apply</button>
               </div>
               <div class="rc-bulk-group">
@@ -507,6 +635,10 @@
                        min="0" step="1" style="width:65px" placeholder="0">
                 <button class="btn btn-xs btn-outline-secondary"
                         onclick="RampCampaign.applyBulkEmployees()">Apply</button>
+              </div>
+              <div class="rc-bulk-group">
+                <input type="checkbox" id="rc-is-fte-check" class="form-check-input">
+                <label for="rc-is-fte-check" class="rc-bulk-label mb-0">Is FTE</label>
               </div>
             </div>`;
 
@@ -534,10 +666,34 @@
                 </tbody>
             </table>`;
 
+        // Default "Is FTE" per month: explicit per-month state wins; otherwise infer
+        // from existingWeeks (all ramp% === 100 => default checked); else unchecked.
+        let isFteDefault;
+        if (Object.prototype.hasOwnProperty.call(State.monthIsFte, monthKey)) {
+            isFteDefault = State.monthIsFte[monthKey];
+        } else if (existingWeeks && existingWeeks.length) {
+            isFteDefault = existingWeeks.every(ew => (ew.rampPercent ?? ew.ramp_percent) === 100);
+        } else {
+            isFteDefault = false;
+        }
+        State.monthIsFte[monthKey] = isFteDefault;
+
+        const fteCheck = document.getElementById("rc-is-fte-check");
+        fteCheck.checked = isFteDefault;
+        applyIsFteState(isFteDefault);
+
+        fteCheck.addEventListener("change", () => {
+            State.monthIsFte[monthKey] = fteCheck.checked;
+            applyIsFteState(fteCheck.checked);
+            recomputeModalCapacity();
+            refreshCapacityBreakdown();
+        });
+
         container.querySelectorAll(".rc-emp, .rc-ramp-pct, .rc-working-days").forEach(inp => {
-            inp.addEventListener("input", recomputeModalCapacity);
+            inp.addEventListener("input", () => { recomputeModalCapacity(); refreshCapacityBreakdown(); });
         });
         recomputeModalCapacity();
+        refreshCapacityBreakdown();
     }
 
     function recomputeModalCapacity() {
@@ -569,6 +725,7 @@
 
         document.getElementById("rc-modal-total-cap").textContent = fmtNum(totalCap);
         document.getElementById("rc-modal-peak-emp").textContent  = fmtNum(peakEmp);
+        modalLiveTotalCap = totalCap;
     }
 
     function collectModalWeeks(monthKey) {
@@ -613,9 +770,16 @@
     }
 
     // Dispatcher: routes save button to correct handler based on modal mode
+    // Guards against duplicate staged rows from a rapid double-click: the save
+    // button is disabled synchronously before either handler runs, and only
+    // re-enabled if validation rejects the save (on success the modal closes,
+    // and the various open* functions/hidden.bs.modal handler re-enable it).
     function saveRampFromModal() {
-        if (State.modalMode === 'edit-db') saveDbRampEdit();
-        else saveStagingRamp();
+        const saveBtn = document.getElementById("rc-modal-save-btn");
+        if (saveBtn.disabled) return;
+        saveBtn.disabled = true;
+        const ok = (State.modalMode === 'edit-db') ? saveDbRampEdit() : saveStagingRamp();
+        if (!ok) saveBtn.disabled = false;
     }
 
     // ── Multi-month staging save ─────────────────────────────────────────
@@ -625,7 +789,7 @@
 
         if (isNaN(lobIdx) || !rampName) {
             showToast("Please fill in all required fields.", "warning");
-            return;
+            return false;
         }
 
         // Flush current month's inputs into cache
@@ -636,7 +800,7 @@
 
         if (!monthsToStage.length) {
             showToast("No week data entered.", "warning");
-            return;
+            return false;
         }
 
         // When editing an already-staged row, its original month/name must be
@@ -685,6 +849,17 @@
 
             const isOriginalMonth = mk === originalMonthKey;
             const uniqueName = isOriginalMonth ? originalRampName : buildUniqueRampName(rampName, mk);
+            // Preserve the row's actual prior action instead of blindly forcing
+            // "edit" — re-saving an already-staged "add" (never applied to the
+            // DB) must stay "add", or the staging table/preview would show a
+            // misleading "edit" badge for a ramp with no real DB baseline.
+            const originalAction = (isOriginalMonth && editingRow) ? editingRow.action : null;
+            // Carry forward the DB baseline being edited (not recomputed — this
+            // row's own weeks already reflect the pending new values, not the
+            // true DB baseline) so capacity-breakdown delta math nets correctly.
+            const carriedOldCapacity = (originalAction === "edit")
+                ? (editingRow.old_capacity || 0)
+                : 0;
 
             newRows.push({
                 row: {
@@ -693,12 +868,15 @@
                     state:              lob.state,
                     case_type:          lob.case_type,
                     target_cph:         lob.target_cph,
+                    work_hours:         wh,
+                    shrinkage_pct:      Math.round(sh * 10000) / 100,
                     month_key:          mk,
                     month_label:        State.months[mk] || mk,
                     ramp_name:          uniqueName,
                     weeks,
                     totalRampEmployees: weeks.reduce((s, w) => s + w.rampEmployees, 0),
-                    action:             isOriginalMonth ? "edit" : "add",
+                    old_capacity:       isOriginalMonth ? carriedOldCapacity : 0,
+                    action:             isOriginalMonth ? (originalAction || "add") : "add",
                 },
                 isOriginalMonth,
             });
@@ -706,7 +884,7 @@
 
         if (!newRows.length) {
             showToast("No valid week definitions found.", "warning");
-            return;
+            return false;
         }
 
         // Apply: replace the originally-edited row in place, push all other months as new
@@ -721,45 +899,64 @@
         getRampModal().hide();
         renderStagingTable();
         updateBadges();
+        if (State.dbActiveMonthKey) renderDbRampsForMonth(State.dbActiveMonthKey);
         switchTab("staging");
+        return true;
     }
 
     function saveDbRampEdit() {
         const ramp = State.editDbRampData;
-        if (!ramp) return;
+        if (!ramp) return false;
         const monthKey = document.getElementById("rc-modal-month").value;
         const weeks    = collectModalWeeks(monthKey);
         if (!weeks.length) {
             showToast("No weeks data available.", "warning");
-            return;
+            return false;
         }
         const totalEmp = weeks.reduce((s, w) => s + (w.rampEmployees || 0), 0);
+        const sh = getEffectiveShrinkage(ramp);
+        const wh = getEffectiveWorkHours(ramp);
+        const oldCapacity = (ramp.weeks || []).reduce((s, w) => s + (w.capacity || 0), 0);
         State.stagingRows.push({
             forecast_id:        ramp.forecast_id,
             main_lob:           ramp.main_lob,
             state:              ramp.state,
             case_type:          ramp.case_type,
             target_cph:         ramp.target_cph || 0,
+            work_hours:         wh,
+            shrinkage_pct:      Math.round(sh * 10000) / 100,
             month_key:          monthKey,
             month_label:        State.months[monthKey] || monthKey,
             ramp_name:          ramp.ramp_name,
             weeks,
             totalRampEmployees: totalEmp,
+            old_capacity:       oldCapacity,
             action:             "edit",
         });
         getRampModal().hide();
         renderStagingTable();
         updateBadges();
+        if (State.dbActiveMonthKey) renderDbRampsForMonth(State.dbActiveMonthKey);
         switchTab("staging");
+        return true;
     }
 
     // ── Edit staging row ─────────────────────────────────────────────────
     function editStaging(idx) {
         if (State.stagingLocked) return;
+        // Defense-in-depth: the Edit button is hidden for delete-staged rows
+        // (renderStagingTable), but guard here too in case this is ever
+        // reached another way — editing a delete would silently zero it out
+        // instead of removing the ramp.
+        if (State.stagingRows[idx] && State.stagingRows[idx].action === "delete") {
+            showToast("Delete-staged ramps can't be edited — remove and re-add if needed.", "warning");
+            return;
+        }
         State.editIndex      = idx;
         State.editDbRampData = null;
         State.editDbLobIdx   = null;
         State.monthWeekCache = {};
+        State.monthIsFte     = {};
         setModalMode('edit-staging');
 
         const row    = State.stagingRows[idx];
@@ -777,11 +974,13 @@
             const idx2 = parseInt($(this).val());
             updateLobInfoCard(isNaN(idx2) ? null : State.lobs[idx2]);
             State.monthWeekCache = {};
+            State.monthIsFte     = {};
             updateMonthDropdownIndicators();
             recomputeModalCapacity();
         });
         const curLobIdx = State.lobs.findIndex(
             l => l.forecast_id == row.forecast_id && l.main_lob === row.main_lob);
+        State.modalActiveMonthKey = row.month_key;
         updateLobInfoCard(curLobIdx >= 0 ? State.lobs[curLobIdx] : null);
 
         const mSel = document.getElementById("rc-modal-month");
@@ -790,7 +989,6 @@
 
         document.getElementById("rc-modal-ramp-name").value = row.ramp_name || "Default";
 
-        State.modalActiveMonthKey = row.month_key;
         renderWeekInputs(row.month_key, row.weeks);
         getRampModal().show();
     }
@@ -809,6 +1007,7 @@
                 State.stagingRows.splice(idx, 1);
                 renderStagingTable();
                 updateBadges();
+                if (State.dbActiveMonthKey) renderDbRampsForMonth(State.dbActiveMonthKey);
             }
         });
     }
@@ -824,6 +1023,7 @@
             l => l.forecast_id == ramp.forecast_id && l.main_lob === ramp.main_lob);
         State.editIndex = null;
         State.monthWeekCache = {};
+        State.monthIsFte     = {};
 
         // Destroy Select2 BEFORE setModalMode hides the select
         const lobSel = $("#rc-modal-lob");
@@ -842,10 +1042,10 @@
         setModalMode('edit-db');
         populateLobDisplay(ramp);
         populateMonthDisplay(monthKey);
+        State.modalActiveMonthKey = monthKey;
         // ramp.locality is now present from load_ramps enrichment
         updateLobInfoCard(ramp);
 
-        State.modalActiveMonthKey = monthKey;
         renderWeekInputs(monthKey, ramp.weeks);
         getRampModal().show();
     }
@@ -874,6 +1074,8 @@
                     state:          ramp.state,
                     case_type:      ramp.case_type,
                     target_cph:     ramp.target_cph || 0,
+                    work_hours:     ramp.work_hours,
+                    shrinkage_pct:  ramp.shrinkage_pct,
                     month_key:      monthKey,
                     month_label:    State.months[monthKey] || monthKey,
                     ramp_name:      ramp.ramp_name,
@@ -884,17 +1086,36 @@
                 });
                 renderStagingTable();
                 updateBadges();
+                if (State.dbActiveMonthKey) renderDbRampsForMonth(State.dbActiveMonthKey);
                 switchTab("staging");
             }
         });
     }
 
     // ── Bulk helpers ─────────────────────────────────────────────────────
+    // Forces/relaxes 100% ramp on all week rows for the "Is FTE" checkbox.
+    function applyIsFteState(isFte) {
+        document.querySelectorAll("#rc-week-tbody .rc-ramp-pct").forEach(inp => {
+            if (isFte) {
+                inp.value = "100";
+                inp.setAttribute("disabled", "disabled");
+            } else {
+                inp.removeAttribute("disabled");
+            }
+        });
+        const bulkPctInput = document.getElementById("rc-bulk-ramp-pct");
+        const bulkPctBtn   = document.getElementById("rc-bulk-ramp-pct-btn");
+        if (bulkPctInput) bulkPctInput.disabled = isFte;
+        if (bulkPctBtn)   bulkPctBtn.disabled   = isFte;
+    }
+
     function applyBulkRampPct() {
+        if (document.getElementById("rc-is-fte-check")?.checked) return;
         const val = document.getElementById("rc-bulk-ramp-pct")?.value;
         if (val === "" || val == null) return;
         document.querySelectorAll("#rc-week-tbody .rc-ramp-pct").forEach(i => { i.value = val; });
         recomputeModalCapacity();
+        refreshCapacityBreakdown();
     }
 
     function applyBulkEmployees() {
@@ -902,6 +1123,7 @@
         if (val === "" || val == null) return;
         document.querySelectorAll("#rc-week-tbody .rc-emp").forEach(i => { i.value = val; });
         recomputeModalCapacity();
+        refreshCapacityBreakdown();
     }
 
     // ── Preview flow ──────────────────────────────────────────────────────
@@ -1123,6 +1345,7 @@
             State.editDbRampData     = null;
             State.editDbLobIdx       = null;
             State.monthWeekCache     = {};
+            State.monthIsFte         = {};
             State.modalActiveMonthKey = null;
 
             document.getElementById("rc-modal-lob").classList.remove("d-none");
@@ -1135,7 +1358,10 @@
             rn.classList.remove("rc-readonly-field");
 
             document.getElementById("rc-lob-info-card").classList.add("d-none");
-            document.getElementById("rc-modal-save-btn").onclick = saveRampFromModal;
+            document.getElementById("rc-cap-breakdown").classList.add("d-none");
+            const saveBtn = document.getElementById("rc-modal-save-btn");
+            saveBtn.disabled = false;
+            saveBtn.onclick  = saveRampFromModal;
         });
     });
 

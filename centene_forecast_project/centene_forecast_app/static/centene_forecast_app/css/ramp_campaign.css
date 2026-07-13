@@ -66,7 +66,7 @@
 
 /* ── LOB info card ────────────────────────────────────────────── */
 .rc-lob-info-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; }
-.rc-lob-info-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.rc-lob-info-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 .rc-info-label    { display:block; font-size:.7rem; color:#718096; font-weight:500; margin-bottom:2px; }
 .rc-info-value    { font-size:.875rem; font-weight:600; color:#1a202c; }
 .rc-locality-badge { font-size:.72rem; font-weight:600; padding:2px 9px; border-radius:10px; display:inline-block; }
@@ -88,9 +88,18 @@
 .rc-formula-label { font-weight:600; color:#92400e; margin-right:8px; }
 .rc-formula-text  { color:#78350f; background:transparent; border:none; }
 
+/* ── Capacity breakdown ───────────────────────────────────────── */
+.rc-cap-breakdown { background:#f0fff4; border:1px solid #c6f6d5; border-radius:6px; padding:6px 14px; font-size:.82rem; }
+
 /* ── Preview delta colours ────────────────────────────────────── */
 .rc-delta-pos { color:#198754; font-weight:600; }
 .rc-delta-neg { color:#dc3545; font-weight:600; }
 
 /* ── Disabled/locked ──────────────────────────────────────────── */
 .rc-locked { opacity:.5; pointer-events:none; }
+
+/* ── Staged DB row (edit/delete pending) ─────────────────────────
+   Only the Actions cell's badge is inert here — no interactive
+   controls to block, so no pointer-events:none on the whole row. */
+.rc-staged-row { opacity:.6; }
+.rc-staged-row td { background:#f8fafc; }

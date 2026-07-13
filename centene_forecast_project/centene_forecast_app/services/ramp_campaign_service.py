@@ -131,8 +131,10 @@ def load_ramps(year: int, month_name: str) -> dict:
         locality   = locality_map.get(fid, "Domestic")
         sh         = shrinkage_cfg[locality]
         wh         = work_hours_cfg[locality]
-        r["target_cph"] = target_cph
-        r["locality"]   = locality
+        r["target_cph"]    = target_cph
+        r["locality"]      = locality
+        r["work_hours"]    = wh
+        r["shrinkage_pct"] = round(sh * 100, 2)
         for w in r.get("weeks", []):
             emp      = w.get("employee_count", 0) or 0
             wd       = w.get("working_days",   0) or 0
@@ -174,20 +176,8 @@ def get_campaign_init_data(year: int, month_name: str) -> dict:
     if not records:
         return {"success": False, "message": "No forecast data found for the selected report."}
 
-    # Build LOB list (includes locality for per-locality shrinkage/work_hours in frontend)
-    lobs = [
-        {
-            "forecast_id": rec["id"],
-            "main_lob":    rec.get("main_lob", ""),
-            "state":       rec.get("state", ""),
-            "case_type":   rec.get("case_type", ""),
-            "target_cph":  float(rec.get("target_cph", 0)),
-            "locality":    rec.get("locality", "Domestic"),
-        }
-        for rec in records
-    ]
-
-    # Build months dict from the response
+    # Build months dict from the response (needed first: lobs' month_values below re-keys
+    # each record's per-month forecast/capacity from label-keyed to "YYYY-MM"-keyed)
     months_raw = fd.get("months", {})
     months: dict = {}
     for _key, label in months_raw.items():
@@ -198,6 +188,27 @@ def get_campaign_init_data(year: int, month_name: str) -> dict:
             months[f"{yr:04d}-{mo:02d}"] = label
         except Exception:
             pass
+
+    # Build LOB list (includes locality for per-locality shrinkage/work_hours,
+    # and month_values for the modal's forecast/current-capacity display).
+    lobs = [
+        {
+            "forecast_id": rec["id"],
+            "main_lob":    rec.get("main_lob", ""),
+            "state":       rec.get("state", ""),
+            "case_type":   rec.get("case_type", ""),
+            "target_cph":  float(rec.get("target_cph", 0)),
+            "locality":    rec.get("locality", "Domestic"),
+            "month_values": {
+                month_key: {
+                    "forecast": float(rec.get("months", {}).get(label, {}).get("forecast", 0) or 0),
+                    "capacity": float(rec.get("months", {}).get(label, {}).get("capacity", 0) or 0),
+                }
+                for month_key, label in months.items()
+            },
+        }
+        for rec in records
+    ]
 
     # Calculate weeks per month
     month_weeks: dict = {}

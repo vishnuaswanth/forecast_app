@@ -192,6 +192,14 @@
               <span class="rc-info-label">Work Hours/Day</span>
               <span id="rc-info-workhours" class="rc-info-value"></span>
             </div>
+            <div>
+              <span class="rc-info-label">Forecast (Month)</span>
+              <span id="rc-info-forecast" class="rc-info-value"></span>
+            </div>
+            <div>
+              <span class="rc-info-label">Current Capacity (Month)</span>
+              <span id="rc-info-current-cap" class="rc-info-value"></span>
+            </div>
           </div>
         </div>
 
@@ -204,6 +212,17 @@
         <div class="rc-cap-summary mt-3">
           <span><strong>Total Capacity:</strong> <span id="rc-modal-total-cap">0</span></span>
           <span class="ms-4"><strong>Peak Employees:</strong> <span id="rc-modal-peak-emp">0</span></span>
+        </div>
+
+        <!-- Projected capacity breakdown: base DB capacity + net staged delta (incl. live modal row) -->
+        <div id="rc-cap-breakdown" class="rc-cap-breakdown mt-2 d-none">
+          <strong>Projected Capacity:</strong>
+          <span id="rc-breakdown-projected">0</span>
+          <span class="text-muted">=</span>
+          <span id="rc-breakdown-base">0</span>
+          <span class="text-muted">+</span>
+          <span id="rc-breakdown-delta">0</span>
+          <span class="text-muted">(staged)</span>
         </div>
 
         <!-- Capacity formula reference -->

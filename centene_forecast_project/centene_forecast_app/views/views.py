@@ -819,14 +819,14 @@ _RC_ACTION_LABEL = {"add": "added", "edit": "edit", "delete": "delete"}
 
 _RC_DB_HEADERS = [
     "Forecast ID", "Main LOB", "State", "Case Type",
-    "Forecast Month", "Ramp Name", "CPH",
+    "Forecast Month", "Ramp Name", "CPH", "Working Hours", "Shrinkage %",
     "Week Label", "Start Date", "End Date",
     "Working Days", "Ramp %", "Employees", "Week Capacity",
 ]
 
 _RC_UI_HEADERS = [
     "Forecast ID", "Main LOB", "State", "Case Type",
-    "Forecast Month", "Ramp Name", "CPH", "Actions Taken",
+    "Forecast Month", "Ramp Name", "CPH", "Working Hours", "Shrinkage %", "Actions Taken",
     "Week Label", "Start Date", "End Date",
     "Working Days", "Ramp %", "Employees", "Week Capacity",
 ]
@@ -954,6 +954,8 @@ def ramp_campaign_download_excel(request):
             r.get("month_label", ""),
             r.get("ramp_name", ""),
             r.get("target_cph", ""),
+            r.get("work_hours", ""),
+            r.get("shrinkage_pct", ""),
         ]
         if is_ui:
             base = base_db + [_RC_ACTION_LABEL.get(action, "")]
