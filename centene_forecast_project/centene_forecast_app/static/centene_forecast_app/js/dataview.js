@@ -522,7 +522,8 @@
                     localitySelect.val(localityValue);
                     await handleLocalityChange(localityValue, true);
                 } else {
-                    // No locality in URL, fetch worktypes for "All Localities"
+                    // No locality in URL, restore "All Localities" selection and fetch worktypes
+                    localitySelect.val('');
                     await handleLocalityChange('', true);
                 }
             } else {

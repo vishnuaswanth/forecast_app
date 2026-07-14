@@ -51,7 +51,6 @@ from centene_forecast_app.app_utils.cache_utils import (
     clear_forecast_cache,
     clear_roster_cache,
     clear_summary_cache,
-    clear_cascade_caches,
     clear_all_caches
 )
 
@@ -185,11 +184,8 @@ def upload_view(request):
         # For now, clear all caches for safety
         try:
             if file_type == 'roster':
-                logger.info("Clearing roster caches after successful upload")
-                # Clear all roster caches (all months/years since we don't have specifics)
-                clear_cascade_caches()
-                # clear_roster_cache() TODO: try getting month and year from filename
-                logger.info("Note: Cleared cascade caches. Roster data cache will expire naturally.")
+                logger.info("Clearing all caches after successful roster upload")
+                clear_all_caches()
             elif file_type == 'forecast' or file_type == 'altered_forecast':
                 logger.info("Clearing forecast caches after successful upload")
                 # Clear all forecast-related caches
@@ -208,10 +204,8 @@ def upload_view(request):
 
                 logger.info("Note: Cleared cascade caches. Forecast data cache will expire naturally.")
             elif file_type == 'prod_team_roster':
-                logger.info("Clearing prod team roster caches after successful upload")
-                # clear_roster_cache() TODO: try getting month and year from filename
-                clear_cascade_caches()
-                logger.info("Note: Cleared cascade caches. Roster data cache will expire naturally.")
+                logger.info("Clearing all caches after successful prod team roster upload")
+                clear_all_caches()
         except Exception as cache_error:
             # Don't fail the upload if cache clearing fails
             logger.warning(f"Failed to clear caches after upload: {cache_error}")
@@ -633,6 +627,8 @@ def data_view(request):
                     market = dropdown_values.get('market', '')
                     locality = dropdown_values.get('locality', '')
                     worktype = dropdown_values.get('worktype', '')
+                    if worktype and worktype.lower() == 'select':
+                        worktype = ''
 
                     # Build main_lob from new parameters (skip locality if empty)
                     lob_parts = [platform, market]
