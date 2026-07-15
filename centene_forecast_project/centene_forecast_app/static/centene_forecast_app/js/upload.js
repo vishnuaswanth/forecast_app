@@ -46,9 +46,12 @@ function getErrorMessage(xhr, defaultMsg) {
 }
 
 $(document).ready(function(){
+    $('#successMsg, #warningMsg, #error-message, #successViewStatusBtn').hide();
+
     $('#uploadForm').on('submit', function(e){
         e.preventDefault();
         var formData = new FormData(this);
+        var fileType = $('select[name="filetype"]').val();
         disable_upload_button();
         $.ajax({
             url: fileUploadUrl,
@@ -61,9 +64,9 @@ $(document).ready(function(){
                 var warning = response && response.data && response.data.warning ? response.data.warning : null;
                 // Check success field first (preferred), then fallback to message check
                 if (response && response.success) {
-                    onUploadSuccess(warning);
+                    onUploadSuccess(warning, fileType);
                 } else if (response && response.message && response.message.toLowerCase().includes('file uploaded')) {
-                    onUploadSuccess(warning);
+                    onUploadSuccess(warning, fileType);
                 } else {
                     console.log("not handled case in upload");
                     location.reload();
@@ -92,11 +95,17 @@ $(document).ready(function(){
     }
 
 
-    function onUploadSuccess(warning){
+    function onUploadSuccess(warning, fileType){
         $('#error-message').text("").hide();
         $('#successMsg').show();
         $('#file_upload_input').val('');
         enable_upload_button();
+
+        if (fileType === 'forecast') {
+            $('#successViewStatusBtn').show();
+        } else {
+            $('#successViewStatusBtn').hide();
+        }
 
         if (warning) {
             $('#warningMsg').text(warning).show();
@@ -146,6 +155,12 @@ $(document).ready(function(){
                 }
             });
         }, 1000); // Poll every second
+    }
+});
+
+window.addEventListener('pageshow', function (event) {
+    if (event.persisted) {
+        $('#successMsg, #warningMsg, #error-message, #successViewStatusBtn').hide();
     }
 });
 
