@@ -379,6 +379,7 @@ APIs for bench allocation, Target CPH management, and Forecast Reallocation with
 | `Forecast Reallocation` | Manual edits to Target CPH and FTE Available | Used when manually reallocating forecast resources |
 | `Manual Update` | Manual adjustments by user | Ad-hoc manual modifications to any field |
 | `Forecast Update` | Forecast volume changes after allocation through file uploads | Modifications to forecast values or creation of new data |
+| `Ramp Calculation` | Ramp-driven capacity changes | Used when applying ramp calculation/campaign changes via the chat assistant |
 
 **Backend Implementation**:
 ```python
@@ -388,7 +389,8 @@ CHANGE_TYPES = [
     "CPH Update",
     "Forecast Reallocation",
     "Manual Update",
-    "Forecast Update"
+    "Forecast Update",
+    "Ramp Calculation"
 ]
 ```
 

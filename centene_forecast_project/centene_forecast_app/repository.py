@@ -1503,7 +1503,6 @@ class APIClient:
             logger.error(f"[Download History Excel] Unexpected error for history_log_id={history_log_id}: {e}")
             return {'success': False, 'error': str(e), 'status_code': 500}
 
-    @cache_with_ttl(ttl=EditViewConfig.CHANGE_TYPES_TTL, key_prefix='edit_view:change_types')
     def get_available_change_types(self) -> Dict:
         """
         Get available change types with dynamic colors for history log.
@@ -1529,6 +1528,9 @@ class APIClient:
         # TODO: Replace with actual API call when endpoint is ready
         # endpoint = "/api/edit-view/change-types"
         # return self._make_request('GET', endpoint)
+        # Re-add @cache_with_ttl(ttl=EditViewConfig.CHANGE_TYPES_TTL, key_prefix='edit_view:change_types')
+        # once this hits a real network call - the mock below is local, zero-I/O data, so caching it
+        # only risked serving a stale list across code deploys.
 
         # MOCK: Using mock change types data for now
         return get_available_change_types()

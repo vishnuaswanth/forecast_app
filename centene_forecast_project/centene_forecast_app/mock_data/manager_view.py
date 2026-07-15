@@ -450,7 +450,8 @@ def get_available_change_types() -> Dict:
         'CPH Update',
         'Forecast Reallocation',
         'Manual Update',
-        'Forecast Update'
+        'Forecast Update',
+        'Ramp Calculation'
     ]
 
     # Assign colors from standard colors list

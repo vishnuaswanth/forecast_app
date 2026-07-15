@@ -65,13 +65,26 @@
                             view the uploaded data in &ensp;
                             <a class="nav-link " href="{% url 'forecast_app:dataview'  %}">
                                 <u><em> <span> Data Hub</span></em></u>
-                            </a> 
+                            </a>
+                            {% if perms.auth.view_centene_forecast_app %}
+                            &ensp;or check upload status in&ensp;
+                            <a class="nav-link " href="{% url 'forecast_app:execution_monitoring_page'  %}">
+                                <u><em> <span> Execution Monitoring</span></em></u>
+                            </a>
+                            {% endif %}
                         </div>
                     </form>
 
                     <!-- Success or Error Messages -->
                     <div id="error-message" class="alert alert-danger mt-3" style="display: none;"></div>
-                    <div id="successMsg" class="alert alert-success mt-3" style="display: none;">File uploaded successfully!</div>
+                    <div id="successMsg" class="alert alert-success mt-3 d-flex justify-content-between align-items-center" style="display: none;">
+                        <span>File uploaded successfully!</span>
+                        {% if perms.auth.view_centene_forecast_app %}
+                        <a href="{% url 'forecast_app:execution_monitoring_page' %}" class="btn btn-sm btn-outline-success ms-2">
+                            <i class="fas fa-list-check"></i> View Status
+                        </a>
+                        {% endif %}
+                    </div>
                     <div id="warningMsg" class="alert alert-warning mt-3" style="display: none;"></div>
 
                     <!-- Table Container -->
