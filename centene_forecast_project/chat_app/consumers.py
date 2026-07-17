@@ -13,7 +13,7 @@ from channels.db import database_sync_to_async
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 
-from chat_app.models import ChatConversation, ChatMessage
+from chat_app.models import ChatConversation, ChatMessage, ChatWidgetSetting
 from chat_app.services.chat_service import ChatService
 from chat_app.utils.llm_logger import get_llm_logger, create_correlation_id
 
@@ -67,6 +67,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if not hasattr(self.user, 'portal_id'):
             logger.error(f"User {self.user.id} missing portal_id attribute")
             await self.close(code=4002)
+            return
+
+        # Reject if the chat widget has been switched off by an admin
+        widget_enabled = await database_sync_to_async(
+            lambda: ChatWidgetSetting.get_solo().is_enabled
+        )()
+        if not widget_enabled:
+            logger.info(f"Chat widget disabled - rejecting connection for {self.user.portal_id}")
+            await self.close(code=4004)
             return
 
         # Accept the connection

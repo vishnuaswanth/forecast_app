@@ -13,11 +13,11 @@ import logging
 import time
 from typing import Dict, List
 
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from django.conf import settings
 import httpx
 
+from chat_app.services.llm_client_factory import build_llm_client
 from chat_app.services.tools.agent_tools import make_agent_tools
 from chat_app.services.tools.ui_tools import generate_error_ui, generate_fte_details_ui, generate_cph_preview_ui
 from chat_app.services.tools.validation import ConversationContext
@@ -63,14 +63,7 @@ class LLMService:
         self.temperature = llm_config.get('temperature', 0.1)
         self.max_tokens = llm_config.get('max_tokens', 4096)
 
-        self.llm = ChatOpenAI(
-            model=self.model_name,
-            temperature=self.temperature,
-            openai_api_key=llm_config.get('api_key'),
-            max_tokens=self.max_tokens,
-            http_client=self.http_client,
-            http_async_client=self.http_async_client,
-        )
+        self.llm = build_llm_client(llm_config, self.http_client, self.http_async_client)
 
         self.context_manager = get_context_manager()
 

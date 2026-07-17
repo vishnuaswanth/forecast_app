@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from utils import *
+from chat_app.models import ChatWidgetSetting
 
 User = get_user_model()
 
@@ -36,9 +37,14 @@ def user_timezone_name(request):
         "tz_fullname": "",
     }
 
+def chat_widget_enabled(request):
+    """Global admin-controlled on/off flag for the chat widget."""
+    return {"chat_enabled": ChatWidgetSetting.get_solo().is_enabled}
+
 def combined_context(request):
     context = {}
     context.update(user_profile_name(request))
     context.update(user_timezone_name(request))
+    context.update(chat_widget_enabled(request))
     context['pbirs_claims_capacity_url'] = getattr(settings, 'PBIRS_CLAIMS_CAPACITY_URL', '')
     return context

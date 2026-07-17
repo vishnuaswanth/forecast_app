@@ -212,3 +212,25 @@ class ChatToolExecution(models.Model):
 
     def __str__(self):
         return f"{self.tool_name} - {self.status}"
+
+
+class ChatWidgetSetting(models.Model):
+    """
+    Singleton row (pk=1) controlling whether the chat widget is available.
+    DB-backed rather than cache-based so the flag is consistent across
+    worker processes and survives restarts.
+    """
+    is_enabled = models.BooleanField(default=True)
+    updated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'chat_widget_settings'
+
+    def __str__(self):
+        return f"Chat widget: {'ON' if self.is_enabled else 'OFF'}"
+
+    @classmethod
+    def get_solo(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

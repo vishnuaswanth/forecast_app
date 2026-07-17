@@ -5,8 +5,10 @@ import logging
 import openpyxl
 from openpyxl.styles import Font
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.views.decorators.http import require_http_methods
+
+from chat_app.models import ChatWidgetSetting
 
 logger = logging.getLogger(__name__)
 
@@ -118,3 +120,22 @@ def download_ramp_excel(request):
     )
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_chat_widget(request):
+    """Flip the global chat widget on/off flag. Admin-only (is_staff)."""
+    if not request.user.is_staff:
+        return HttpResponseForbidden("You do not have permission to change this setting.")
+
+    setting = ChatWidgetSetting.get_solo()
+    setting.is_enabled = not setting.is_enabled
+    setting.updated_by = request.user
+    setting.save()
+
+    logger.info(
+        f"[Chat Views] Chat widget toggled to {'ON' if setting.is_enabled else 'OFF'} "
+        f"by {request.user.portal_id}"
+    )
+    return JsonResponse({"enabled": setting.is_enabled})

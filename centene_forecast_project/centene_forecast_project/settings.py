@@ -247,13 +247,22 @@ CHAT_CONFIG = {
 }
 
 # LLM Configuration (for Phase 2+ when integrating real LLM)
+# Provider priority for future integrations (easiest -> hardest to add):
+#   1. azure_openai - same LangChain BaseChatModel interface as openai, only client construction differs
+#   2. anthropic     - needs langchain-anthropic + minor error-classification changes (not yet implemented)
+#   3. home-grown    - effort depends entirely on the target API's shape (not yet implemented)
 LLM_CONFIG = {
-    'provider': 'openai',
-    'model': 'gpt-4o',  # Stable model. Try 'gpt-5' or 'gpt-5.2' for latest capability
-    'api_key': env('CENTENE_OPENAI_API_KEY'),  # Read from .env file
+    'provider': env('LLM_PROVIDER', default='openai'),  # 'openai' | 'azure_openai'
+    'model': env('LLM_MODEL', default='gpt-4o'),  # Stable model. Try 'gpt-5' or 'gpt-5.2' for latest capability
+    'api_key': env('CENTENE_OPENAI_API_KEY', default=''),  # Read from .env file
     'max_tokens': 4096,
     'temperature': 0.1,
     'use_langchain': True,
+    # Azure OpenAI (only required when provider == 'azure_openai')
+    'azure_endpoint': env('AZURE_OPENAI_ENDPOINT', default=''),
+    'azure_deployment': env('AZURE_OPENAI_DEPLOYMENT', default=''),
+    'azure_api_version': env('AZURE_OPENAI_API_VERSION', default='2024-08-01-preview'),
+    'azure_api_key': env('AZURE_OPENAI_API_KEY', default=''),
 }
 
 # =============================================================================

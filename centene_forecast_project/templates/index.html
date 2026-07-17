@@ -101,6 +101,12 @@
                                 User management
                             </a>
                         </li>
+                        <li>
+                            <a class="dropdown-item d-flex align-items-center" href="#" id="chat-widget-toggle-link" data-toggle-url="{% url 'chat_app:toggle_chat_widget' %}">
+                                <i class="fas fa-comment-dots"></i>
+                                <span id="chat-widget-toggle-label">Chat Assistant: {% if chat_enabled %}ON{% else %}OFF{% endif %}</span>
+                            </a>
+                        </li>
                     {% endif %}
                 </ul><!-- End Profile Dropdown Items -->
             </li><!-- End Profile Nav -->
@@ -116,7 +122,36 @@
 </main>
 
 <!-- Chat Widget -->
+{% if chat_enabled %}
 {% include 'components/chat_widget.html' %}
+{% endif %}
+
+{% if is_staff %}
+<script>
+(function () {
+    const link = document.getElementById('chat-widget-toggle-link');
+    if (!link) return;
+    link.addEventListener('click', function (e) {
+        e.preventDefault();
+        const csrfToken = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+        fetch(link.dataset.toggleUrl, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': csrfToken },
+        })
+            .then((res) => {
+                if (!res.ok) throw new Error('Toggle request failed');
+                return res.json();
+            })
+            .then(() => {
+                window.location.reload();
+            })
+            .catch((err) => {
+                console.error('Failed to toggle chat widget:', err);
+            });
+    });
+})();
+</script>
+{% endif %}
 
 </body>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
