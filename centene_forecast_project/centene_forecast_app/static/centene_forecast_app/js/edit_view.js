@@ -3754,11 +3754,11 @@
             });
 
             if (response.success !== false) {
-                // Generate unique row_key from main_lob + state + case_type combination
+                // Use the backend's unique case_id as row identity; fall back to a
+                // composite key only if case_id is ever missing.
                 const records = response.data || [];
                 records.forEach(record => {
-                    // Create composite key from the unique combination
-                    record.row_key = `${record.main_lob || ''}_${record.state || ''}_${record.case_type || ''}`;
+                    record.row_key = record.case_id || `${record.main_lob || ''}_${record.state || ''}_${record.case_type || ''}`;
                 });
 
                 STATE.reallocation.allRecords = records;
