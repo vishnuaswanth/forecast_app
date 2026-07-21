@@ -579,6 +579,14 @@ def validate_target_cph_update(config_id, data: Dict) -> Dict:
     validated = validate_target_cph_create(data)
     validated['config_id'] = config_id_int
 
+    # FastAPI's TargetCPHUpdateRequest requires updated_by (unlike created_by on
+    # create, which is optional) - validate_target_cph_create only extracts
+    # created_by, so it must be pulled through separately here.
+    updated_by = data.get('updated_by', '').strip() if data.get('updated_by') else ''
+    if not updated_by:
+        raise ValidationError("Updated by is required")
+    validated['updated_by'] = updated_by
+
     return validated
 
 
