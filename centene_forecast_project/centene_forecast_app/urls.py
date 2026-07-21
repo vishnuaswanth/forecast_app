@@ -85,6 +85,7 @@ urlpatterns = [
     path("api/configuration/month-config/bulk/", configuration_view.month_config_bulk_create_api, name="month_config_bulk_create"),
     path("api/configuration/month-config/<int:config_id>/", configuration_view.month_config_update_api, name="month_config_update"),
     path("api/configuration/month-config/<int:config_id>/delete/", configuration_view.month_config_delete_api, name="month_config_delete"),
+    path("api/configuration/month-config/delete-month/", configuration_view.month_config_delete_pair_api, name="month_config_delete_pair"),
     path("api/configuration/month-config/validate/", configuration_view.month_config_validate_api, name="month_config_validate"),
 
     # Target CPH Configuration APIs

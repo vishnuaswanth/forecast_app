@@ -24,6 +24,7 @@ from centene_forecast_app.services.configuration_service import (
     bulk_create_month_configurations,
     update_month_configuration,
     delete_month_configuration,
+    delete_month_configuration_pair,
     validate_month_configurations,
     get_target_cph_configurations,
     create_target_cph_configuration,
@@ -43,6 +44,8 @@ from centene_forecast_app.validators.configuration_validators import (
     validate_target_cph_bulk,
     validate_config_id,
     validate_filter_params,
+    validate_month_name,
+    validate_year,
 )
 from centene_forecast_app.serializers.configuration_serializers import (
     serialize_month_config_list,
@@ -86,6 +89,7 @@ def configuration_view_page(request):
 
         # Get config for template/JavaScript
         config = ConfigurationViewConfig.get_config_dict()
+        config['can_delete_month_config'] = request.user.has_perm(get_permission_name("admin"))
 
         context = {
             'config': config,
@@ -484,6 +488,63 @@ def month_config_delete_api(request, config_id):
 
     except Exception as e:
         logger.error(f"[Config API] Month config delete failed: {e}", exc_info=True)
+        return JsonResponse(
+            serialize_error_response("Failed to delete month configuration", 500),
+            status=500
+        )
+
+
+@login_required
+@permission_required(get_permission_name("admin"), raise_exception=True)
+@require_http_methods(["DELETE"])
+def month_config_delete_pair_api(request):
+    """
+    API: Delete an entire month-year configuration (both Domestic and Global rows).
+
+    This is the primary way to delete a month configuration - it removes both
+    work-type rows for the month-year in one action, avoiding the orphan-prevention
+    error that deleting a single row would hit.
+
+    Method: DELETE
+    Auth: None
+
+    Query Parameters:
+        month: Month name (e.g., 'February')
+        year: Year (e.g., 2026)
+
+    Returns:
+        JSON with success message
+
+    Example:
+        DELETE /api/configuration/month-config/delete-month/?month=February&year=2026
+    """
+    try:
+        month = validate_month_name(request.GET.get('month', ''))
+        year = validate_year(request.GET.get('year'))
+
+        logger.info(f"[Config API] Deleting month config pair: {month} {year}")
+
+        data = delete_month_configuration_pair(month, year)
+
+        if not data.get('success', True):
+            error_msg = data.get('error', 'Failed to delete configuration')
+            status_code = data.get('status_code', 404)
+            return JsonResponse(
+                serialize_error_response(error_msg, status_code),
+                status=status_code
+            )
+
+        response = serialize_delete_response(data)
+
+        logger.info(f"[Config API] Month config pair {month} {year} deleted")
+        return JsonResponse(response, status=200)
+
+    except ValidationError as e:
+        logger.warning(f"[Config API] Validation error: {e}")
+        return JsonResponse(serialize_error_response(str(e), 400), status=400)
+
+    except Exception as e:
+        logger.error(f"[Config API] Month config pair delete failed: {e}", exc_info=True)
         return JsonResponse(
             serialize_error_response("Failed to delete month configuration", 500),
             status=500

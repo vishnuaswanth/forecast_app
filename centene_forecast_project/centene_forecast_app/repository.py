@@ -1910,6 +1910,30 @@ class APIClient:
 
         return response
 
+    def delete_month_configuration_pair(self, month: str, year: int) -> Dict:
+        """
+        Delete an entire month-year configuration (both Domestic and Global rows)
+        in one atomic operation. This is the primary delete path - it avoids the
+        orphan-prevention error that deleting a single work-type row would hit.
+
+        Args:
+            month: Month name (e.g., 'February')
+            year: Year (e.g., 2026)
+
+        Returns:
+            Success response or error
+        """
+        endpoint = "/api/month-config/by-month"
+        params = {'month': month, 'year': year}
+        logger.info(f"[Month Config] Deleting pair for {month} {year}")
+        response = self._make_request('DELETE', endpoint, params=params)
+
+        # Clear cache after successful deletion
+        if response.get('success', True):
+            self._clear_month_config_cache()
+
+        return response
+
     def validate_month_configurations(self) -> Dict:
         """
         Validate month configurations for orphaned records.

@@ -222,6 +222,41 @@ class MonthConfigService:
             raise
 
     @staticmethod
+    def delete_configuration_pair(month: str, year: int) -> Dict:
+        """
+        Delete an entire month-year configuration (both Domestic and Global rows).
+
+        Args:
+            month: Month name (e.g., 'February')
+            year: Year (e.g., 2026)
+
+        Returns:
+            Success response or error
+
+        Example:
+            >>> response = MonthConfigService.delete_configuration_pair('February', 2026)
+            >>> response['success']
+            True
+        """
+        logger.info(f"[Month Config Service] Deleting configuration pair: {month} {year}")
+
+        try:
+            client = get_api_client()
+            response = client.delete_month_configuration_pair(month, year)
+
+            if not response.get('success', True):
+                error_msg = response.get('error', 'Unknown error')
+                logger.warning(f"[Month Config Service] Pair delete failed: {error_msg}")
+                return response
+
+            logger.info(f"[Month Config Service] Configuration pair {month} {year} deleted")
+            return response
+
+        except Exception as e:
+            logger.error(f"[Month Config Service] Pair delete error: {e}")
+            raise
+
+    @staticmethod
     def validate_configurations() -> Dict:
         """
         Validate month configurations for orphaned records.
@@ -548,6 +583,11 @@ def update_month_configuration(config_id: int, data: Dict) -> Dict:
 def delete_month_configuration(config_id: int, allow_orphan: bool = False) -> Dict:
     """Delete a month configuration."""
     return MonthConfigService.delete_configuration(config_id, allow_orphan)
+
+
+def delete_month_configuration_pair(month: str, year: int) -> Dict:
+    """Delete an entire month-year configuration (both Domestic and Global rows)."""
+    return MonthConfigService.delete_configuration_pair(month, year)
 
 
 def validate_month_configurations() -> Dict:

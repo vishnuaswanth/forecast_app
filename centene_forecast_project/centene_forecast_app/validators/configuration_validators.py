@@ -319,6 +319,10 @@ def validate_month_config_update(config_id, data: Dict) -> Dict:
     """
     Validate month configuration update request.
 
+    Month, year, and work_type are identity fields and are intentionally not
+    accepted here - only the numeric parameters can be edited. To change the
+    identity of a configuration, delete it and add a new one.
+
     Args:
         config_id: ID of configuration to update
         data: Dictionary with updated configuration data
@@ -340,8 +344,20 @@ def validate_month_config_update(config_id, data: Dict) -> Dict:
     if config_id_int < 1:
         raise ValidationError(f"Configuration ID must be positive, got: {config_id_int}")
 
-    validated = validate_month_config_create(data)
-    validated['config_id'] = config_id_int
+    validated = {'config_id': config_id_int}
+
+    if data.get('working_days') is not None:
+        validated['working_days'] = validate_working_days(data.get('working_days'))
+    if data.get('occupancy') is not None:
+        validated['occupancy'] = validate_occupancy(data.get('occupancy'))
+    if data.get('shrinkage') is not None:
+        validated['shrinkage'] = validate_shrinkage(data.get('shrinkage'))
+    if data.get('work_hours') is not None:
+        validated['work_hours'] = validate_work_hours(data.get('work_hours'))
+
+    updated_by = data.get('updated_by', '').strip() if data.get('updated_by') else ''
+    if updated_by:
+        validated['updated_by'] = updated_by
 
     return validated
 

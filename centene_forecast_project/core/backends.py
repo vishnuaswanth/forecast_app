@@ -42,7 +42,11 @@ class LDAPBackend(BaseBackend):
                     entry = connection.entries[0]
 
                     # Access LDAP attributes
-                    username = entry.CN.value
+                    # NOTE: entry.CN is the LDAP display name (e.g. "Doe, John"), NOT the
+                    # portal id / sAMAccountName used to log in. Do not assign it to `username` -
+                    # doing so previously overwrote the login id and got stored as portal_id,
+                    # causing created_by/updated_by audit fields to inconsistently show a
+                    # display name instead of the portal id for some users.
                     first_name = entry.givenName.value
                     last_name = entry.sn.value
                     email = entry.mail.value
@@ -52,8 +56,8 @@ class LDAPBackend(BaseBackend):
                     logger.debug(f'First Name: {first_name}')
                     logger.debug(f'Last Name: {last_name}')
                     logger.debug(f'Email: {email}')
-                    
-                
+
+
 
                 user_info = {
                     'portal_id': username,

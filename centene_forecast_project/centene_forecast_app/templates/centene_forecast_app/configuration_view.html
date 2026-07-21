@@ -316,11 +316,13 @@
                                 <option value="">Select Month</option>
                                 <!-- Options populated by JavaScript -->
                             </select>
+                            <p class="form-control-plaintext d-none config-view-readonly-field" id="month-config-form-month-readonly"></p>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label" for="month-config-form-year">Year <span class="text-danger">*</span></label>
                             <input type="number" class="form-control" id="month-config-form-year"
                                    min="2020" max="2100" required>
+                            <p class="form-control-plaintext d-none config-view-readonly-field" id="month-config-form-year-readonly"></p>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label class="form-label" for="month-config-form-worktype">Work Type <span class="text-danger">*</span></label>
@@ -328,6 +330,10 @@
                                 <option value="">Select Type</option>
                                 <!-- Options populated by JavaScript -->
                             </select>
+                            <p class="form-control-plaintext d-none config-view-readonly-field" id="month-config-form-worktype-readonly"></p>
+                        </div>
+                        <div class="col-12 mb-1 d-none" id="month-config-readonly-note">
+                            <small class="form-text text-muted"><i class="fas fa-lock config-view-me-1"></i>Month, Year, and Work Type cannot be changed after creation. Delete and re-add the configuration to change these.</small>
                         </div>
                     </div>
                     <div class="row">
@@ -523,6 +529,7 @@
             monthConfigBulkCreate: '{% url "forecast_app:month_config_bulk_create" %}',
             monthConfigUpdate: '{% url "forecast_app:month_config_update" config_id=0 %}'.replace('/0/', '/{id}/'),
             monthConfigDelete: '{% url "forecast_app:month_config_delete" config_id=0 %}'.replace('/0/', '/{id}/'),
+            monthConfigDeletePair: '{% url "forecast_app:month_config_delete_pair" %}',
             monthConfigValidate: '{% url "forecast_app:month_config_validate" %}',
             // Target CPH Configuration URLs
             targetCphList: '{% url "forecast_app:target_cph_list" %}',
@@ -550,7 +557,8 @@
             maxWorkHours: DJANGO_CONFIG.max_work_hours || 24,
             minTargetCph: DJANGO_CONFIG.min_target_cph || 0,
             maxLobLength: DJANGO_CONFIG.max_lob_length || 255,
-            maxCaseTypeLength: DJANGO_CONFIG.max_case_type_length || 255
+            maxCaseTypeLength: DJANGO_CONFIG.max_case_type_length || 255,
+            canDeleteMonthConfig: DJANGO_CONFIG.can_delete_month_config || false
         }
     };
 </script>

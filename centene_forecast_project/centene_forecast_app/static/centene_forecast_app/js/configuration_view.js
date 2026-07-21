@@ -218,6 +218,10 @@
             monthField: document.getElementById('month-config-form-month'),
             yearField: document.getElementById('month-config-form-year'),
             workTypeField: document.getElementById('month-config-form-worktype'),
+            monthReadonly: document.getElementById('month-config-form-month-readonly'),
+            yearReadonly: document.getElementById('month-config-form-year-readonly'),
+            workTypeReadonly: document.getElementById('month-config-form-worktype-readonly'),
+            readonlyNote: document.getElementById('month-config-readonly-note'),
             workDaysField: document.getElementById('month-config-form-workdays'),
             occupancyField: document.getElementById('month-config-form-occupancy'),
             shrinkageField: document.getElementById('month-config-form-shrinkage'),
@@ -822,10 +826,11 @@
                                     data-action="edit" title="Edit">
                                 <i class="fas fa-edit"></i>
                             </button>
+                            ${SETTINGS.canDeleteMonthConfig ? `
                             <button class="config-view-btn config-view-btn-icon config-view-btn-outline-danger"
-                                    data-action="delete" title="Delete">
+                                    data-action="delete" title="Delete Month (Domestic + Global)">
                                 <i class="fas fa-trash"></i>
-                            </button>
+                            </button>` : ''}
                         </div>
                     </td>
                 </tr>
@@ -941,6 +946,24 @@
         loadMonthConfigurations();
     }
 
+    // Month, Year, and Work Type identify a configuration and cannot be changed
+    // once created (the backend silently ignores them on update) - to change
+    // one of these, delete the configuration and add a new one. In edit mode
+    // we swap the selectable inputs for plain read-only text so the UI doesn't
+    // imply these can be picked from a dropdown.
+    function setMonthConfigIdentityFieldsEditable(editable) {
+        const modal = DOM.monthConfigModal;
+        [
+            [modal.monthField, modal.monthReadonly],
+            [modal.yearField, modal.yearReadonly],
+            [modal.workTypeField, modal.workTypeReadonly]
+        ].forEach(([input, readonly]) => {
+            if (input) input.classList.toggle('d-none', !editable);
+            if (readonly) readonly.classList.toggle('d-none', editable);
+        });
+        if (modal.readonlyNote) modal.readonlyNote.classList.toggle('d-none', editable);
+    }
+
     function handleMonthConfigAdd() {
         STATE.modal.mode = 'add';
         STATE.modal.editingId = null;
@@ -950,6 +973,7 @@
         }
 
         resetMonthConfigForm();
+        setMonthConfigIdentityFieldsEditable(true);
         showModal('month-config-modal');
     }
 
@@ -969,11 +993,15 @@
         if (DOM.monthConfigModal.monthField) DOM.monthConfigModal.monthField.value = config.month;
         if (DOM.monthConfigModal.yearField) DOM.monthConfigModal.yearField.value = config.year;
         if (DOM.monthConfigModal.workTypeField) DOM.monthConfigModal.workTypeField.value = config.work_type;
+        if (DOM.monthConfigModal.monthReadonly) DOM.monthConfigModal.monthReadonly.textContent = config.month;
+        if (DOM.monthConfigModal.yearReadonly) DOM.monthConfigModal.yearReadonly.textContent = config.year;
+        if (DOM.monthConfigModal.workTypeReadonly) DOM.monthConfigModal.workTypeReadonly.textContent = config.work_type;
         if (DOM.monthConfigModal.workDaysField) DOM.monthConfigModal.workDaysField.value = config.working_days;
         if (DOM.monthConfigModal.occupancyField) DOM.monthConfigModal.occupancyField.value = config.occupancy * 100;
         if (DOM.monthConfigModal.shrinkageField) DOM.monthConfigModal.shrinkageField.value = config.shrinkage * 100;
         if (DOM.monthConfigModal.workHoursField) DOM.monthConfigModal.workHoursField.value = config.work_hours;
 
+        setMonthConfigIdentityFieldsEditable(false);
         showModal('month-config-modal');
     }
 
@@ -984,7 +1012,15 @@
             return;
         }
 
-        const data = {
+        // Month/Year/WorkType are only editable in Add mode - editing an existing
+        // configuration only changes the numeric parameters (see
+        // setMonthConfigIdentityFieldsEditable).
+        const data = STATE.modal.mode === 'edit' ? {
+            working_days: parseInt(DOM.monthConfigModal.workDaysField.value),
+            occupancy: parseFloat(DOM.monthConfigModal.occupancyField.value) / 100,
+            shrinkage: parseFloat(DOM.monthConfigModal.shrinkageField.value) / 100,
+            work_hours: parseFloat(DOM.monthConfigModal.workHoursField.value)
+        } : {
             month: DOM.monthConfigModal.monthField.value,
             year: parseInt(DOM.monthConfigModal.yearField.value),
             work_type: DOM.monthConfigModal.workTypeField.value,
@@ -1027,55 +1063,38 @@
     }
 
     async function handleMonthConfigDelete(configId) {
+        if (!SETTINGS.canDeleteMonthConfig) {
+            showErrorAlert('You do not have permission to delete month configurations.');
+            return;
+        }
+
         const config = STATE.monthConfig.data.find(c => c.id === configId);
         if (!config) return;
 
+        // Configurations always exist as a Domestic+Global pair, so deletion
+        // removes the whole month-year, not a single work type row.
         const confirmed = await Swal.fire({
-            title: 'Delete Configuration?',
-            html: `Are you sure you want to delete the configuration for<br><strong>${config.month} ${config.year} - ${config.work_type}</strong>?`,
+            title: 'Delete Month Configuration?',
+            html: `This will delete <strong>both Domestic and Global</strong> configurations for<br><strong>${config.month} ${config.year}</strong>. This cannot be undone.`,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#dc3545',
             cancelButtonColor: '#6c757d',
-            confirmButtonText: 'Yes, delete it'
+            confirmButtonText: 'Yes, delete this month'
         });
 
         if (!confirmed.isConfirmed) return;
 
         try {
-            const url = URLS.monthConfigDelete.replace('{id}', configId);
+            const url = `${URLS.monthConfigDeletePair}?month=${encodeURIComponent(config.month)}&year=${encodeURIComponent(config.year)}`;
             const response = await fetch(url, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrfToken() } });
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                // Check for orphan warning
-                if (result.orphan_warning) {
-                    const forceDelete = await Swal.fire({
-                        title: 'Orphan Warning',
-                        html: result.orphan_warning + '<br><br>Do you still want to delete?',
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonColor: '#dc3545',
-                        confirmButtonText: 'Yes, delete anyway'
-                    });
-
-                    if (forceDelete.isConfirmed) {
-                        const forceUrl = url + '?allow_orphan=true';
-                        const forceResponse = await fetch(forceUrl, { method: 'DELETE', headers: { 'X-CSRFToken': getCsrfToken() } });
-                        const forceResult = await forceResponse.json();
-
-                        if (!forceResponse.ok || !forceResult.success) {
-                            throw new Error(forceResult.error || 'Failed to delete');
-                        }
-                    } else {
-                        return;
-                    }
-                } else {
-                    throw new Error(result.error || 'Failed to delete configuration');
-                }
+                throw new Error(result.error || 'Failed to delete configuration');
             }
 
-            showSuccess('Configuration deleted successfully');
+            showSuccess(`Configuration for ${config.month} ${config.year} deleted successfully`);
             loadMonthConfigurations(true);
 
         } catch (error) {
@@ -1310,6 +1329,7 @@
         STATE.modal.mode = 'add';
         STATE.modal.editingId = null;
         resetMonthConfigForm();
+        setMonthConfigIdentityFieldsEditable(true);
     }
 
     function resetMonthConfigForm() {
