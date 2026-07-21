@@ -13,6 +13,35 @@ from typing import Dict, Any, Optional, List
 logger = logging.getLogger('django')
 
 
+def _stringify_error_message(message) -> str:
+    """Normalize a Configuration-page error payload into a display string.
+
+    Scoped to this module only: the Target CPH / Month Config API views forward
+    whatever `error`/`detail` shape the FastAPI backend returned - a plain string,
+    a dict (`HTTPException(detail=error_response(...))`), or a list of Pydantic
+    validation errors (422). Passing a dict/list straight through means the
+    frontend's `new Error(message)` renders the literal text "[object Object]".
+    """
+    if isinstance(message, str) or message is None:
+        return message
+
+    if isinstance(message, dict):
+        return message.get('error') or message.get('message') or str(message)
+
+    if isinstance(message, list):
+        parts = []
+        for item in message:
+            if isinstance(item, dict) and 'msg' in item:
+                loc = item.get('loc') or []
+                field = '.'.join(str(part) for part in loc if part not in ('body', '__root__'))
+                parts.append(f"{field}: {item['msg']}" if field else str(item['msg']))
+            else:
+                parts.append(str(item))
+        return '; '.join(parts) if parts else str(message)
+
+    return str(message)
+
+
 def _get_timestamp() -> str:
     """
     Get current timestamp in ISO format.
@@ -449,14 +478,7 @@ class ConfigurationSerializer:
             >>> response['success']
             False
         """
-        if not isinstance(message, str):
-            # Guard against non-string error payloads (e.g. a dict/list slipping through
-            # from an upstream API) reaching the frontend, where it would render as
-            # "[object Object]" once JS coerces it via `new Error(message)`.
-            if isinstance(message, dict):
-                message = message.get('error') or message.get('message') or str(message)
-            else:
-                message = str(message)
+        message = _stringify_error_message(message)
 
         response = {
             'success': False,
