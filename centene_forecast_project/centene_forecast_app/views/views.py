@@ -797,6 +797,7 @@ def check_progress(request):
 
 def logout_view(request):
     logout(request)
+    return redirect("forecast_app:login")
 
 
 # ------------------------------------------------------------------ #
