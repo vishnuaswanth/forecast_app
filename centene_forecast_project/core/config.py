@@ -1082,6 +1082,10 @@ class ConfigurationViewConfig:
     MIN_TARGET_CPH: float = 0.0
     """Minimum allowed Target CPH value (must be non-negative)"""
 
+    MAX_TARGET_CPH: float = 200.0
+    """Maximum allowed Target CPH value (mirrors EditViewConfig.MAX_TARGET_CPH so the
+    FastAPI backend's Pydantic bound is never hit as a raw, unformatted 422)."""
+
     MAX_LOB_LENGTH: int = 255
     """Maximum length for Main LOB field"""
 
@@ -1160,6 +1164,7 @@ class ConfigurationViewConfig:
             'min_work_hours': cls.MIN_WORK_HOURS,
             'max_work_hours': cls.MAX_WORK_HOURS,
             'min_target_cph': cls.MIN_TARGET_CPH,
+            'max_target_cph': cls.MAX_TARGET_CPH,
             'max_lob_length': cls.MAX_LOB_LENGTH,
             'max_case_type_length': cls.MAX_CASE_TYPE_LENGTH,
         }

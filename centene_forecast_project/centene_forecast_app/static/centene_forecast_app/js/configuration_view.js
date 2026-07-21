@@ -27,6 +27,34 @@
     }
 
     // ============================================================
+    // ERROR HANDLING UTILITIES
+    // ============================================================
+    /**
+     * Extract a display string from a parsed JSON response body's `error` field,
+     * which may be a string, a dict, or a pydantic validation array - never pass
+     * these non-string shapes straight to `new Error()`, which renders them as
+     * the literal text "[object Object]".
+     */
+    function stringifyResultError(result, fallback) {
+        const err = result && result.error;
+        if (!err) return fallback;
+        if (typeof err === 'string') return err;
+        if (Array.isArray(err)) {
+            return err.map(e => {
+                if (e && typeof e === 'object') {
+                    const field = e.loc ? [].concat(e.loc).join('.') : null;
+                    return field ? `${field}: ${e.msg}` : (e.msg || e.message || JSON.stringify(e));
+                }
+                return String(e);
+            }).join('; ');
+        }
+        if (typeof err === 'object') {
+            return err.error || err.message || JSON.stringify(err);
+        }
+        return String(err);
+    }
+
+    // ============================================================
     // CONFIGURATION
     // ============================================================
     const CONFIG = window.CONFIGURATION_VIEW_CONFIG || {};
@@ -1049,7 +1077,7 @@
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to save configuration');
+                throw new Error(stringifyResultError(result, 'Failed to save configuration'));
             }
 
             hideModal('month-config-modal');
@@ -1091,7 +1119,7 @@
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to delete configuration');
+                throw new Error(stringifyResultError(result, 'Failed to delete configuration'));
             }
 
             showSuccess(`Configuration for ${config.month} ${config.year} deleted successfully`);
@@ -1124,7 +1152,7 @@
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Validation failed');
+                throw new Error(stringifyResultError(result, 'Validation failed'));
             }
 
             renderValidationResults(result);
@@ -1312,7 +1340,7 @@
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to create configurations');
+                throw new Error(stringifyResultError(result, 'Failed to create configurations'));
             }
 
             hideModal('month-config-bulk-modal');
@@ -1646,7 +1674,18 @@
         if (DOM.targetCphModal.caseTypeField) DOM.targetCphModal.caseTypeField.value = config.case_type;
         if (DOM.targetCphModal.targetCphField) DOM.targetCphModal.targetCphField.value = config.target_cph;
 
+        // Main LOB / Case Type identify the record; only Target CPH is editable here.
+        setTargetCphKeyFieldsReadOnly(true);
+
         showModal('target-cph-modal');
+    }
+
+    function setTargetCphKeyFieldsReadOnly(readOnly) {
+        [DOM.targetCphModal.lobField, DOM.targetCphModal.caseTypeField].forEach(field => {
+            if (!field) return;
+            field.readOnly = readOnly;
+            field.classList.toggle('config-view-readonly-field', readOnly);
+        });
     }
 
     async function handleTargetCphSave() {
@@ -1681,7 +1720,7 @@
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to save configuration');
+                throw new Error(stringifyResultError(result, 'Failed to save configuration'));
             }
 
             hideModal('target-cph-modal');
@@ -1717,7 +1756,7 @@
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to delete configuration');
+                throw new Error(stringifyResultError(result, 'Failed to delete configuration'));
             }
 
             showSuccess('Configuration deleted successfully');
@@ -1834,7 +1873,7 @@
             const result = await response.json();
 
             if (!response.ok || !result.success) {
-                throw new Error(result.error || 'Failed to create configurations');
+                throw new Error(stringifyResultError(result, 'Failed to create configurations'));
             }
 
             hideModal('target-cph-bulk-modal');
@@ -1861,6 +1900,8 @@
         if (DOM.targetCphModal.idField) {
             DOM.targetCphModal.idField.value = '';
         }
+        // Add mode: Main LOB / Case Type are editable again.
+        setTargetCphKeyFieldsReadOnly(false);
     }
 
     function resetTargetCphBulkModal() {

@@ -502,10 +502,16 @@ def validate_target_cph_value(value) -> float:
         raise ValidationError(f"Target CPH must be a valid number, got: {value}")
 
     min_val = ConfigurationViewConfig.MIN_TARGET_CPH
+    max_val = ConfigurationViewConfig.MAX_TARGET_CPH
 
     if value_float < min_val:
         raise ValidationError(
             f"Target CPH must be at least {min_val}, got: {value_float}"
+        )
+
+    if value_float > max_val:
+        raise ValidationError(
+            f"Target CPH must not exceed {max_val}, got: {value_float}"
         )
 
     return round(value_float, 2)

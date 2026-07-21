@@ -449,6 +449,15 @@ class ConfigurationSerializer:
             >>> response['success']
             False
         """
+        if not isinstance(message, str):
+            # Guard against non-string error payloads (e.g. a dict/list slipping through
+            # from an upstream API) reaching the frontend, where it would render as
+            # "[object Object]" once JS coerces it via `new Error(message)`.
+            if isinstance(message, dict):
+                message = message.get('error') or message.get('message') or str(message)
+            else:
+                message = str(message)
+
         response = {
             'success': False,
             'error': message,

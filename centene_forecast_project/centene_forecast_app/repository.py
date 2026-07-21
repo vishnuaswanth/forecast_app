@@ -20,6 +20,35 @@ from core.config import ForecastCacheConfig, ManagerViewConfig, ExecutionMonitor
 
 logger = logging.getLogger('django')
 
+
+def _stringify_error_detail(detail):
+    """Normalize a FastAPI error 'detail'/'message'/'error' value into a display string.
+
+    FastAPI error bodies aren't always plain strings: Pydantic validation errors (422)
+    return a list of {loc, msg, type} dicts, and HTTPException(detail=error_response(...))
+    call sites return a nested {"success": False, "error": "..."} dict. Passing either
+    straight to the frontend causes JS `new Error(obj)` to render as "[object Object]".
+    """
+    if isinstance(detail, str) or detail is None:
+        return detail
+
+    if isinstance(detail, dict):
+        return detail.get('error') or detail.get('message') or str(detail)
+
+    if isinstance(detail, list):
+        parts = []
+        for item in detail:
+            if isinstance(item, dict) and 'msg' in item:
+                loc = item.get('loc') or []
+                field = '.'.join(str(part) for part in loc if part not in ('body', '__root__'))
+                parts.append(f"{field}: {item['msg']}" if field else str(item['msg']))
+            else:
+                parts.append(str(item))
+        return '; '.join(parts) if parts else str(detail)
+
+    return str(detail)
+
+
 class APIClient:
     """
     API Client for external service communication.
@@ -121,6 +150,7 @@ class APIClient:
                     error_json = response.json()
                     # FastAPI typically uses 'detail' for error messages
                     error_detail = error_json.get('detail') or error_json.get('message') or error_json.get('error')
+                    error_detail = _stringify_error_detail(error_detail)
                 except (ValueError, KeyError):
                     error_detail = response.text or f"HTTP {response.status_code} error"
 

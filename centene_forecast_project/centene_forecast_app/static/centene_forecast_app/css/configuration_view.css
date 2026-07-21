@@ -1043,3 +1043,13 @@
 .config-view-number {
     font-family: 'SF Mono', 'Consolas', monospace;
 }
+
+/* ============================================================
+   READ-ONLY FORM FIELDS (e.g. Main LOB / Case Type while editing)
+   ============================================================ */
+
+.config-view-readonly-field {
+    background-color: #e9ecef;
+    cursor: not-allowed;
+    opacity: 0.85;
+}
