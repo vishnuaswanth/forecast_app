@@ -124,7 +124,7 @@ def upload_view(request):
                 status=400
             )
         file_content = uploaded_file.read()
-        user_name = f"{request.user.first_name} {request.user.last_name}".strip()
+        user_name = get_display_name(request.user)
 
         response = None 
         try:       

@@ -16,7 +16,7 @@ from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required, permission_required
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
-from centene_forecast_app.app_utils.auth import get_permission_name
+from centene_forecast_app.app_utils.auth import get_permission_name, get_display_name
 
 from centene_forecast_app.services.configuration_service import (
     get_month_configurations,
@@ -224,7 +224,7 @@ def month_config_create_api(request):
 
         # Add created_by from request user if not provided (API spec uses created_by)
         if not body.get('created_by') and hasattr(request, 'user') and request.user.is_authenticated:
-            body['created_by'] = request.user.username
+            body['created_by'] = get_display_name(request.user)
 
         logger.info(
             f"[Config API] Creating month config - {body.get('month')} "
@@ -305,7 +305,7 @@ def month_config_bulk_create_api(request):
         # Get username
         created_by = 'system'
         if hasattr(request, 'user') and request.user.is_authenticated:
-            created_by = request.user.username
+            created_by = get_display_name(request.user)
 
         logger.info(f"[Config API] Bulk creating {len(configs)} month configs by {created_by}")
 
@@ -387,7 +387,7 @@ def month_config_update_api(request, config_id):
 
         # Add updated_by from request user
         if hasattr(request, 'user') and request.user.is_authenticated:
-            body['updated_by'] = request.user.username
+            body['updated_by'] = get_display_name(request.user)
 
         logger.info(f"[Config API] Updating month config ID: {config_id}")
 
@@ -702,7 +702,7 @@ def target_cph_create_api(request):
 
         # Add created_by from request user if not provided (API spec uses created_by)
         if not body.get('created_by') and hasattr(request, 'user') and request.user.is_authenticated:
-            body['created_by'] = request.user.username
+            body['created_by'] = get_display_name(request.user)
 
         logger.info(
             f"[Config API] Creating Target CPH - {body.get('main_lob')} / {body.get('case_type')}"
@@ -779,7 +779,7 @@ def target_cph_bulk_create_api(request):
         # Get username
         created_by = 'system'
         if hasattr(request, 'user') and request.user.is_authenticated:
-            created_by = request.user.username
+            created_by = get_display_name(request.user)
 
         logger.info(f"[Config API] Bulk creating {len(configs)} Target CPH configs")
 
@@ -857,7 +857,7 @@ def target_cph_update_api(request, config_id):
 
         # Add updated_by from request user
         if hasattr(request, 'user') and request.user.is_authenticated:
-            body['updated_by'] = request.user.username
+            body['updated_by'] = get_display_name(request.user)
 
         logger.info(f"[Config API] Updating Target CPH ID: {config_id}")
 

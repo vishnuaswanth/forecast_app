@@ -2,15 +2,15 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from utils import *
 from chat_app.models import ChatWidgetSetting
+from centene_forecast_app.app_utils.auth import get_display_name
 
 User = get_user_model()
 
 def user_profile_name(request):
     """Returns the full name of the logged-in user as user_name."""
     if request.user.is_authenticated:
-        full_name = f"{request.user.first_name} {request.user.last_name}".strip()
         return {
-            "user_name": full_name if full_name else request.user.username,
+            "user_name": get_display_name(request.user),
             "is_staff": request.user.is_staff or False
         }
     return {"user_name": "", "is_staff": False}
