@@ -37,7 +37,6 @@ Expected output: `System check identified no issues (0 silenced).`
 $env:CENTENE_DEBUG = "False"
 $env:CENTENE_SECRET_KEY = "temp-check-key"
 $env:CENTENE_ALLOWED_HOSTS = "localhost"
-$env:CENTENE_SECURE_SSL_REDIRECT = "False"
 python manage.py check --deploy
 $env:CENTENE_DEBUG = $null   # restore
 ```
@@ -76,7 +75,17 @@ python -c "import os, django; os.environ['DJANGO_SETTINGS_MODULE']='centene_fore
 
 Should print the `centene_forecasting/ws/chat/` pattern without import errors.
 
-### 1.7 Confirm Daphne starts and serves the app
+### 1.7 Confirm LLM connectivity
+
+```powershell
+python manage.py test_llm_connection
+# or, if using Azure OpenAI:
+python manage.py test_llm_connection --provider azure_openai
+```
+
+Confirms the configured `LLM_PROVIDER`/model credentials can actually reach the LLM API before deploying. On failure the command prints hints for common issues (401, 404, bad `api_version`).
+
+### 1.8 Confirm Daphne starts and serves the app
 
 Run Daphne directly (the same way NSSM will run it on the server) and verify it responds before setting it up as a service.
 
@@ -101,13 +110,12 @@ Expected responses:
 |----------|---------|
 | `200 OK` | Page served directly |
 | `302 Found` | Redirecting to login page (normal) |
-| `301 Moved Permanently` | `SECURE_SSL_REDIRECT=True` — set it to `False` in `.env` |
 
 Any `Connection refused` means Daphne did not start — check the terminal output for errors.
 
 Stop Daphne with `Ctrl+C` once verified.
 
-### 1.8 Freeze dependencies
+### 1.9 Freeze dependencies
 
 ```powershell
 pip freeze > requirements-lock.txt
@@ -188,6 +196,8 @@ $env:CENTENE_ALLOWED_HOSTS = "localhost"
 .\.venv\Scripts\python.exe manage.py migrate
 ```
 
+> This deploy includes the chat-widget "kill switch" migration (`chat_app` `0003_chatwidgetsetting_and_more`), which adds an admin-toggleable setting for the AI chat widget. It defaults to **enabled**. A superuser can disable it at `/centene_forecasting/admin/` (**Chat Widget Setting**) or via the staff-only toggle in the nav dropdown.
+
 ### 3.2 Collect static files
 
 ```powershell
@@ -249,8 +259,15 @@ $EnvVars = @{
     "CENTENE_SECRET_KEY"               = "your-actual-secret-key-here"       # <- change
     "CENTENE_DEBUG"                    = "False"
     "CENTENE_ALLOWED_HOSTS"            = "your.server.hostname,localhost"     # <- change
-    "CENTENE_SECURE_SSL_REDIRECT"      = "False"   # IIS handles HTTPS, not Django
+    "CENTENE_CSRF_TRUSTED_ORIGINS"     = "https://your.server.hostname"      # <- change
     "CENTENE_OPENAI_API_KEY"           = "sk-..."                             # <- change
+    "LLM_PROVIDER"                     = "openai"   # or "azure_openai"
+    "LLM_MODEL"                        = "gpt-4o"
+    # Uncomment and fill in only if LLM_PROVIDER = "azure_openai":
+    # "AZURE_OPENAI_ENDPOINT"           = "https://YOUR-RESOURCE.openai.azure.com/"
+    # "AZURE_OPENAI_DEPLOYMENT"         = "YOUR-DEPLOYMENT-NAME"
+    # "AZURE_OPENAI_API_VERSION"        = "2024-08-01-preview"
+    # "AZURE_OPENAI_API_KEY"            = "REPLACE_WITH_YOUR_AZURE_KEY"
     "CENTENE_API_BASE_URL"             = "http://127.0.0.1:8888"
     "CENTENE_PBIRS_CLAIMS_CAPACITY_URL"= "http://10.111.36.98/reports/..."   # <- confirm
 }
@@ -281,8 +298,8 @@ Should show `Status: Running`. Also visible in `services.msc`.
 Open a **new** PowerShell window (must be fresh — not the one that ran the script):
 
 ```powershell
-@('CENTENE_SECRET_KEY','CENTENE_DEBUG','CENTENE_ALLOWED_HOSTS','CENTENE_SECURE_SSL_REDIRECT',
-  'CENTENE_OPENAI_API_KEY','CENTENE_API_BASE_URL','DJANGO_SETTINGS_MODULE') | ForEach-Object {
+@('CENTENE_SECRET_KEY','CENTENE_DEBUG','CENTENE_ALLOWED_HOSTS','CENTENE_CSRF_TRUSTED_ORIGINS',
+  'CENTENE_OPENAI_API_KEY','LLM_PROVIDER','LLM_MODEL','CENTENE_API_BASE_URL','DJANGO_SETTINGS_MODULE') | ForEach-Object {
     $val = [System.Environment]::GetEnvironmentVariable($_, 'Machine')
     $preview = if ($val) { $val.Substring(0, [Math]::Min(30, $val.Length)) + '...' } else { '<NOT SET>' }
     "{0,-40} = {1}" -f $_, $preview
@@ -299,9 +316,10 @@ from django.conf import settings
 print('SECRET_KEY set    :', bool(settings.SECRET_KEY) and 'insecure' not in settings.SECRET_KEY)
 print('DEBUG             :', settings.DEBUG)
 print('ALLOWED_HOSTS     :', settings.ALLOWED_HOSTS)
-print('SSL_REDIRECT      :', settings.SECURE_SSL_REDIRECT)
 print('API_BASE_URL      :', settings.API_BASE_URL)
 print('OPENAI key set    :', bool(settings.LLM_CONFIG.get('api_key')))
+print('LLM_PROVIDER      :', settings.LLM_CONFIG.get('provider'))
+print('LLM_MODEL         :', settings.LLM_CONFIG.get('model'))
 "
 ```
 
@@ -310,9 +328,10 @@ Expected output:
 SECRET_KEY set    : True
 DEBUG             : False
 ALLOWED_HOSTS     : ['your.server.hostname', 'localhost']
-SSL_REDIRECT      : False
 API_BASE_URL      : http://127.0.0.1:8888
 OPENAI key set    : True
+LLM_PROVIDER      : openai
+LLM_MODEL         : gpt-4o
 ```
 
 ### 5.3 Run the full deployment check
@@ -496,14 +515,17 @@ Restart-Service CenteneForecasting
 
 ---
 
-### Page redirects to `https://127.0.0.1:8096/` and fails
+### AI chat widget missing or not responding
 
-**Cause:** `SECURE_SSL_REDIRECT` is `True` — Django is redirecting HTTP to HTTPS internally, but Daphne only serves HTTP.
+**Cause A:** The chat kill switch has been disabled by an admin/staff user.
+-> Fix: log in as a staff user, use the nav dropdown toggle, or go to `/centene_forecasting/admin/` -> **Chat Widget Setting** and set `is_enabled` to `True`.
 
+**Cause B:** LLM provider credentials are missing or invalid.
 ```powershell
-[System.Environment]::SetEnvironmentVariable('CENTENE_SECURE_SSL_REDIRECT','False','Machine')
-Restart-Service CenteneForecasting
+cd C:\inetpub\wwwroot\Centene_Forecasting\centene_forecast_project
+.\.venv\Scripts\python.exe manage.py test_llm_connection
 ```
+Follow the printed hint (401 = bad API key, 404 = wrong model/deployment name, `api_version` errors = check `AZURE_OPENAI_API_VERSION`).
 
 ---
 

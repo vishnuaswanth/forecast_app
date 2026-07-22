@@ -6,7 +6,6 @@
 # CONFIGURE THESE VALUES
 # =============================================================================
 
-$NssmPath    = "C:\nssm.exe"
 $ServiceName = "CenteneForecasting"
 
 $EnvVars = @{
@@ -14,9 +13,15 @@ $EnvVars = @{
     "CENTENE_SECRET_KEY"               = "REPLACE_WITH_YOUR_SECRET_KEY"
     "CENTENE_DEBUG"                    = "False"
     "CENTENE_ALLOWED_HOSTS"            = "YOUR_SERVER_HOSTNAME,localhost"
-    "CENTENE_SECURE_SSL_REDIRECT"      = "False"
     "CENTENE_CSRF_TRUSTED_ORIGINS"     = "https://YOUR_SERVER_HOSTNAME"
     "CENTENE_OPENAI_API_KEY"           = "REPLACE_WITH_YOUR_OPENAI_KEY"
+    "LLM_PROVIDER"                      = "openai"   # or "azure_openai"
+    "LLM_MODEL"                         = "gpt-4o"
+    # Uncomment and fill in only if LLM_PROVIDER = "azure_openai":
+    # "AZURE_OPENAI_ENDPOINT"            = "https://YOUR-RESOURCE.openai.azure.com/"
+    # "AZURE_OPENAI_DEPLOYMENT"          = "YOUR-DEPLOYMENT-NAME"
+    # "AZURE_OPENAI_API_VERSION"         = "2024-08-01-preview"
+    # "AZURE_OPENAI_API_KEY"             = "REPLACE_WITH_YOUR_AZURE_KEY"
     "CENTENE_API_BASE_URL"             = "http://127.0.0.1:8888"
     "CENTENE_PBIRS_CLAIMS_CAPACITY_URL"= "http://10.111.36.98/reports/powerbi/COMMERCIAL/Centene/Claims%20Capacity%20Planning%20Dashboard?rs:Embed=true"
 }

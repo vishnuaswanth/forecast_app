@@ -23,8 +23,8 @@ Write-Host "=== NSSM AppEnvironmentExtra ===" -ForegroundColor White
 & $NssmPath get $ServiceName AppEnvironmentExtra
 
 Write-Host "=== System Environment Variables ===" -ForegroundColor White
-@("DJANGO_SETTINGS_MODULE","SECRET_KEY","DEBUG","ALLOWED_HOSTS","SECURE_SSL_REDIRECT",
-  "CSRF_TRUSTED_ORIGINS","OPENAI_API_KEY") | ForEach-Object {
+@("DJANGO_SETTINGS_MODULE","SECRET_KEY","DEBUG","ALLOWED_HOSTS",
+  "CSRF_TRUSTED_ORIGINS","OPENAI_API_KEY","LLM_PROVIDER","LLM_MODEL") | ForEach-Object {
     $val = [System.Environment]::GetEnvironmentVariable($_, "Machine")
     $display = if ($_ -eq "SECRET_KEY" -and $val) { "***hidden***" }
                elseif ($val) { $val } else { "<NOT SET>" }
